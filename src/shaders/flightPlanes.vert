@@ -1,3 +1,5 @@
+precision mediump float;
+
 attribute vec3 aP0;
 attribute vec3 aP1;
 attribute vec3 aP2;

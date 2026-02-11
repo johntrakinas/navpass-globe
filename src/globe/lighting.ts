@@ -64,6 +64,7 @@ export function createLightingShell(radius: number) {
     vertexShader: VERT,
     fragmentShader: FRAG_NIGHT,
     transparent: true,
+    premultipliedAlpha: true,
     depthWrite: false,
     depthTest: true,
     blending: THREE.MultiplyBlending,

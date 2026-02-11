@@ -1,3 +1,5 @@
+precision mediump float;
+
 attribute float size;
 attribute float aSeed;
 
@@ -38,9 +40,8 @@ void main() {
 
   // A little richer when closer, but never huge.
   float base = size * pulse * (0.6 + 0.4 * zoom) * (0.55 + 0.45 * vNight);
-  float pointSize = base * (240.0 / dist);
+  float pointSize = base * (150.0 / dist);
 
-  gl_PointSize = clamp(pointSize, 0.0, 28.0);
+  gl_PointSize = clamp(pointSize, 0.0, 12.0);
   gl_Position = projectionMatrix * mvPosition;
 }
-

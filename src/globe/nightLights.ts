@@ -33,7 +33,7 @@ export function createNightLights(airports: Airport[], radius: number) {
     col.copy(warmA).lerp(warmB, Math.random())
     colors.push(col.r, col.g, col.b)
 
-    sizes.push(2.8 + Math.random() * 2.2)
+    sizes.push(1.8 + Math.random() * 1.3)
     seeds.push(Math.random())
   }
 
@@ -58,7 +58,7 @@ export function createNightLights(airports: Airport[], radius: number) {
       uSunDir: { value: new THREE.Vector3(1, 0.2, 0.35).normalize() },
       uWarmA: { value: warmA.clone() },
       uWarmB: { value: warmB.clone() },
-      uAlpha: { value: 0.42 }
+      uAlpha: { value: 0.35 }
     }
   })
 
@@ -74,9 +74,8 @@ export function createNightLights(airports: Airport[], radius: number) {
 
     // Very subtle boost when zoomed in.
     const zoom = THREE.MathUtils.clamp((32 - cameraDistance) / 16, 0, 1)
-    mat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.28, 0.44, zoom)
+    mat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.22, 0.38, zoom)
   }
 
   return { points, material: mat, update }
 }
-

@@ -15,21 +15,16 @@ void main() {
 
   vec2 uv = gl_PointCoord - 0.5;
   float d = length(uv);
-  if (d > 0.5) discard;
+  if (d > 0.46) discard;
 
-  float core = smoothstep(0.22, 0.0, d);
-  float glow = smoothstep(0.5, 0.12, d);
-
-  // Thin ring that feels like a lens bloom hint.
-  float ringOuter = smoothstep(0.5, 0.40, d);
-  float ringInner = smoothstep(0.34, 0.25, d);
-  float ring = clamp(ringOuter - ringInner, 0.0, 1.0);
+  float core = smoothstep(0.16, 0.0, d);
+  float glow = smoothstep(0.34, 0.10, d);
 
   // Color drift (subtle): keeps it alive without rainbow vibes.
-  float drift = 0.5 + 0.5 * sin(uTime * 0.35 + vSeed * 12.0);
+  float drift = 0.5 + 0.5 * sin(uTime * 0.08 + vSeed * 12.0);
   vec3 col = mix(uWarmA, uWarmB, drift);
 
-  float shimmer = 0.86 + 0.14 * sin(uTime * 3.2 + vSeed * 6.2831);
+  float shimmer = 0.98 + 0.02 * sin(uTime * 0.35 + vSeed * 6.2831);
 
   // Horizon fade.
   float limb = smoothstep(0.03, 0.18, vFacing);
@@ -38,8 +33,7 @@ void main() {
   // Zoom fade: far = quieter (avoid speckling the globe when zoomed out).
   float zoomFade = 0.25 + 0.75 * vZoom;
 
-  float alpha = (glow * 0.55 + ring * 0.65 + core * 0.75) * uAlpha * shimmer * vNight * limb * zoomFade;
+  float alpha = (glow * 0.26 + core * 0.84) * uAlpha * shimmer * vNight * limb * zoomFade;
 
   gl_FragColor = vec4(col, alpha);
 }
-

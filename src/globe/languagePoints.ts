@@ -64,7 +64,13 @@ export function createLanguagePoints(data: any[], radius: number) {
       uTime: { value: 0 },
       uCameraDistance: { value: 0 },
       uColorMul: { value: new THREE.Color(1, 1, 1) },
-      uAlphaMul: { value: 0.82 }
+      uAlphaMul: { value: 0.76 },
+      uFlowSpeed: { value: 0.04 },
+      uFlowWidth: { value: 0.16 },
+      uFlowStrength: { value: 0.45 },
+      uFlowColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.14) },
+      uFlowDir: { value: new THREE.Vector3(0.74, 0.18, 0.65).normalize() },
+      uFlowScale: { value: 0.11 }
     }
   });
 
