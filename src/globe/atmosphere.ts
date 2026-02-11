@@ -61,11 +61,11 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
     vertexShader: VERT,
     fragmentShader: FRAG,
     uniforms: {
-      uDayColor: { value: GOOGLE_COLORS.deepBlue.clone().lerp(GOOGLE_COLORS.lightBlue, 0.48) },
+      uDayColor: { value: GOOGLE_COLORS.deepBlue.clone().lerp(GOOGLE_COLORS.lightBlue, 0.58) },
       uNightColor: { value: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.5) },
       uLightDir: { value: new THREE.Vector3(1, 0.2, 0.35).normalize() },
-      uIntensity: { value: 0.052 },  // slightly brighter, still restrained
-      uPower: { value: 2.5 },
+      uIntensity: { value: 0.07 },
+      uPower: { value: 2.44 },
       uDistanceFade: { value: 1.0 },
       uAngleFade: { value: 1.0 },
       uCameraPos: { value: new THREE.Vector3() }
@@ -100,8 +100,8 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
   const geometry2 = new THREE.SphereGeometry(radius * 1.06, 96, 96)
   const material2 = material.clone()
   material2.uniforms = THREE.UniformsUtils.clone(material.uniforms)
-  material2.uniforms.uIntensity.value = 0.032
-  material2.uniforms.uPower.value = 2.34
+  material2.uniforms.uIntensity.value = 0.046
+  material2.uniforms.uPower.value = 2.3
 
   const outer = new THREE.Mesh(geometry2, material2)
   outer.renderOrder = 11
@@ -129,8 +129,8 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
   material3.uniforms = THREE.UniformsUtils.clone(material.uniforms)
   material3.uniforms.uDayColor.value = GOOGLE_COLORS.lightBlue.clone()
   material3.uniforms.uNightColor.value = GOOGLE_COLORS.blue.clone().multiplyScalar(0.4)
-  material3.uniforms.uIntensity.value = 0.027
-  material3.uniforms.uPower.value = 3.0
+  material3.uniforms.uIntensity.value = 0.036
+  material3.uniforms.uPower.value = 2.9
 
   const subsurface = new THREE.Mesh(geometry3, material3)
   subsurface.renderOrder = 9

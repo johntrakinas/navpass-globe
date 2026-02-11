@@ -71,8 +71,8 @@ export function createLightingShell(radius: number) {
     side: THREE.FrontSide,
     uniforms: {
       uLightDir: { value: new THREE.Vector3(1.0, 0.2, 0.35).normalize() },
-      uShadowColor: { value: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.35) },
-      uShadowStrength: { value: 0.35 },
+      uShadowColor: { value: GOOGLE_COLORS.deepBlue.clone().lerp(GOOGLE_COLORS.lightBlue, 0.22).multiplyScalar(0.62) },
+      uShadowStrength: { value: 0.26 },
       uTerminatorSoftness: { value: 0.28 }
     }
   })
@@ -87,8 +87,8 @@ export function createLightingShell(radius: number) {
     side: THREE.FrontSide,
     uniforms: {
       uLightDir: { value: new THREE.Vector3(1.0, 0.2, 0.35).normalize() },
-      uDayColor: { value: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.deepBlue, 0.3) },
-      uDayStrength: { value: 0.038 },
+      uDayColor: { value: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.white, 0.14) },
+      uDayStrength: { value: 0.055 },
       uDaySoftness: { value: 0.35 }
     }
   })

@@ -82,7 +82,7 @@ export function setHoverHighlight(feature: any | null, parent: THREE.Object3D, r
   parent.add(hoverLines)
 
   // fade-in alvo padrão (o updateHover vai aplicar)
-  targetOpacity = 0.95
+  targetOpacity = 1
 }
 
 export function clearHoverHighlight(parent: THREE.Object3D) {
@@ -105,15 +105,15 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
   // ✅ opacidade adaptativa ao zoom (longe = menos forte)
   // ajuste fino: quanto menor o número, mais cedo ele fica forte
   const zoomFactor = THREE.MathUtils.clamp((28 - cameraDistance) / 12, 0, 1)
-  const desiredMax = 0.18 + 0.45 * zoomFactor // 0.18..0.63 (perto mais visível)
+  const desiredMax = 0.24 + 0.5 * zoomFactor // 0.24..0.74 (perto mais visível)
 
-  const maxOp = Math.min(desiredMax, 0.65)
+  const maxOp = Math.min(desiredMax, 0.78)
   const tgt = Math.min(targetOpacity, maxOp)
 
   // ✅ fade suave (critico pro "Google feel")
   const smoothing = 0.18 // maior = mais rápido (0.12..0.22)
   currentOpacity += (tgt - currentOpacity) * smoothing
-  const pulse = 0.65 + 0.35 * Math.sin(timeSeconds * 2.8 + pulsePhase)
+  const pulse = 0.72 + 0.28 * Math.sin(timeSeconds * 2.8 + pulsePhase)
   const shimmer = 0.5 + 0.5 * Math.sin(timeSeconds * 3.6 + pulsePhase * 0.7)
   const palette = googlePaletteLerp((timeSeconds * 0.08 + pulsePhase * 0.12) % 1)
   glowColor.copy(hoverColorA).lerp(hoverColorB, shimmer).lerp(palette, 0.55)
@@ -142,7 +142,7 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
 export function setHoverTheme(isLight: boolean) {
   hoverColorA = isLight ? GOOGLE_COLORS.deepBlue.clone() : GOOGLE_COLORS.white.clone()
   hoverColorB = GOOGLE_COLORS.yellow.clone()
-  hoverOpacityMul = isLight ? 1.45 : 1.2
+  hoverOpacityMul = isLight ? 1.55 : 1.3
   if (hoverMat) {
     hoverMat.color.copy(hoverColorA)
   }

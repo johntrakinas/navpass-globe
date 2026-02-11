@@ -80,7 +80,7 @@ export function createCountries(
   )
 
   // Subtle base borders (internal/frontiers only, no coastline edge).
-  const material = createLineFadeMaterial(GOOGLE_COLORS.white, 0.1, 0.2, 0.7)
+  const material = createLineFadeMaterial(GOOGLE_COLORS.white, 0.16, 0.2, 0.7)
 
   const lines = new THREE.LineSegments(geometry, material)
   lines.renderOrder = 2

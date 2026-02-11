@@ -1589,23 +1589,23 @@ function animate() {
   if (lightingShell) {
     const sun = _sunWorldDir
     const strength = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.42, 0.28),
-      0.28,
-      0.42
+      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.3, 0.2),
+      0.2,
+      0.3
     )
     const softness = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.24, 0.36),
-      0.24,
-      0.36
+      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.26, 0.38),
+      0.26,
+      0.38
     )
     lightingShell.nightMaterial.uniforms.uLightDir.value.copy(sun)
     lightingShell.nightMaterial.uniforms.uShadowStrength.value = strength
     lightingShell.nightMaterial.uniforms.uTerminatorSoftness.value = softness
 
     const baseDayStrength = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.05, 0.024),
-      0.024,
-      0.05
+      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.07, 0.038),
+      0.038,
+      0.07
     )
     const dayPulse = 0.93 + 0.07 * Math.sin(now * 0.35)
     const dayStrength = baseDayStrength * dayPulse

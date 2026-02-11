@@ -82,8 +82,8 @@ export function highlightCountryFromFeature(
   const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates]
 
   // Two-pass render to fake thicker country outline in WebGL line rendering.
-  const glowMat = createHighlightMaterial(0.52, 0.0048)
-  const coreMat = createHighlightMaterial(0.9, 0.0012)
+  const glowMat = createHighlightMaterial(0.64, 0.0056)
+  const coreMat = createHighlightMaterial(1.0, 0.0015)
   currentMats = [glowMat, coreMat]
   pulsePhase = Math.random() * Math.PI * 2
 
@@ -140,8 +140,8 @@ export function clearHighlight(parent: THREE.Object3D) {
 
 export function updateCountryHighlight(timeSeconds: number) {
   if (!currentMats.length) return
-  const pulse = 0.010 + 0.008 * Math.sin(timeSeconds * 1.8 + pulsePhase)
-  const alpha = 0.78 + 0.22 * Math.sin(timeSeconds * 1.6 + pulsePhase)
+  const pulse = 0.011 + 0.009 * Math.sin(timeSeconds * 1.8 + pulsePhase)
+  const alpha = 0.82 + 0.18 * Math.sin(timeSeconds * 1.6 + pulsePhase)
 
   for (const mat of currentMats) {
     const baseOpacity = Number(mat.userData.baseOpacity ?? 0.8)

@@ -47,12 +47,12 @@ function makeLayer(
   matA.blending = THREE.AdditiveBlending
   {
     const u: any = matA.uniforms
-    u.uShimmerStrength.value = 0.16
+    u.uShimmerStrength.value = 0.2
     u.uShimmerSpeed.value = 0.92
     u.uShimmerPulse.value = 0.24
     u.uShimmerScale.value = 0.85
     u.uShimmerWidth.value = 0.18
-    u.uShimmerColor.value = GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.deepBlue, 0.25)
+    u.uShimmerColor.value = GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.lightBlue, 0.68)
     u.uShimmerDir.value = new THREE.Vector3(0.68, 0.22, 0.70).normalize()
     matA.userData.baseShimmerStrength = u.uShimmerStrength.value
   }
@@ -70,12 +70,12 @@ function makeLayer(
   matB.blending = THREE.AdditiveBlending
   {
     const u: any = matB.uniforms
-    u.uShimmerStrength.value = 0.16
+    u.uShimmerStrength.value = 0.2
     u.uShimmerSpeed.value = 0.92
     u.uShimmerPulse.value = 0.24
     u.uShimmerScale.value = 0.85
     u.uShimmerWidth.value = 0.18
-    u.uShimmerColor.value = GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.deepBlue, 0.25)
+    u.uShimmerColor.value = GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.lightBlue, 0.68)
     u.uShimmerDir.value = new THREE.Vector3(0.68, 0.22, 0.70).normalize()
     matB.userData.baseShimmerStrength = u.uShimmerStrength.value
   }
@@ -95,9 +95,9 @@ function makeLayer(
 
 export function createAdaptiveLatLonGrid(radius: number, camera: THREE.Camera) {
   // coarse (10°)
-  const coarse = makeLayer(radius, 10, 10, 0.019, 0.032, camera)
+  const coarse = makeLayer(radius, 10, 10, 0.026, 0.042, camera)
   // fine (5°) — quadrados menores
-  const fine = makeLayer(radius, 5, 5, 0.013, 0.024, camera)
+  const fine = makeLayer(radius, 5, 5, 0.018, 0.032, camera)
 
   // começa com coarse visível e fine “apagado”
   let coarseAlpha = 1
