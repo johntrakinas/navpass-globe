@@ -887,8 +887,8 @@ export function createFlightRoutes(
       uHoverMix: { value: 0.0 },
       uSelectedMix: { value: 0.0 },
       uOriginColor: { value: GOOGLE_COLORS.white.clone() },
-      uDestColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.22) },
-      uAlpha: { value: 0.9 }
+      uDestColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.08) },
+      uAlpha: { value: 0.72 }
     }
   })
 
@@ -922,9 +922,9 @@ export function createFlightRoutes(
       uCameraDistance: { value: 25 },
       uHoverMix: { value: 0.0 },
       uSelectedMix: { value: 0.0 },
-      uHoverColor: { value: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.white, 0.25) },
-      uSelectedColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.25) },
-      uAlpha: { value: 0.95 }
+      uHoverColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.lightBlue, 0.08) },
+      uSelectedColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.12) },
+      uAlpha: { value: 0.78 }
     }
   })
 

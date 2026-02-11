@@ -1,3 +1,5 @@
+precision mediump float;
+
 attribute float aKind; // 0 = hover, 1 = selected
 attribute float aSeed;
 
@@ -26,15 +28,14 @@ void main() {
   float zoom = clamp((32.0 - uCameraDistance) / 16.0, 0.0, 1.0);
   vZoom = zoom;
 
-  float pulse = 0.84 + 0.16 * sin(uTime * 2.2 + aSeed * 6.2831 + kind * 1.7);
-  float base = mix(2.35, 3.55, zoom);
-  float pointSize = base * pulse * showMix * (240.0 / dist);
+  float pulse = 0.98 + 0.02 * sin(uTime * 0.6 + aSeed * 6.2831 + kind * 0.7);
+  float base = mix(1.35, 2.10, zoom);
+  float pointSize = base * pulse * showMix * (185.0 / dist);
 
   // Horizon fade helper.
   vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
   vFacing = dot(normalize(worldPos), normalize(cameraPosition));
 
-  gl_PointSize = clamp(pointSize, 0.0, 52.0);
+  gl_PointSize = clamp(pointSize, 0.0, 18.0);
   gl_Position = projectionMatrix * mvPosition;
 }
-
