@@ -3,6 +3,7 @@ import { latLongToVector3 } from './latLongtoVector3';
 import vertexShader from '../shaders/points.vert?raw';
 import fragmentShader from '../shaders/points.frag?raw';
 import { GOOGLE_COLORS } from '../theme/googleColors';
+import { scaleThickness } from './thicknessScale'
 
 export function createLanguagePoints(data: any[], radius: number) {
   const geometry = new THREE.BufferGeometry();
@@ -30,8 +31,8 @@ export function createLanguagePoints(data: any[], radius: number) {
     color.copy(GOOGLE_COLORS.white);
     colors.push(color.r, color.g, color.b);
 
-    // Smaller airport dots (closer to Google's subtle star-like points).
-    sizes.push(Math.random() * 0.42 + 0.48);
+    // Dramatic airport dots (high readability).
+    sizes.push(Math.random() * 0.66 + 0.92);
     seeds.push(Math.random());
   }
 
@@ -64,13 +65,14 @@ export function createLanguagePoints(data: any[], radius: number) {
       uTime: { value: 0 },
       uCameraDistance: { value: 0 },
       uColorMul: { value: new THREE.Color(1, 1, 1) },
-      uAlphaMul: { value: 0.76 },
+      uAlphaMul: { value: 0.9 },
       uFlowSpeed: { value: 0.04 },
       uFlowWidth: { value: 0.16 },
       uFlowStrength: { value: 0.45 },
       uFlowColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.14) },
       uFlowDir: { value: new THREE.Vector3(0.74, 0.18, 0.65).normalize() },
-      uFlowScale: { value: 0.11 }
+      uFlowScale: { value: 0.11 },
+      uSizeMul: { value: scaleThickness(1.0) }
     }
   });
 

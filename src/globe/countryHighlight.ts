@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { latLongToVector3 } from './latLongtoVector3'
+import { scaleThickness } from './thicknessScale'
 
 let current: THREE.Object3D | null = null
 let currentMats: THREE.ShaderMaterial[] = []
@@ -82,8 +83,8 @@ export function highlightCountryFromFeature(
   const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates]
 
   // Two-pass render to fake thicker country outline in WebGL line rendering.
-  const glowMat = createHighlightMaterial(0.64, 0.0056)
-  const coreMat = createHighlightMaterial(1.0, 0.0015)
+  const glowMat = createHighlightMaterial(0.64, scaleThickness(0.0056))
+  const coreMat = createHighlightMaterial(1.0, scaleThickness(0.0015))
   currentMats = [glowMat, coreMat]
   pulsePhase = Math.random() * Math.PI * 2
 

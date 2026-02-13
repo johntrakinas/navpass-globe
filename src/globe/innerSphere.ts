@@ -6,7 +6,7 @@ export function createInnerSphere(radius: number) {
   const material = new THREE.MeshBasicMaterial({
     // Slightly lifted base tone so the globe doesn't feel "crushed" in blacks,
     // while keeping the Google-Research dark aesthetic.
-    color: 0x111d33,
+    color: 0x152744,
     side: THREE.BackSide,
     depthWrite: true
   })

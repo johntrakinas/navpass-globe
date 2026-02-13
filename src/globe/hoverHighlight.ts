@@ -3,7 +3,7 @@ import { latLongToVector3 } from './latLongtoVector3'
 import { GOOGLE_COLORS, googlePaletteLerp } from '../theme/googleColors'
 
 let hoverLines: THREE.LineSegments | null = null
-let hoverMat: THREE.LineDashedMaterial | null = null
+let hoverMat: THREE.LineBasicMaterial | null = null
 
 let targetOpacity = 0
 let currentOpacity = 0
@@ -14,6 +14,9 @@ let hoverOpacityMul = 1
 const glowColor = new THREE.Color()
 let hoverScale = 1
 let hoverScaleTarget = 1
+const HOVER_RADIUS_MULT = 1.016
+const HOVER_POP_START = 0.986
+const HOVER_POP_TARGET = 1.006
 
 function featureToLineGeometry(feature: any, radius: number) {
   const positions: number[] = []
@@ -27,8 +30,8 @@ function featureToLineGeometry(feature: any, radius: number) {
         const a = ring[i]
         const b = ring[i + 1]
         // Slightly above the base country borders so hover can "pop" out of the surface.
-        const v1 = latLongToVector3(a[1], a[0], radius * 1.012)
-        const v2 = latLongToVector3(b[1], b[0], radius * 1.012)
+        const v1 = latLongToVector3(a[1], a[0], radius * HOVER_RADIUS_MULT)
+        const v2 = latLongToVector3(b[1], b[0], radius * HOVER_RADIUS_MULT)
         positions.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z)
       }
     }
@@ -60,23 +63,20 @@ export function setHoverHighlight(feature: any | null, parent: THREE.Object3D, r
 
   const geo = featureToLineGeometry(feature, radius)
 
-  hoverMat = new THREE.LineDashedMaterial({
+  hoverMat = new THREE.LineBasicMaterial({
     color: hoverColorA,
     transparent: true,
     opacity: 0.0, // começa invisível
-    dashSize: 0.28,
-    gapSize: 0.14,
     depthWrite: false
   })
   hoverMat.blending = THREE.AdditiveBlending
 
   hoverLines = new THREE.LineSegments(geo, hoverMat)
-  hoverLines.computeLineDistances()
   hoverLines.renderOrder = 60
   hoverLines.frustumCulled = false
   // Pop-out animation: start slightly "closer" and quickly expand to the real hover radius.
-  hoverScale = 0.992
-  hoverScaleTarget = 1.0
+  hoverScale = HOVER_POP_START
+  hoverScaleTarget = HOVER_POP_TARGET
   hoverLines.scale.setScalar(hoverScale)
 
   parent.add(hoverLines)
@@ -98,9 +98,6 @@ export function fadeOutHover(parent: THREE.Object3D) {
 
 export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number, cameraDistance: number) {
   if (!hoverMat || !hoverLines) return
-
-  // dash animation (TS: não tipado, mas existe)
-  ;(hoverMat as any).dashOffset = -timeSeconds * 0.32
 
   // ✅ opacidade adaptativa ao zoom (longe = menos forte)
   // ajuste fino: quanto menor o número, mais cedo ele fica forte

@@ -3,6 +3,7 @@ attribute float aSeed;
 
 uniform vec3 uFlowDir;
 uniform float uFlowScale;
+uniform float uSizeMul;
 
 varying vec3 vColor;
 varying float vSeed;
@@ -20,8 +21,8 @@ void main() {
   vFacing = dot(normalize(worldPos), normalize(cameraPosition));
   vFlowCoord = dot(worldPos, normalize(uFlowDir)) * uFlowScale;
 
-  float pointSize = size * (106.0 / max(1.0, -mvPosition.z));
-  gl_PointSize = clamp(pointSize, 0.65, 4.2);
+  float pointSize = size * uSizeMul * (132.0 / max(1.0, -mvPosition.z));
+  gl_PointSize = clamp(pointSize, 0.9, 8.8);
 
   gl_Position = projectionMatrix * mvPosition;
 }

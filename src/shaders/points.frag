@@ -20,11 +20,11 @@ void main() {
   float d = length(uv);
 
   // Keep only a small footprint to avoid visible circular sprites.
-  if (d > 0.44) discard;
+  if (d > 0.46) discard;
 
-  float core = smoothstep(0.11, 0.0, d);
-  float soft = smoothstep(0.30, 0.08, d);
-  float pointMask = smoothstep(0.24, 0.03, d);
+  float core = smoothstep(0.14, 0.0, d);
+  float soft = smoothstep(0.34, 0.09, d);
+  float pointMask = smoothstep(0.28, 0.03, d);
 
   // Keep dots stable; only a very subtle slow variation.
   float shimmer = 0.98 + 0.02 * sin(uTime * 0.45 + vSeed * 6.2831);
@@ -44,7 +44,7 @@ void main() {
   vec3 baseCol = vColor * uColorMul * shimmer;
   vec3 col = mix(baseCol, uFlowColor, sweepLocal * uFlowStrength);
 
-  float alpha = (core * 0.9 + soft * 0.22);
+  float alpha = (core * 0.95 + soft * 0.28);
   float outAlpha = alpha * zoomFade * uAlphaMul * limb * (1.0 + sweepLocal * 0.25 * uFlowStrength);
 
   gl_FragColor = vec4(col, outAlpha);

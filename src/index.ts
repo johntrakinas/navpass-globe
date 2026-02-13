@@ -31,23 +31,41 @@ import { createTooltip } from './ui/tooltip'
 import { setHoverHighlight, clearHoverHighlight, updateHoverHighlight, fadeOutHover } from './globe/hoverHighlight'
 import { VignetteGrainShader } from './postprocess/vignetteGrain'
 import { createStoryHighlight } from './globe/storyHighlight'
+import { scaleThickness } from './globe/thicknessScale'
 
 /* 
  * Config
  */
 const GLOBE_RADIUS = 10
+const COUNTRIES_GEOJSON_PATH = '/data/ne_110m_admin_0_countries.geojson'
 let countriesGeoJSON: any = null
 
 let triGrid: ReturnType<typeof createAdaptiveTriGrid> | null = null
 let latLonGrid: ReturnType<typeof createAdaptiveLatLonGrid> | null = null
-let countriesLines: { lines: THREE.LineSegments; material: THREE.ShaderMaterial } | null = null
+let countriesLines: ReturnType<typeof createCountries> | null = null
 let languagePoints: { points: THREE.Points; material: THREE.ShaderMaterial } | null = null
 let lightingShell:
   | { group: THREE.Group; nightMaterial: THREE.ShaderMaterial; dayMaterial: THREE.ShaderMaterial }
   | null = null
-let nightLights: { points: THREE.Points; update: (timeSeconds: number, cameraDistance: number, sunDirWorld: THREE.Vector3) => void } | null = null
+let nightLights:
+  | {
+      points: THREE.Points
+      material: THREE.ShaderMaterial
+      update: (timeSeconds: number, cameraDistance: number, sunDirWorld: THREE.Vector3) => void
+    }
+  | null = null
 let landWater: ReturnType<typeof createLandWaterLayer> | null = null
-let atmosphere: { group: THREE.Group; setLightDir: (dir: THREE.Vector3) => void } | null = null
+let atmosphere:
+  | {
+      group: THREE.Group
+      setLightDir: (dir: THREE.Vector3) => void
+      materials: {
+        inner: THREE.ShaderMaterial
+        outer: THREE.ShaderMaterial
+        subsurface: THREE.ShaderMaterial
+      }
+    }
+  | null = null
 let storyHighlight: ReturnType<typeof createStoryHighlight> | null = null
 let flightRoutes:
   | {
@@ -65,6 +83,7 @@ let flightRoutes:
   | null = null
 let selectedFlightRouteId: number | null = null
 let isCountrySelected = false
+let innerSphereMesh: THREE.Mesh | null = null
 
 const tooltip = createTooltip()
 let lastHoverKey = ''
@@ -285,11 +304,11 @@ const maxPitch = Math.PI / 2.2
  * Scene / Camera / Renderer
  */
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x000000)
+scene.background = new THREE.Color(0x040a16)
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1000)
 camera.up.set(0, 1, 0)
-camera.position.set(0, 0, 25)
+camera.position.set(0, 0, 50)
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(innerWidth, innerHeight)
@@ -345,6 +364,122 @@ updatePostprocessSize()
 
 const heatmapToggle = document.getElementById('heatmap-toggle') as HTMLInputElement | null
 const heatmapThumb = document.getElementById('heatmap-thumb') as HTMLSpanElement | null
+type VisualPreset = {
+  sceneBg: number
+  innerSphere: number
+  landAlpha: number
+  coastAlpha: number
+  borderCoreOpacity: number
+  borderLineWidth: number
+  triGridOpacityMul: number
+  triGridShimmerMul: number
+  latLonGridOpacityMul: number
+  latLonGridShimmerMul: number
+  atmoInner: number
+  atmoOuter: number
+  atmoSubsurface: number
+  dotAlpha: number
+  dotSizeMul: number
+  planeAlpha: number
+  planeSizeMul: number
+  routeLineBaseAlpha: number
+  routeLineGlowAlpha: number
+  nightLightsAlpha: number
+  shadowMul: number
+  dayMul: number
+}
+
+const DRAMATIC_VISUAL_PRESET: VisualPreset = {
+  sceneBg: 0x07090d,
+  innerSphere: 0x07090d,
+  // Keep country fill identical to globe body; only borders should distinguish countries.
+  landAlpha: 0.0,
+  coastAlpha: 0.0,
+  borderCoreOpacity: 0.24,
+  borderLineWidth: 3.0,
+  triGridOpacityMul: 0.62,
+  triGridShimmerMul: 0.46,
+  latLonGridOpacityMul: 0.48,
+  latLonGridShimmerMul: 0.40,
+  atmoInner: 0.085,
+  atmoOuter: 0.055,
+  atmoSubsurface: 0.01,
+  dotAlpha: 1.08,
+  dotSizeMul: 1.36,
+  planeAlpha: 1.16,
+  planeSizeMul: 1.34,
+  routeLineBaseAlpha: 0.058,
+  routeLineGlowAlpha: 0.48,
+  nightLightsAlpha: 0.42,
+  shadowMul: 0.0,
+  dayMul: 0.0
+}
+
+let visualTriOpacityMul = 1
+let visualTriShimmerMul = 1
+let visualLatLonOpacityMul = 1
+let visualLatLonShimmerMul = 1
+let visualLightingShadowMul = 1
+let visualLightingDayMul = 1
+
+function applyVisualPreset() {
+  const cfg = DRAMATIC_VISUAL_PRESET
+
+  scene.background = new THREE.Color(cfg.sceneBg)
+
+  if (innerSphereMesh && innerSphereMesh.material instanceof THREE.MeshBasicMaterial) {
+    innerSphereMesh.material.color.setHex(cfg.innerSphere)
+  }
+
+  if (landWater) {
+    const u = landWater.material.uniforms as any
+    if (u.uLandAlpha) u.uLandAlpha.value = cfg.landAlpha
+    if (u.uCoastAlpha) u.uCoastAlpha.value = cfg.coastAlpha
+  }
+
+  if (countriesLines) {
+    countriesLines.setStyle({
+      opacity: cfg.borderCoreOpacity,
+      color: 0xffffff,
+      lineWidth: cfg.borderLineWidth
+    })
+  }
+
+  if (languagePoints) {
+    const u = languagePoints.material.uniforms as any
+    if (u.uAlphaMul) u.uAlphaMul.value = cfg.dotAlpha
+    if (u.uSizeMul) u.uSizeMul.value = scaleThickness(cfg.dotSizeMul)
+  }
+
+  if (flightRoutes) {
+    const planeMat = flightRoutes.planes.material as THREE.ShaderMaterial
+    const lineMat = flightRoutes.lines.material as THREE.ShaderMaterial
+    const p = planeMat.uniforms as any
+    const l = lineMat.uniforms as any
+    if (p.uAlpha) p.uAlpha.value = cfg.planeAlpha
+    if (p.uSizeMul) p.uSizeMul.value = scaleThickness(cfg.planeSizeMul)
+    if (l.uBaseAlpha) l.uBaseAlpha.value = cfg.routeLineBaseAlpha
+    if (l.uGlowAlpha) l.uGlowAlpha.value = cfg.routeLineGlowAlpha
+  }
+
+  if (nightLights) {
+    const u = nightLights.material.uniforms as any
+    if (u.uAlpha) u.uAlpha.value = cfg.nightLightsAlpha
+  }
+
+  if (atmosphere) {
+    ;(atmosphere.materials.inner.uniforms as any).uIntensity.value = cfg.atmoInner
+    ;(atmosphere.materials.outer.uniforms as any).uIntensity.value = cfg.atmoOuter
+    ;(atmosphere.materials.subsurface.uniforms as any).uIntensity.value = cfg.atmoSubsurface
+  }
+
+  visualTriOpacityMul = cfg.triGridOpacityMul
+  visualTriShimmerMul = cfg.triGridShimmerMul
+  visualLatLonOpacityMul = cfg.latLonGridOpacityMul
+  visualLatLonShimmerMul = cfg.latLonGridShimmerMul
+  visualLightingShadowMul = cfg.shadowMul
+  visualLightingDayMul = cfg.dayMul
+}
 
 /**
  * Story mode (presets)
@@ -1180,7 +1315,6 @@ function pickCountryAt(clientX: number, clientY: number) {
     globeAnim = null
     velYaw = 0
     velPitch = 0
-    resetGlobeRotation()
     selectedFlightRouteId = null
     isCountrySelected = false
     flightRoutes?.setSelectedRoute(null)
@@ -1505,19 +1639,18 @@ function animate() {
     )
     const zoom01 = 1 - u
     const rolloff = THREE.MathUtils.lerp(1.25, 1.6, u)
-    if (countriesLines) {
-      countriesLines.material.uniforms.uRolloff.value =
-        (countriesLines.material.userData.baseRolloff ?? 1.35) * (rolloff / 1.35)
-      ;(countriesLines.material.uniforms as any).uTime.value = now
-    }
     if (triGrid) {
       triGrid.materials.forEach(mat => {
         const base = mat.userData.baseRolloff ?? 1.35
         mat.uniforms.uRolloff.value = base * (rolloff / 1.35)
         ;(mat.uniforms as any).uTime.value = now
+        if (mat.userData.baseOpacity === undefined) {
+          mat.userData.baseOpacity = mat.opacity
+        }
+        mat.opacity = Number(mat.userData.baseOpacity) * visualTriOpacityMul
         const baseShimmer = mat.userData.baseShimmerStrength ?? (mat.uniforms as any).uShimmerStrength?.value ?? 0
         if ((mat.uniforms as any).uShimmerStrength) {
-          ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * (0.35 + 0.65 * zoom01)
+          ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * visualTriShimmerMul * (0.35 + 0.65 * zoom01)
         }
       })
     }
@@ -1526,9 +1659,13 @@ function animate() {
         const base = mat.userData.baseRolloff ?? 1.35
         mat.uniforms.uRolloff.value = base * (rolloff / 1.35)
         ;(mat.uniforms as any).uTime.value = now
+        if (mat.userData.baseOpacity === undefined) {
+          mat.userData.baseOpacity = mat.opacity
+        }
+        mat.opacity = Number(mat.userData.baseOpacity) * visualLatLonOpacityMul
         const baseShimmer = mat.userData.baseShimmerStrength ?? (mat.uniforms as any).uShimmerStrength?.value ?? 0
         if ((mat.uniforms as any).uShimmerStrength) {
-          ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * (0.25 + 0.60 * zoom01)
+          ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * visualLatLonShimmerMul * (0.25 + 0.60 * zoom01)
         }
       })
     }
@@ -1589,9 +1726,9 @@ function animate() {
   if (lightingShell) {
     const sun = _sunWorldDir
     const strength = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.3, 0.2),
-      0.2,
-      0.3
+      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.26, 0.16),
+      0.16,
+      0.26
     )
     const softness = THREE.MathUtils.clamp(
       THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.26, 0.38),
@@ -1599,18 +1736,18 @@ function animate() {
       0.38
     )
     lightingShell.nightMaterial.uniforms.uLightDir.value.copy(sun)
-    lightingShell.nightMaterial.uniforms.uShadowStrength.value = strength
+    lightingShell.nightMaterial.uniforms.uShadowStrength.value = strength * visualLightingShadowMul
     lightingShell.nightMaterial.uniforms.uTerminatorSoftness.value = softness
 
     const baseDayStrength = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.07, 0.038),
-      0.038,
-      0.07
+      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.082, 0.046),
+      0.046,
+      0.082
     )
     const dayPulse = 0.93 + 0.07 * Math.sin(now * 0.35)
     const dayStrength = baseDayStrength * dayPulse
     lightingShell.dayMaterial.uniforms.uLightDir.value.copy(sun)
-    lightingShell.dayMaterial.uniforms.uDayStrength.value = dayStrength
+    lightingShell.dayMaterial.uniforms.uDayStrength.value = dayStrength * visualLightingDayMul
   }
   if (atmosphere) {
     atmosphere.setLightDir(_sunWorldDir)
@@ -1649,7 +1786,8 @@ async function init() {
   scene.add(star.points)
 
   // layers
-  globeGroup.add(createInnerSphere(GLOBE_RADIUS))
+  innerSphereMesh = createInnerSphere(GLOBE_RADIUS)
+  globeGroup.add(innerSphereMesh)
   lightingShell = createLightingShell(GLOBE_RADIUS)
   globeGroup.add(lightingShell.group)
 
@@ -1657,10 +1795,10 @@ async function init() {
   storyHighlight = createStoryHighlight(GLOBE_RADIUS)
   globeGroup.add(storyHighlight.group)
 
-  const geojson = await loadGeoJSON('/data/ne_110m_admin_0_countries.geojson')
+  const geojson = await loadGeoJSON(COUNTRIES_GEOJSON_PATH)
   countriesGeoJSON = geojson
 
-  // Base land/water distinction + subtle always-on country borders.
+  // Single source of truth for all country-driven layers (render + hover + lookup).
   landWater = createLandWaterLayer(geojson, GLOBE_RADIUS)
   globeGroup.add(landWater.mesh)
 
@@ -1689,6 +1827,8 @@ async function init() {
   atmosphere = createAtmosphere(GLOBE_RADIUS, camera)
   globeGroup.add(atmosphere.group)
 
+  applyVisualPreset()
+
   // events
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
   window.addEventListener('pointermove', onPointerMove)
@@ -1708,7 +1848,6 @@ async function init() {
     if (e.key === 'Escape') {
       clearHoverRouteCouplingCountry()
       setDefaultHeroCopy()
-      resetGlobeRotation()
       selectedFlightRouteId = null
       isCountrySelected = false
       flightRoutes?.setSelectedRoute(null)

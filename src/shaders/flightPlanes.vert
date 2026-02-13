@@ -25,6 +25,7 @@ uniform float uHoverRouteId;
 uniform float uHoverMix;
 uniform float uSelectedRouteId;
 uniform float uSelectedMix;
+uniform float uSizeMul;
 
 varying float vSeed;
 varying float vTraffic;
@@ -94,10 +95,10 @@ void main() {
   vFacing = dot(normalize(worldPos), normalize(cameraPosition));
 
   float baseSize = aSize * aTraffic;
-  float pointSize = baseSize * (292.0 / dist);
+  float pointSize = baseSize * uSizeMul * (398.0 / dist);
   pointSize *= (1.0 + emphasize * 0.55);
   pointSize *= aEnable * keepMask * densMask;
 
-  gl_PointSize = clamp(pointSize, 0.0, 40.0);
+  gl_PointSize = clamp(pointSize, 0.0, 62.0);
   gl_Position = projectionMatrix * mvPosition;
 }

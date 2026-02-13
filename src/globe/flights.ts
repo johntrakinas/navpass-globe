@@ -3,6 +3,7 @@ import { latLongToVector3 } from './latLongtoVector3'
 import { GOOGLE_COLORS } from '../theme/googleColors'
 import { findCountryFeature } from './countryLookUp'
 import { vector3ToLatLon } from './math'
+import { scaleThickness } from './thicknessScale'
 
 import flightLinesVert from '../shaders/flightLines.vert?raw'
 import flightLinesFrag from '../shaders/flightLines.frag?raw'
@@ -465,7 +466,7 @@ export function createFlightRoutes(
     const speed = 0.018 + arcBoost * 0.03
     const phase = Math.random()
     const seed = Math.random()
-    const size = 1.6 + arcBoost * 0.45
+    const size = 2.6 + arcBoost * 0.95
     const dir = seed < 0.5 ? 1 : -1
 
     // Traffic density: longer routes tend to have more planes.
@@ -561,7 +562,7 @@ export function createFlightRoutes(
       hubColors[i * 3 + 1] = col.g
       hubColors[i * 3 + 2] = col.b
 
-      hubSizes[i] = 2.2 + w * 3.0
+      hubSizes[i] = 3.8 + w * 5.8
       hubSeeds[i] = Math.random()
     }
 
@@ -584,7 +585,8 @@ export function createFlightRoutes(
         uTime: { value: 0 },
         uCameraDistance: { value: 25 },
         uColorMul: { value: new THREE.Color(1, 1, 1) },
-        uAlphaMul: { value: 0.9 }
+        uAlphaMul: { value: 0.9 },
+        uSizeMul: { value: scaleThickness(1.0) }
       }
     })
 
@@ -850,7 +852,8 @@ export function createFlightRoutes(
       uHoverRouteId: { value: -999 },
       uHoverMix: { value: 0.0 },
       uSelectedRouteId: { value: -999 },
-      uSelectedMix: { value: 0.0 }
+      uSelectedMix: { value: 0.0 },
+      uSizeMul: { value: scaleThickness(1.0) }
     }
   })
 
@@ -1221,10 +1224,18 @@ export function createFlightRoutes(
     const selectedFade = THREE.MathUtils.lerp(1.0, 0.72, selectedMix)
     heatMat.uniforms.uOpacity.value = baseHeatOpacity * focusFade * selectedFade * heatMix
 
-    lineMat.uniforms.uTailLength.value = THREE.MathUtils.lerp(0.12, 0.2, zoom)
+    lineMat.uniforms.uTailLength.value = THREE.MathUtils.clamp(
+      scaleThickness(THREE.MathUtils.lerp(0.12, 0.2, zoom)),
+      0.02,
+      0.5
+    )
     lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.18, 0.34, zoom)
     lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.028, 0.05, zoom)
-    lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.lerp(0.018, 0.024, zoom)
+    lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
+      scaleThickness(THREE.MathUtils.lerp(0.018, 0.024, zoom)),
+      0.004,
+      0.1
+    )
     planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.82, 1.0, zoom)
   }
 

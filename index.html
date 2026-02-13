@@ -336,6 +336,25 @@
         text-transform: uppercase;
       }
 
+      .toggle-select {
+        height: 24px;
+        min-width: 104px;
+        border-radius: 999px;
+        border: 1px solid var(--ui-border);
+        background: color-mix(in srgb, var(--ui-bg) 78%, black 8%);
+        color: var(--ui-text);
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.4px;
+        padding: 0 10px;
+        outline: none;
+        cursor: pointer;
+      }
+
+      .toggle-select:focus {
+        border-color: color-mix(in srgb, var(--brand-yellow) 52%, var(--ui-border));
+      }
+
       .toggle-switch {
         position: relative;
         display: inline-flex;

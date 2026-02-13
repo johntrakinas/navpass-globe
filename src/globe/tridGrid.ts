@@ -14,7 +14,7 @@ function makeTriWire(radius: number, detail: number, opacity: number, camera: TH
   mat.blending = THREE.AdditiveBlending
   {
     const u: any = mat.uniforms
-    u.uShimmerStrength.value = 0.21
+    u.uShimmerStrength.value = 0.24
     u.uShimmerSpeed.value = 0.92
     u.uShimmerPulse.value = 0.23
     u.uShimmerScale.value = 0.88
@@ -37,8 +37,8 @@ function makeTriWire(radius: number, detail: number, opacity: number, camera: TH
 
 export function createAdaptiveTriGrid(radius: number, camera: THREE.Camera) {
   // Denser mesh: smaller triangles reduce visible "tips"/junction hotspots.
-  const coarse = makeTriWire(radius * 1.048, 4, 0.058, camera) // detail 4
-  const fine = makeTriWire(radius * 1.056, 5, 0.042, camera)   // detail 5
+  const coarse = makeTriWire(radius * 1.048, 4, 0.074, camera) // detail 4
+  const fine = makeTriWire(radius * 1.056, 5, 0.056, camera)   // detail 5
 
   let coarseAlpha = 1
   let fineAlpha = 0

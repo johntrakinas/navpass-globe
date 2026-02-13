@@ -196,9 +196,9 @@ export function createLandWaterLayer(geojson: any, radius: number) {
   // (depth mask sphere is still the source of truth for occlusion).
   const geometry = new THREE.SphereGeometry(radius * 1.0009, 96, 96)
 
-  const ocean = new THREE.Color('#0d1627')
-  const landTint = ocean.clone().lerp(GOOGLE_COLORS.lightBlue, 0.34)
-  const coastTint = landTint.clone().lerp(GOOGLE_COLORS.white, 0.26)
+  const ocean = new THREE.Color('#12203a')
+  const landTint = ocean.clone().lerp(GOOGLE_COLORS.lightBlue, 0.38)
+  const coastTint = landTint.clone().lerp(GOOGLE_COLORS.white, 0.3)
 
   const material = new THREE.ShaderMaterial({
     vertexShader: VERT,
@@ -211,8 +211,9 @@ export function createLandWaterLayer(geojson: any, radius: number) {
       uLandMask: { value: texture },
       uLandTint: { value: landTint },
       uCoastTint: { value: coastTint },
-      uLandAlpha: { value: 0.32 },
-      uCoastAlpha: { value: 0.14 },
+      // Disabled by default: country differentiation is done by border lines only.
+      uLandAlpha: { value: 0.0 },
+      uCoastAlpha: { value: 0.0 },
       uTexel: { value: new THREE.Vector2(1 / width, 1 / height) }
     }
   })

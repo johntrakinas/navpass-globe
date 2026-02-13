@@ -17,9 +17,8 @@ void main() {
 const FRAG = /* glsl */ `
 precision mediump float;
 
-uniform vec3 uDayColor;
-uniform vec3 uNightColor;
-uniform vec3 uLightDir;
+uniform vec3 uRimColor;
+uniform vec3 uCoreColor;
 uniform float uIntensity;
 uniform float uPower;
 uniform float uDistanceFade;
@@ -31,138 +30,134 @@ varying vec3 vWorldPosition;
 
 void main() {
   vec3 viewDir = normalize(uCameraPos - vWorldPosition);
+  float fresnel = 1.0 - max(0.0, dot(normalize(vNormal), viewDir));
+  float rim = pow(fresnel, uPower);
+  float halo = pow(fresnel, max(1.0, uPower * 0.65));
 
-  // Fresnel: 1 quando perpendicular (borda), 0 quando de frente
-  float fresnel = 1.0 - max(0.0, dot(vNormal, viewDir));
-  fresnel = pow(fresnel, uPower);
+  vec3 color = mix(uCoreColor, uRimColor, clamp(pow(rim, 0.52), 0.0, 1.0));
+  color = mix(color, uRimColor, halo * 0.32);
 
-  float ndl = dot(normalize(vNormal), normalize(uLightDir));
-  float day = smoothstep(-0.15, 0.35, ndl);
-  vec3 color = mix(uNightColor, uDayColor, day);
-
-  float alpha = fresnel * uIntensity * uDistanceFade * uAngleFade;
-  alpha *= mix(0.79, 1.0, day);
-
-  // Subtle "terminator" glow to help day/night feel coherent without overpowering.
-  float terminator = 1.0 - abs(ndl);
-  terminator = smoothstep(0.0, 0.72, terminator);
-  float termTint = terminator * (0.35 + 0.65 * day);
-  color = mix(color, uDayColor, termTint * 0.12);
-  alpha *= 1.0 + terminator * 0.08;
+  float alpha = rim * uIntensity * uDistanceFade * uAngleFade;
+  alpha *= 0.86 + 0.22 * halo;
 
   gl_FragColor = vec4(color, alpha);
 }
 `
 
 export function createAtmosphere(radius: number, camera: THREE.Camera) {
-  const geometry = new THREE.SphereGeometry(radius * 1.035, 96, 96)
+  function createAtmosphereLayer(options: {
+    radiusScale: number
+    intensity: number
+    power: number
+    coreColor: THREE.Color
+    rimColor: THREE.Color
+    side: THREE.Side
+    renderOrder: number
+    fadeNear: number
+    fadeFar: number
+    angleNear: number
+    angleFar: number
+  }) {
+    const geometry = new THREE.SphereGeometry(radius * options.radiusScale, 96, 96)
+    const material = new THREE.ShaderMaterial({
+      vertexShader: VERT,
+      fragmentShader: FRAG,
+      uniforms: {
+        uRimColor: { value: options.rimColor },
+        uCoreColor: { value: options.coreColor },
+        uIntensity: { value: options.intensity },
+        uPower: { value: options.power },
+        uDistanceFade: { value: 1.0 },
+        uAngleFade: { value: 1.0 },
+        uCameraPos: { value: new THREE.Vector3() }
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      blending: THREE.AdditiveBlending,
+      side: options.side
+    })
 
-  const material = new THREE.ShaderMaterial({
-    vertexShader: VERT,
-    fragmentShader: FRAG,
-    uniforms: {
-      uDayColor: { value: GOOGLE_COLORS.deepBlue.clone().lerp(GOOGLE_COLORS.lightBlue, 0.58) },
-      uNightColor: { value: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.5) },
-      uLightDir: { value: new THREE.Vector3(1, 0.2, 0.35).normalize() },
-      uIntensity: { value: 0.07 },
-      uPower: { value: 2.44 },
-      uDistanceFade: { value: 1.0 },
-      uAngleFade: { value: 1.0 },
-      uCameraPos: { value: new THREE.Vector3() }
-    },
-    transparent: true,
-    depthWrite: false,
-    depthTest: true,
-    blending: THREE.AdditiveBlending,
-    side: THREE.BackSide
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.renderOrder = options.renderOrder
+    mesh.frustumCulled = false
+    mesh.onBeforeRender = () => {
+      const camPos = (camera as any).position as THREE.Vector3
+      ;(material.uniforms.uCameraPos.value as THREE.Vector3).copy(camPos)
+      const camDistance = camPos.length()
+      material.uniforms.uDistanceFade.value = THREE.MathUtils.clamp(
+        THREE.MathUtils.mapLinear(camDistance, 14, 40, options.fadeNear, options.fadeFar),
+        Math.min(options.fadeNear, options.fadeFar),
+        Math.max(options.fadeNear, options.fadeFar)
+      )
+      material.uniforms.uAngleFade.value = THREE.MathUtils.clamp(
+        THREE.MathUtils.mapLinear(camDistance, 14, 40, options.angleNear, options.angleFar),
+        Math.min(options.angleNear, options.angleFar),
+        Math.max(options.angleNear, options.angleFar)
+      )
+    }
+
+    return { mesh, material }
+  }
+
+  const innerLayer = createAtmosphereLayer({
+    radiusScale: 1.028,
+    intensity: 0.108,
+    power: 2.25,
+    coreColor: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.14),
+    rimColor: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.white, 0.42),
+    side: THREE.BackSide,
+    renderOrder: 10,
+    fadeNear: 1.0,
+    fadeFar: 0.70,
+    angleNear: 0.94,
+    angleFar: 0.74
   })
 
-    const inner = new THREE.Mesh(geometry, material)
-  inner.renderOrder = 10
-  inner.frustumCulled = false
-  inner.onBeforeRender = () => {
-    const camPos = (camera as any).position as THREE.Vector3
-    ;(material.uniforms.uCameraPos.value as THREE.Vector3).copy(camPos)
-    const camDistance = camPos.length()
-    const fade = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(camDistance, 14, 40, 1.0, 0.6),
-      0.6,
-      1.0
-    )
-    material.uniforms.uDistanceFade.value = fade
-    material.uniforms.uAngleFade.value = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(camDistance, 14, 40, 0.9, 0.7),
-      0.7,
-      0.9
-    )
-  }
+  const outerLayer = createAtmosphereLayer({
+    radiusScale: 1.052,
+    intensity: 0.078,
+    power: 1.95,
+    coreColor: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.08),
+    rimColor: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.white, 0.56),
+    side: THREE.BackSide,
+    renderOrder: 11,
+    fadeNear: 0.95,
+    fadeFar: 0.60,
+    angleNear: 0.90,
+    angleFar: 0.68
+  })
 
-  const geometry2 = new THREE.SphereGeometry(radius * 1.06, 96, 96)
-  const material2 = material.clone()
-  material2.uniforms = THREE.UniformsUtils.clone(material.uniforms)
-  material2.uniforms.uIntensity.value = 0.046
-  material2.uniforms.uPower.value = 2.3
-
-  const outer = new THREE.Mesh(geometry2, material2)
-  outer.renderOrder = 11
-  outer.frustumCulled = false
-  outer.onBeforeRender = () => {
-    const camPos = (camera as any).position as THREE.Vector3
-    ;(material2.uniforms.uCameraPos.value as THREE.Vector3).copy(camPos)
-    const camDistance = camPos.length()
-    const fade = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(camDistance, 14, 40, 0.9, 0.5),
-      0.5,
-      0.9
-    )
-    material2.uniforms.uDistanceFade.value = fade
-    material2.uniforms.uAngleFade.value = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(camDistance, 14, 40, 0.85, 0.6),
-      0.6,
-      0.85
-    )
-  }
-
-  // subsurface inner glow (mais profundo, muito sutil)
-  const geometry3 = new THREE.SphereGeometry(radius * 1.01, 96, 96)
-  const material3 = material.clone()
-  material3.uniforms = THREE.UniformsUtils.clone(material.uniforms)
-  material3.uniforms.uDayColor.value = GOOGLE_COLORS.lightBlue.clone()
-  material3.uniforms.uNightColor.value = GOOGLE_COLORS.blue.clone().multiplyScalar(0.4)
-  material3.uniforms.uIntensity.value = 0.036
-  material3.uniforms.uPower.value = 2.9
-
-  const subsurface = new THREE.Mesh(geometry3, material3)
-  subsurface.renderOrder = 9
-  subsurface.frustumCulled = false
-  subsurface.material.side = THREE.FrontSide
-  subsurface.onBeforeRender = () => {
-    const camPos = (camera as any).position as THREE.Vector3
-    ;(material3.uniforms.uCameraPos.value as THREE.Vector3).copy(camPos)
-    const camDistance = camPos.length()
-    const fade = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(camDistance, 14, 40, 0.85, 0.56),
-      0.56,
-      0.85
-    )
-    material3.uniforms.uDistanceFade.value = fade
-    material3.uniforms.uAngleFade.value = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(camDistance, 14, 40, 0.9, 0.65),
-      0.65,
-      0.9
-    )
-  }
+  const subsurfaceLayer = createAtmosphereLayer({
+    radiusScale: 1.008,
+    intensity: 0.024,
+    power: 3.10,
+    coreColor: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.04),
+    rimColor: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.white, 0.22),
+    side: THREE.FrontSide,
+    renderOrder: 9,
+    fadeNear: 0.88,
+    fadeFar: 0.56,
+    angleNear: 0.92,
+    angleFar: 0.70
+  })
 
   const group = new THREE.Group()
-  group.add(subsurface)
-  group.add(inner)
-  group.add(outer)
+  group.add(subsurfaceLayer.mesh)
+  group.add(innerLayer.mesh)
+  group.add(outerLayer.mesh)
+
   function setLightDir(dir: THREE.Vector3) {
-    material.uniforms.uLightDir.value.copy(dir)
-    material2.uniforms.uLightDir.value.copy(dir)
-    material3.uniforms.uLightDir.value.copy(dir)
+    void dir
   }
 
-  return { group, setLightDir }
-
+  return {
+    group,
+    setLightDir,
+    materials: {
+      inner: innerLayer.material,
+      outer: outerLayer.material,
+      subsurface: subsurfaceLayer.material
+    }
+  }
 }
