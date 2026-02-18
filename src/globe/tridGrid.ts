@@ -3,14 +3,15 @@ import { createLineFadeMaterial } from './lineFadeMaterial'
 
 // Keep grid below bloom threshold so it looks crisp instead of hazy.
 const GRID_COLOR = new THREE.Color(0xb8c0ce)
-const GRID_LINE_WIDTH = 5.6
+const GRID_LINE_WIDTH = 20
 
 function makeTriWire(radius: number, detail: number, opacity: number, camera: THREE.Camera) {
   const ico = new THREE.IcosahedronGeometry(radius, detail)
   const edges = new THREE.EdgesGeometry(ico, 1)
 
   // Limb-focused fade keeps the tri grid hugging the silhouette instead of flooding the front face.
-  const mat = createLineFadeMaterial(GRID_COLOR, opacity, 0.24, 0.84, 1.16, 'limb')
+  // Higher fadeMin increases the inner "clean" area (no grid in the globe center).
+  const mat = createLineFadeMaterial(GRID_COLOR, opacity, 0.32, 0.88, 1.16, 'limb')
   mat.blending = THREE.NormalBlending
   ;(mat as any).linewidth = GRID_LINE_WIDTH
   {
@@ -38,27 +39,46 @@ function makeTriWire(radius: number, detail: number, opacity: number, camera: TH
   return { lines, mat }
 }
 
+function makeTriLayer(
+  radius: number,
+  detail: number,
+  opacityInner: number,
+  opacityOuter: number,
+  camera: THREE.Camera
+) {
+  // WebGL lineWidth is ignored on most drivers; use two tight shells to build visible thickness.
+  const inner = makeTriWire(radius, detail, opacityInner, camera)
+  const outer = makeTriWire(radius * 1.0060, detail, opacityOuter, camera)
+  const group = new THREE.Group()
+  group.add(inner.lines)
+  group.add(outer.lines)
+  return { group, mats: [inner.mat, outer.mat] }
+}
+
 export function createAdaptiveTriGrid(radius: number, camera: THREE.Camera) {
   // Keep tri grid very close to surface to avoid detached halo layers.
-  // Higher detail keeps the triangles smaller/cleaner.
-  const coarse = makeTriWire(radius * 1.024, 9, 0.106, camera)
-  const fine = makeTriWire(radius * 1.027, 10, 0.088, camera)
+  const coarse = makeTriLayer(radius * 1.026, 14, 0.128, 0.094, camera)
+  const fine = makeTriLayer(radius * 1.030, 16, 0.114, 0.082, camera)
 
   let coarseAlpha = 1
   let fineAlpha = 0
-  const coarseBase = coarse.mat.opacity
-  const fineBase = fine.mat.opacity
+  const coarseBase = coarse.mats.map(m => m.opacity)
+  const fineBase = fine.mats.map(m => m.opacity)
 
-  coarse.mat.userData.lodAlpha = coarseAlpha
-  fine.mat.userData.lodAlpha = fineAlpha
-  coarse.mat.opacity = coarseBase * coarseAlpha
-  fine.mat.opacity = fineBase * fineAlpha
-  coarse.lines.visible = coarseAlpha > 0.015
-  fine.lines.visible = fineAlpha > 0.015
+  coarse.mats.forEach((m, i) => {
+    m.userData.lodAlpha = coarseAlpha
+    m.opacity = coarseBase[i] * coarseAlpha
+  })
+  fine.mats.forEach((m, i) => {
+    m.userData.lodAlpha = fineAlpha
+    m.opacity = fineBase[i] * fineAlpha
+  })
+  coarse.group.visible = coarseAlpha > 0.015
+  fine.group.visible = fineAlpha > 0.015
 
   const group = new THREE.Group()
-  group.add(coarse.lines)
-  group.add(fine.lines)
+  group.add(coarse.group)
+  group.add(fine.group)
 
   function update(cameraDistance: number) {
     const t0 = 23.5
@@ -72,13 +92,17 @@ export function createAdaptiveTriGrid(radius: number, camera: THREE.Camera) {
     coarseAlpha += (coarseTarget - coarseAlpha) * smoothing
     fineAlpha += (fineTarget - fineAlpha) * smoothing
 
-    coarse.mat.userData.lodAlpha = coarseAlpha
-    fine.mat.userData.lodAlpha = fineAlpha
-    coarse.mat.opacity = coarseBase * coarseAlpha
-    fine.mat.opacity = fineBase * fineAlpha
-    coarse.lines.visible = coarseAlpha > 0.015
-    fine.lines.visible = fineAlpha > 0.015
+    coarse.mats.forEach((m, i) => {
+      m.userData.lodAlpha = coarseAlpha
+      m.opacity = coarseBase[i] * coarseAlpha
+    })
+    fine.mats.forEach((m, i) => {
+      m.userData.lodAlpha = fineAlpha
+      m.opacity = fineBase[i] * fineAlpha
+    })
+    coarse.group.visible = coarseAlpha > 0.015
+    fine.group.visible = fineAlpha > 0.015
   }
 
-  return { group, update, materials: [coarse.mat, fine.mat] }
+  return { group, update, materials: [...coarse.mats, ...fine.mats] }
 }
