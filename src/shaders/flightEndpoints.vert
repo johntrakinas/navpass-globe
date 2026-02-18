@@ -26,11 +26,11 @@ void main() {
   float dist = max(1.0, -mvPosition.z);
 
   float zoom = clamp((32.0 - uCameraDistance) / 16.0, 0.0, 1.0);
-  float pulse = 0.98 + 0.02 * sin(uTime * 0.7 + aSeed * 6.2831);
+  float pulse = 0.94 + 0.06 * sin(uTime * 1.4 + aSeed * 6.2831);
 
-  float base = mix(1.10, 1.70, zoom);
-  float pointSize = base * pulse * showMix * (170.0 / dist);
-  gl_PointSize = clamp(pointSize, 0.0, 14.0);
+  float base = mix(1.60, 2.80, zoom);
+  float pointSize = base * pulse * showMix * (210.0 / dist);
+  gl_PointSize = clamp(pointSize, 0.0, 20.0);
 
   // Horizon fade helper: 1 = facing camera, 0 = at the limb/horizon.
   vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;

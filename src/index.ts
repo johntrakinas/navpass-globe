@@ -42,6 +42,8 @@ const COUNTRIES_GEOJSON_PATH = '/data/ne_110m_admin_0_countries.geojson'
 const ENABLE_STORY_HIGHLIGHT = false
 const SYNTHETIC_AIRPORT_TARGET = 5200
 const AIRPORT_MIN_SPACING_DEG = 0.5
+const SHOW_GLOBE_POINTS = false
+const MOCK_FLIGHT_ROUTE_COUNT = 2800
 let countriesGeoJSON: any = null
 
 let triGrid: ReturnType<typeof createAdaptiveTriGrid> | null = null
@@ -1717,14 +1719,19 @@ async function init() {
   console.info(
     `[airports] base=${baseCount} land_spaced=${denseAirports.length} spacingDeg=${AIRPORT_MIN_SPACING_DEG}`
   )
-  languagePoints = createLanguagePoints(denseAirports, GLOBE_RADIUS)
-  globeGroup.add(languagePoints.points)
+  if (SHOW_GLOBE_POINTS) {
+    languagePoints = createLanguagePoints(denseAirports, GLOBE_RADIUS)
+    globeGroup.add(languagePoints.points)
 
-  nightLights = createNightLights(denseAirports, GLOBE_RADIUS)
-  globeGroup.add(nightLights.points)
+    nightLights = createNightLights(denseAirports, GLOBE_RADIUS)
+    globeGroup.add(nightLights.points)
+  } else {
+    languagePoints = null
+    nightLights = null
+  }
 
-  const realAirports = Array.isArray(baseAirports) ? baseAirports : denseAirports
-  flightRoutes = createFlightRoutes(realAirports, GLOBE_RADIUS, countriesGeoJSON, 220)
+  flightRoutes = createFlightRoutes(denseAirports, GLOBE_RADIUS, countriesGeoJSON, MOCK_FLIGHT_ROUTE_COUNT)
+  console.info(`[flights] mocked_routes=${MOCK_FLIGHT_ROUTE_COUNT} source_airports=${denseAirports.length}`)
   globeGroup.add(flightRoutes.group)
   applyHeatmap(Boolean(heatmapToggle?.checked))
 
