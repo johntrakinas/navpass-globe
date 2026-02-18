@@ -26,26 +26,44 @@ void main() {
   float soft = smoothstep(0.34, 0.09, d);
   float pointMask = smoothstep(0.28, 0.03, d);
 
-  // Keep dots stable; only a very subtle slow variation.
-  float shimmer = 0.98 + 0.02 * sin(uTime * 0.45 + vSeed * 6.2831);
+  // Coordinated shimmer wave (global, not random per point).
+  float shimmer = 0.96 + 0.04 * sin(uTime * 0.75 + vFlowCoord * 6.2831);
   float zoom = clamp((32.0 - uCameraDistance) / 16.0, 0.0, 1.0);
   float zoomFade = 0.35 + 0.65 * zoom;
 
   float limb = smoothstep(0.02, 0.18, vFacing);
   limb = pow(limb, 1.25);
 
-  // Traveling sweep light: bright head passes through dots over time.
-  float phase = fract(vFlowCoord + uTime * uFlowSpeed + vSeed * 0.07);
-  float dHead = abs(phase - 0.5);
-  dHead = min(dHead, 1.0 - dHead);
-  float sweep = smoothstep(uFlowWidth, 0.0, dHead);
+  // Coordinated network glow: two sweeping bands + global breathing pulse.
+  float phaseA = fract(vFlowCoord + uTime * uFlowSpeed);
+  float dHeadA = abs(phaseA - 0.5);
+  dHeadA = min(dHeadA, 1.0 - dHeadA);
+  float sweepA = smoothstep(uFlowWidth, 0.0, dHeadA);
+
+  float phaseB = fract(vFlowCoord * 0.64 - uTime * (uFlowSpeed * 0.62) + 0.18);
+  float dHeadB = abs(phaseB - 0.5);
+  dHeadB = min(dHeadB, 1.0 - dHeadB);
+  float sweepB = smoothstep(uFlowWidth * 1.15, 0.0, dHeadB);
+
+  float syncPulse = 0.5 + 0.5 * sin(uTime * 0.92);
+  float syncGate = smoothstep(0.34, 1.0, syncPulse);
+
+  float sweep = max(sweepA, sweepB * 0.72) * (0.74 + 0.26 * syncGate);
   float sweepLocal = sweep * pointMask;
 
   vec3 baseCol = vColor * uColorMul * shimmer;
   vec3 col = mix(baseCol, uFlowColor, sweepLocal * uFlowStrength);
+  col = mix(col, uFlowColor, syncGate * 0.12);
 
   float alpha = (core * 0.95 + soft * 0.28);
-  float outAlpha = alpha * zoomFade * uAlphaMul * limb * (1.0 + sweepLocal * 0.25 * uFlowStrength);
+  float networkPulse = 0.88 + 0.12 * sin(uTime * 1.08);
+  float outAlpha =
+    alpha *
+    zoomFade *
+    uAlphaMul *
+    limb *
+    networkPulse *
+    (1.0 + sweepLocal * 0.34 * uFlowStrength);
 
   gl_FragColor = vec4(col, outAlpha);
 }

@@ -397,13 +397,13 @@ const DRAMATIC_VISUAL_PRESET: VisualPreset = {
   coastAlpha: 0.0,
   borderCoreOpacity: 0.24,
   borderLineWidth: 3.0,
-  triGridOpacityMul: 0.62,
-  triGridShimmerMul: 0.46,
-  latLonGridOpacityMul: 0.48,
-  latLonGridShimmerMul: 0.40,
-  atmoInner: 0.085,
-  atmoOuter: 0.055,
-  atmoSubsurface: 0.01,
+  triGridOpacityMul: 1.0,
+  triGridShimmerMul: 0.0,
+  latLonGridOpacityMul: 0.8,
+  latLonGridShimmerMul: 0.0,
+  atmoInner: 0.0,
+  atmoOuter: 0.0,
+  atmoSubsurface: 0.0,
   dotAlpha: 1.08,
   dotSizeMul: 1.36,
   planeAlpha: 1.16,
@@ -1647,7 +1647,8 @@ function animate() {
         if (mat.userData.baseOpacity === undefined) {
           mat.userData.baseOpacity = mat.opacity
         }
-        mat.opacity = Number(mat.userData.baseOpacity) * visualTriOpacityMul
+        const lodAlpha = Number(mat.userData.lodAlpha ?? 1)
+        mat.opacity = Number(mat.userData.baseOpacity) * visualTriOpacityMul * lodAlpha
         const baseShimmer = mat.userData.baseShimmerStrength ?? (mat.uniforms as any).uShimmerStrength?.value ?? 0
         if ((mat.uniforms as any).uShimmerStrength) {
           ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * visualTriShimmerMul * (0.35 + 0.65 * zoom01)
@@ -1662,7 +1663,8 @@ function animate() {
         if (mat.userData.baseOpacity === undefined) {
           mat.userData.baseOpacity = mat.opacity
         }
-        mat.opacity = Number(mat.userData.baseOpacity) * visualLatLonOpacityMul
+        const lodAlpha = Number(mat.userData.lodAlpha ?? 1)
+        mat.opacity = Number(mat.userData.baseOpacity) * visualLatLonOpacityMul * lodAlpha
         const baseShimmer = mat.userData.baseShimmerStrength ?? (mat.uniforms as any).uShimmerStrength?.value ?? 0
         if ((mat.uniforms as any).uShimmerStrength) {
           ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * visualLatLonShimmerMul * (0.25 + 0.60 * zoom01)
