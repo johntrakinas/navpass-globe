@@ -1,0 +1,59 @@
+name: Sync from NAVPASS/NAVPASS_WEBSITE into BYTENANA/NAVPASS_GLOBE (PR)
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # a cada 10 min
+  workflow_dispatch:
+
+jobs:
+  sync_from_partner:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.MIRROR_PAT }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "mirror-bot"
+          git config user.email "mirror-bot@users.noreply.github.com"
+
+      - name: Fetch partner main
+        run: |
+          git remote add partner https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/NAVPASS/NAVPASS_WEBSITE.git
+          git fetch partner main
+
+      - name: Create/update sync branch
+        run: |
+          BRANCH="sync/navpass-main"
+          git checkout -B "$BRANCH" origin/main
+
+          # Tenta trazer as mudanças do parceiro.
+          # Se der conflito, ainda assim empurra a branch para você resolver no PR.
+          set +e
+          git merge --no-edit partner/main
+          MERGE_EXIT=$?
+          set -e
+
+          git push -u origin "$BRANCH" --force-with-lease
+
+          if [ $MERGE_EXIT -ne 0 ]; then
+            echo "Merge conflict detected. PR will be created/updated for manual resolution."
+          fi
+
+      - name: Open or update PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.MIRROR_PAT }}
+          branch: sync/navpass-main
+          base: main
+          title: "Sync: NAVPASS/NAVPASS_WEBSITE main → BYTENANA/NAVPASS_GLOBE main"
+          body: |
+            This PR syncs changes from NAVPASS/NAVPASS_WEBSITE:main into BYTENANA/NAVPASS_GLOBE:main.
+            - If there are conflicts, resolve them in this PR and merge.
+            - After merging, the mirror workflow will push main back to NAVPASS/NAVPASS_WEBSITE.
