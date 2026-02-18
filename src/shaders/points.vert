@@ -21,8 +21,8 @@ void main() {
   vFacing = dot(normalize(worldPos), normalize(cameraPosition));
   vFlowCoord = dot(worldPos, normalize(uFlowDir)) * uFlowScale;
 
-  float pointSize = size * uSizeMul * (132.0 / max(1.0, -mvPosition.z));
-  gl_PointSize = clamp(pointSize, 0.9, 8.8);
+  float pointSize = size * uSizeMul * (98.0 / max(1.0, -mvPosition.z));
+  gl_PointSize = clamp(pointSize, 0.75, 6.2);
 
   gl_Position = projectionMatrix * mvPosition;
 }

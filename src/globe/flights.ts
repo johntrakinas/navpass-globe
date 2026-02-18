@@ -405,6 +405,9 @@ export function createFlightRoutes(
 ) {
   const group = new THREE.Group()
   group.name = 'flightRoutes'
+  const SHOW_HOVER_ENDPOINTS = false
+  const SHOW_ROUTE_PIN = false
+  const SHOW_ROUTE_HUBS = false
 
   const { valid, routes } = pickRouteIndices(airports, count)
   const segmentsPerRoute = 64
@@ -460,20 +463,20 @@ export function createFlightRoutes(
       .clone()
       .add(p2)
       .normalize()
-      .multiplyScalar(radius * (1.075 + arcBoost * 0.14))
+      .multiplyScalar(radius * (1.10 + arcBoost * 0.20))
 
     // Cycles per second for shader animation.
-    const speed = 0.018 + arcBoost * 0.03
+    const speed = 0.022 + arcBoost * 0.037
     const phase = Math.random()
     const seed = Math.random()
-    const size = 2.6 + arcBoost * 0.95
+    const size = 3.1 + arcBoost * 1.25
     const dir = seed < 0.5 ? 1 : -1
 
     // Traffic density: longer routes tend to have more planes.
     const trafficBase = THREE.MathUtils.clamp((arcBoost - 0.25) / 1.0, 0, 1)
-    const traffic = THREE.MathUtils.clamp(0.62 + trafficBase * 0.55 + (seed - 0.5) * 0.16, 0.62, 1.22)
-    const traffic01 = THREE.MathUtils.clamp((traffic - 0.62) / (1.22 - 0.62), 0, 0.9999)
-    const trafficCount = 1 + Math.floor(traffic01 * 4) // 1..4
+    const traffic = THREE.MathUtils.clamp(0.68 + trafficBase * 0.72 + (seed - 0.5) * 0.14, 0.68, 1.34)
+    const traffic01 = THREE.MathUtils.clamp((traffic - 0.68) / (1.34 - 0.68), 0, 0.9999)
+    const trafficCount = 1 + Math.floor(traffic01 * 6) // 1..6
     const distanceKm = haversineKm(Number(a.latitude), Number(a.longitude), Number(b.latitude), Number(b.longitude))
 
     // Hubness for zoom-out "corridors": routes connected to high-degree airports
@@ -519,7 +522,7 @@ export function createFlightRoutes(
   // ---------------------------
   let hubsPoints: THREE.Points | null = null
   let hubsMat: THREE.ShaderMaterial | null = null
-  {
+  if (SHOW_ROUTE_HUBS) {
     let maxTraffic = 1e-6
     for (let i = 0; i < airportTraffic.length; i++) maxTraffic = Math.max(maxTraffic, airportTraffic[i])
 
@@ -717,13 +720,13 @@ export function createFlightRoutes(
     uniforms: {
       uTime: { value: 0 },
       uCameraDistance: { value: 25 },
-      uBaseColor: { value: GOOGLE_COLORS.lightBlue.clone().multiplyScalar(0.92) },
       uHeadColor: { value: GOOGLE_COLORS.white.clone() },
-      uTailColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.lightBlue, 0.35) },
-      uBaseAlpha: { value: 0.045 },
-      uGlowAlpha: { value: 0.32 },
-      uTailLength: { value: 0.18 },
-      uHeadWidth: { value: 0.022 },
+      uTailColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.16) },
+      uBaseColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.28) },
+      uBaseAlpha: { value: 0.074 },
+      uGlowAlpha: { value: 0.56 },
+      uTailLength: { value: 0.22 },
+      uHeadWidth: { value: 0.028 },
       uFocusMix: { value: 0.0 },
       uRouteKeep: { value: 1.0 },
       uHoverRouteId: { value: -999 },
@@ -742,7 +745,7 @@ export function createFlightRoutes(
   // Planes (batch in 1 draw call)
   // ---------------------------
   const planeGeo = new THREE.BufferGeometry()
-  const MAX_PLANES_PER_ROUTE = 5
+  const MAX_PLANES_PER_ROUTE = 7
   const planeCount = routeData.length * MAX_PLANES_PER_ROUTE
 
   // Dummy position for Points geometry.
@@ -842,10 +845,10 @@ export function createFlightRoutes(
     uniforms: {
       uTime: { value: 0 },
       uCameraDistance: { value: 25 },
-      uCoreColor: { value: GOOGLE_COLORS.white.clone() },
-      uGlowColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.35) },
-      uTintColor: { value: GOOGLE_COLORS.lightBlue.clone().multiplyScalar(0.9) },
-      uAlpha: { value: 1.0 },
+      uCoreColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.22) },
+      uGlowColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.16) },
+      uTintColor: { value: GOOGLE_COLORS.yellow.clone().multiplyScalar(1.0) },
+      uAlpha: { value: 1.14 },
       uFocusMix: { value: 0.0 },
       uRouteKeep: { value: 1.0 },
       uPlaneDensity: { value: 1.0 },
@@ -889,9 +892,9 @@ export function createFlightRoutes(
       uCameraDistance: { value: 25 },
       uHoverMix: { value: 0.0 },
       uSelectedMix: { value: 0.0 },
-      uOriginColor: { value: GOOGLE_COLORS.white.clone() },
-      uDestColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.08) },
-      uAlpha: { value: 0.72 }
+      uOriginColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.08) },
+      uDestColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.18) },
+      uAlpha: { value: 1.1 }
     }
   })
 
@@ -926,8 +929,8 @@ export function createFlightRoutes(
       uHoverMix: { value: 0.0 },
       uSelectedMix: { value: 0.0 },
       uHoverColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.lightBlue, 0.08) },
-      uSelectedColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.12) },
-      uAlpha: { value: 0.78 }
+      uSelectedColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.24) },
+      uAlpha: { value: 0.92 }
     }
   })
 
@@ -935,6 +938,7 @@ export function createFlightRoutes(
   pin.name = 'flightRoutePin'
   pin.renderOrder = 6.8
   pin.frustumCulled = false
+  pin.visible = SHOW_ROUTE_PIN
   group.add(pin)
 
   let focusMix = 0
@@ -1048,8 +1052,12 @@ export function createFlightRoutes(
     if (typeof routeId === 'number' && Number.isFinite(routeId)) {
       hoverRouteId = routeId
       hoverTarget = 1
-      setEndpointPositions('hover', routeId)
-      setPinPosition('hover', routeId)
+      if (SHOW_HOVER_ENDPOINTS) {
+        setEndpointPositions('hover', routeId)
+      }
+      if (SHOW_ROUTE_PIN) {
+        setPinPosition('hover', routeId)
+      }
       return
     }
     hoverTarget = 0
@@ -1060,7 +1068,9 @@ export function createFlightRoutes(
       selectedRouteId = routeId
       selectedTarget = 1
       setEndpointPositions('selected', routeId)
-      setPinPosition('selected', routeId)
+      if (SHOW_ROUTE_PIN) {
+        setPinPosition('selected', routeId)
+      }
       return
     }
     selectedTarget = 0
@@ -1146,17 +1156,17 @@ export function createFlightRoutes(
   // Update positions + uniforms.
   function update(deltaSeconds: number, timeSeconds: number, cameraDistance: number) {
     // smooth focus crossfade
-    const k = 1.0 - Math.exp(-deltaSeconds * 8.0)
+    const k = 1.0 - Math.exp(-deltaSeconds * 4.2)
     focusMix += (focusTarget - focusMix) * k
     lineMat.uniforms.uFocusMix.value = focusMix
     planeMat.uniforms.uFocusMix.value = focusMix
 
     // smooth hover/selection crossfade
-    const kHover = 1.0 - Math.exp(-deltaSeconds * 14.0)
+    const kHover = 1.0 - Math.exp(-deltaSeconds * 5.0)
     hoverMix += (hoverTarget - hoverMix) * kHover
     if (hoverTarget === 0 && hoverMix < 0.002) hoverRouteId = -999
 
-    const kSel = 1.0 - Math.exp(-deltaSeconds * 10.0)
+    const kSel = 1.0 - Math.exp(-deltaSeconds * 4.0)
     selectedMix += (selectedTarget - selectedMix) * kSel
     if (selectedTarget === 0 && selectedMix < 0.002) selectedRouteId = -999
 
@@ -1172,13 +1182,23 @@ export function createFlightRoutes(
 
     endpointsMat.uniforms.uTime.value = timeSeconds
     endpointsMat.uniforms.uCameraDistance.value = cameraDistance
-    endpointsMat.uniforms.uHoverMix.value = hoverMix
+    endpointsMat.uniforms.uHoverMix.value = SHOW_HOVER_ENDPOINTS ? hoverMix : 0
     endpointsMat.uniforms.uSelectedMix.value = selectedMix
+    endpointsMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(
+      1.02,
+      1.42,
+      THREE.MathUtils.clamp(selectedMix, 0, 1)
+    )
 
     pinMat.uniforms.uTime.value = timeSeconds
     pinMat.uniforms.uCameraDistance.value = cameraDistance
-    pinMat.uniforms.uHoverMix.value = hoverMix
-    pinMat.uniforms.uSelectedMix.value = selectedMix
+    pinMat.uniforms.uHoverMix.value = SHOW_ROUTE_PIN && SHOW_HOVER_ENDPOINTS ? hoverMix : 0
+    pinMat.uniforms.uSelectedMix.value = SHOW_ROUTE_PIN ? selectedMix : 0
+    pinMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(
+      0.0,
+      1.26,
+      SHOW_ROUTE_PIN ? THREE.MathUtils.clamp(selectedMix, 0, 1) : 0
+    )
 
     if (hubsMat) {
       hubsMat.uniforms.uTime.value = timeSeconds
@@ -1204,14 +1224,14 @@ export function createFlightRoutes(
 
     // LOD: keep it subtle at distance; richer near the globe.
     const zoom = THREE.MathUtils.clamp((32 - cameraDistance) / 16, 0, 1)
-    const routeKeep = THREE.MathUtils.lerp(0.30, 1.0, zoom)
-    const planeDensity = THREE.MathUtils.lerp(0.48, 1.0, zoom)
+    const routeKeep = THREE.MathUtils.lerp(0.55, 1.0, zoom)
+    const planeDensity = THREE.MathUtils.lerp(0.72, 1.0, zoom)
     lineMat.uniforms.uRouteKeep.value = routeKeep
     planeMat.uniforms.uRouteKeep.value = routeKeep
     planeMat.uniforms.uPlaneDensity.value = planeDensity
 
     // Heatmap: stronger when zoomed out; slightly reduced during country focus or route selection.
-    const kHeat = 1.0 - Math.exp(-deltaSeconds * 7.0)
+    const kHeat = 1.0 - Math.exp(-deltaSeconds * 3.6)
     heatMix += (heatTarget - heatMix) * kHeat
     if (heatTarget === 0 && heatMix < 0.002) {
       heatMix = 0
@@ -1225,18 +1245,20 @@ export function createFlightRoutes(
     heatMat.uniforms.uOpacity.value = baseHeatOpacity * focusFade * selectedFade * heatMix
 
     lineMat.uniforms.uTailLength.value = THREE.MathUtils.clamp(
-      scaleThickness(THREE.MathUtils.lerp(0.12, 0.2, zoom)),
+      scaleThickness(THREE.MathUtils.lerp(0.16, 0.28, zoom)),
       0.02,
       0.5
     )
-    lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.18, 0.34, zoom)
-    lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.028, 0.05, zoom)
+    const hoverBoost = THREE.MathUtils.lerp(1.0, 1.42, hoverMix * (1.0 - selectedMix * 0.35))
+    const selectedBoost = THREE.MathUtils.lerp(1.0, 1.88, selectedMix)
+    lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.30, 0.66, zoom) * hoverBoost * selectedBoost
+    lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.052, 0.096, zoom) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
     lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
-      scaleThickness(THREE.MathUtils.lerp(0.018, 0.024, zoom)),
+      scaleThickness(THREE.MathUtils.lerp(0.022, 0.034, zoom) * THREE.MathUtils.lerp(1.0, 1.30, Math.max(hoverMix, selectedMix))),
       0.004,
       0.1
     )
-    planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.82, 1.0, zoom)
+    planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.96, 1.22, zoom) * THREE.MathUtils.lerp(1.0, 1.26, Math.max(hoverMix, selectedMix))
   }
 
   return {

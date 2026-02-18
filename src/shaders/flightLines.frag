@@ -45,7 +45,9 @@ void main() {
 
   float isHover = 1.0 - step(0.5, abs(vRouteId - uHoverRouteId));
   float isSel = 1.0 - step(0.5, abs(vRouteId - uSelectedRouteId));
-  float emphasize = max(isHover * uHoverMix, isSel * uSelectedMix);
+  float hoverEmph = isHover * uHoverMix;
+  float selectedEmph = isSel * uSelectedMix;
+  float emphasize = max(hoverEmph, selectedEmph);
 
   // Keep the effect subtle when zoomed out.
   float zoom = clamp((32.0 - uCameraDistance) / 16.0, 0.0, 1.0);
@@ -76,14 +78,16 @@ void main() {
   color = mix(color, uTailColor, (1.0 - focusKeep) * uFocusMix * 0.08);
 
   // When a route is selected, de-emphasize the rest a bit (Google-style focus).
-  float selectedContext = mix(1.0, mix(0.28, 1.0, isSel), uSelectedMix * 0.8);
+  float selectedContext = mix(1.0, mix(0.18, 1.0, isSel), uSelectedMix * 0.95);
 
   // When hovering a route (and nothing is selected), de-emphasize the rest to help readability.
   float hoverCtxMix = uHoverMix * (1.0 - uSelectedMix);
-  float hoverContext = mix(1.0, mix(0.35, 1.0, isHover), hoverCtxMix * 0.75);
+  float hoverContext = mix(1.0, mix(0.24, 1.0, isHover), hoverCtxMix * 0.9);
 
   // Brighten on hover/selection.
-  color = mix(color, uHeadColor, emphasize * 0.35);
+  float lightUp = clamp(hoverEmph * 0.62 + selectedEmph * 0.9, 0.0, 1.0);
+  color = mix(color, uHeadColor, lightUp);
+  color = mix(color, vec3(1.0), selectedEmph * 0.22);
 
   // LOD: when zoomed out, keep only a subset of routes (smoothly) to avoid clutter.
   float keepMask = smoothstep(uRouteKeep, uRouteKeep - 0.12, vSeed);
@@ -106,7 +110,7 @@ void main() {
     selectedContext *
     hoverContext *
     (0.85 + traffic01 * 0.25) *
-    (1.0 + emphasize * 0.85) *
+    (1.0 + hoverEmph * 1.2 + selectedEmph * 2.2) *
     keepMask;
 
   float bundleContext = mix(1.0, mix(0.18, 1.0, hubKeep), bundleMix);

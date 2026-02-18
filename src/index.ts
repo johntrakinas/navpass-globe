@@ -32,12 +32,18 @@ import { setHoverHighlight, clearHoverHighlight, updateHoverHighlight, fadeOutHo
 import { VignetteGrainShader } from './postprocess/vignetteGrain'
 import { createStoryHighlight } from './globe/storyHighlight'
 import { scaleThickness } from './globe/thicknessScale'
+import { inflateAirportsDataset } from './globe/syntheticAirports'
 
 /* 
  * Config
  */
 const GLOBE_RADIUS = 10
 const COUNTRIES_GEOJSON_PATH = '/data/ne_110m_admin_0_countries.geojson'
+const ENABLE_STORY_HIGHLIGHT = false
+const SYNTHETIC_AIRPORT_TARGET = 5200
+const AIRPORT_MIN_SPACING_DEG = 0.5
+const SHOW_GLOBE_POINTS = false
+const MOCK_FLIGHT_ROUTE_COUNT = 2800
 let countriesGeoJSON: any = null
 
 let triGrid: ReturnType<typeof createAdaptiveTriGrid> | null = null
@@ -83,7 +89,9 @@ let flightRoutes:
   | null = null
 let selectedFlightRouteId: number | null = null
 let isCountrySelected = false
+let selectedCountryIso3: string | null = null
 let innerSphereMesh: THREE.Mesh | null = null
+let depthMaskMesh: THREE.Mesh | null = null
 
 const tooltip = createTooltip()
 let lastHoverKey = ''
@@ -107,7 +115,7 @@ flightRouteLabel.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto,
 flightRouteLabel.style.boxShadow = '0 18px 55px var(--panel-shadow)'
 flightRouteLabel.style.opacity = '0'
 flightRouteLabel.style.transform = 'translate(-50%, -100%) translateY(8px)'
-flightRouteLabel.style.transition = 'opacity 180ms ease, transform 220ms ease'
+flightRouteLabel.style.transition = 'opacity 460ms ease, transform 560ms ease'
 flightRouteLabel.style.pointerEvents = 'none'
 flightRouteLabel.style.zIndex = '5'
 
@@ -253,14 +261,6 @@ function setPinnedFlightRoute(routeId: number | null) {
   updatePinnedFlightRouteLabelPosition()
 }
 
-const searchInput = document.getElementById('country-search') as HTMLInputElement | null
-const filterContinent = document.getElementById('filter-continent') as HTMLSelectElement | null
-const filterRegion = document.getElementById('filter-region') as HTMLSelectElement | null
-const filterIncome = document.getElementById('filter-income') as HTMLSelectElement | null
-const filterEconomy = document.getElementById('filter-economy') as HTMLSelectElement | null
-const resultsList = document.getElementById('country-results') as HTMLDivElement | null
-let hideResultsOnSelect = false
-
 const _qYaw = new THREE.Quaternion()
 const _qPitch = new THREE.Quaternion()
 const _axisY = new THREE.Vector3(0, 1, 0)
@@ -304,7 +304,7 @@ const maxPitch = Math.PI / 2.2
  * Scene / Camera / Renderer
  */
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x040a16)
+scene.background = new THREE.Color(0x07090d)
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1000)
 camera.up.set(0, 1, 0)
@@ -397,13 +397,13 @@ const DRAMATIC_VISUAL_PRESET: VisualPreset = {
   coastAlpha: 0.0,
   borderCoreOpacity: 0.24,
   borderLineWidth: 3.0,
-  triGridOpacityMul: 0.62,
-  triGridShimmerMul: 0.46,
-  latLonGridOpacityMul: 0.48,
-  latLonGridShimmerMul: 0.40,
-  atmoInner: 0.085,
-  atmoOuter: 0.055,
-  atmoSubsurface: 0.01,
+  triGridOpacityMul: 1.0,
+  triGridShimmerMul: 0.0,
+  latLonGridOpacityMul: 0.8,
+  latLonGridShimmerMul: 0.0,
+  atmoInner: 0.0,
+  atmoOuter: 0.0,
+  atmoSubsurface: 0.0,
   dotAlpha: 1.08,
   dotSizeMul: 1.36,
   planeAlpha: 1.16,
@@ -428,7 +428,15 @@ function applyVisualPreset() {
   scene.background = new THREE.Color(cfg.sceneBg)
 
   if (innerSphereMesh && innerSphereMesh.material instanceof THREE.MeshBasicMaterial) {
-    innerSphereMesh.material.color.setHex(cfg.innerSphere)
+    // Keep the globe interior exactly equal to the space background.
+    innerSphereMesh.material.color.setHex(cfg.sceneBg)
+    innerSphereMesh.visible = false
+  }
+  if (depthMaskMesh && depthMaskMesh.material instanceof THREE.MeshBasicMaterial) {
+    depthMaskMesh.material.color.setHex(cfg.sceneBg)
+  }
+  if (lightingShell) {
+    lightingShell.group.visible = false
   }
 
   if (landWater) {
@@ -701,16 +709,29 @@ for (const topLink of document.querySelectorAll<HTMLAnchorElement>('#figma-shell
 let isDragging = false
 let lastX = 0
 let lastY = 0
-const ROTATE_SPEED = 0.0035
+const ROTATE_SPEED = 0.00175
 
 let velYaw = 0
 let velPitch = 0
 let lastMoveTime = performance.now()
+let peakVelYaw = 0
+let peakVelPitch = 0
+let lastYawDragSign = 0
 
-const INERTIA = 0.88          // atrito (0.85..0.95) — menor = mais “pesado”
-const MAX_VEL = 1.2           // rad/s (limita velocidade pra não “pirar”)
+const INERTIA = 0.91          // atrito (0.85..0.95) — menor = mais “pesado”
+const MAX_VEL = 0.38          // rad/s (limita velocidade pra não “pirar”)
+const MAX_DRAG_STEP_RAD = THREE.MathUtils.degToRad(0.82)
+const RELEASE_SPIN_TRIGGER_DISTANCE = 170
+const RELEASE_SPIN_TRIGGER_SPEED = 0.16
+const RELEASE_SPIN_MIN = 0.085
+const RELEASE_SPIN_MAX = 0.22
+const RELEASE_SPIN_BOOST = 0.045
+const RELEASE_PITCH_DAMP = 0.34
 const CLICK_DRAG_THRESHOLD = 4 // px: acima disso consideramos que foi drag
-const AUTO_ROTATE_SPEED = THREE.MathUtils.degToRad(0.78)
+const AUTO_ROTATE_SPEED = THREE.MathUtils.degToRad(0.14)
+const AUTO_ROTATE_BREAK_CYCLE_SEC = 18.0
+const AUTO_ROTATE_BREAK_WINDOW_SEC = 6.6
+const AUTO_ROTATE_BREAK_MIN_FACTOR = 0.04
 let dragDistance = 0
 let dragSuppressUntil = 0
 let activePointerId: number | null = null
@@ -724,10 +745,27 @@ function markUserInteracted() {
   hasUserInteracted = true
 }
 
+function getIdleAutoRotateFactor(timeSeconds: number) {
+  const phaseSec = timeSeconds % AUTO_ROTATE_BREAK_CYCLE_SEC
+  if (phaseSec > AUTO_ROTATE_BREAK_WINDOW_SEC) return 1
+
+  const t = THREE.MathUtils.clamp(phaseSec / AUTO_ROTATE_BREAK_WINDOW_SEC, 0, 1)
+  // Smooth brake envelope: slow down, almost pause, then recover.
+  const brake = Math.pow(Math.sin(Math.PI * t), 0.58)
+  return 1.0 - brake * (1.0 - AUTO_ROTATE_BREAK_MIN_FACTOR)
+}
+
+function clampDragDelta(deltaRad: number) {
+  return Math.tanh(deltaRad / MAX_DRAG_STEP_RAD) * MAX_DRAG_STEP_RAD
+}
+
 function resetDragState() {
   isDragging = false
   activePointerId = null
   dragDistance = 0
+  peakVelYaw = 0
+  peakVelPitch = 0
+  lastYawDragSign = 0
 }
 
 function isEventOverUI(target: EventTarget | null) {
@@ -753,6 +791,9 @@ function onPointerDown(e: PointerEvent) {
   lastMoveTime = performance.now()
   velYaw = 0
   velPitch = 0
+  peakVelYaw = 0
+  peakVelPitch = 0
+  lastYawDragSign = 0
   if (globeAnim) {
     // If the user grabs the globe mid-focus animation, sync angles to avoid a jump.
     syncYawPitchFromGlobe()
@@ -791,18 +832,25 @@ function onPointerMove(e: PointerEvent) {
   globeAnim = null
 
   // acumula yaw/pitch e aplica sem roll
-  yawAccum += dx * ROTATE_SPEED
+  const yawDelta = clampDragDelta(dx * ROTATE_SPEED)
+  const pitchDelta = clampDragDelta(dy * ROTATE_SPEED)
+  yawAccum += yawDelta
   // Pitch acompanha o movimento vertical do mouse (drag para baixo = inclina para baixo).
-  pitchAccum = THREE.MathUtils.clamp(pitchAccum + dy * ROTATE_SPEED, -maxPitch, maxPitch)
+  pitchAccum = THREE.MathUtils.clamp(pitchAccum + pitchDelta, -maxPitch, maxPitch)
 
   applyYawPitchToGlobe()
 
   // velocidade para inércia (normaliza por tempo)
   const dtSeconds = dt / 1000
-  const velYawPerSec = (dx * ROTATE_SPEED) / Math.max(0.0001, dtSeconds)
-  const velPitchPerSec = (dy * ROTATE_SPEED) / Math.max(0.0001, dtSeconds)
+  const velYawPerSec = yawDelta / Math.max(0.0001, dtSeconds)
+  const velPitchPerSec = pitchDelta / Math.max(0.0001, dtSeconds)
   velYaw = THREE.MathUtils.clamp(velYawPerSec, -MAX_VEL, MAX_VEL)
   velPitch = THREE.MathUtils.clamp(velPitchPerSec, -MAX_VEL, MAX_VEL)
+  if (Math.abs(velYaw) > Math.abs(peakVelYaw)) peakVelYaw = velYaw
+  if (Math.abs(velPitch) > Math.abs(peakVelPitch)) peakVelPitch = velPitch
+  if (Math.abs(yawDelta) > 0.00005) {
+    lastYawDragSign = Math.sign(yawDelta)
+  }
 
   tooltip.hide() // (se você já estava fazendo)
 }
@@ -816,8 +864,36 @@ function onPointerUp(e: PointerEvent) {
   activePointerId = null
   const heldMs = performance.now() - dragStartTime
   if (dragDistance > CLICK_DRAG_THRESHOLD) {
+    const strongPull =
+      dragDistance >= RELEASE_SPIN_TRIGGER_DISTANCE ||
+      Math.abs(peakVelYaw) >= RELEASE_SPIN_TRIGGER_SPEED
+    if (strongPull) {
+      const spinSign =
+        lastYawDragSign !== 0
+          ? lastYawDragSign
+          : (Math.abs(peakVelYaw) > 0.0001 ? Math.sign(peakVelYaw) : Math.sign(velYaw))
+      const baseSpeed = Math.max(Math.abs(velYaw), Math.abs(peakVelYaw) * 0.55)
+      const releaseSpeed = THREE.MathUtils.clamp(
+        baseSpeed + RELEASE_SPIN_BOOST,
+        RELEASE_SPIN_MIN,
+        RELEASE_SPIN_MAX
+      )
+      if (spinSign !== 0) {
+        velYaw = spinSign * releaseSpeed
+      } else {
+        velYaw = THREE.MathUtils.clamp(velYaw, -RELEASE_SPIN_MAX, RELEASE_SPIN_MAX)
+      }
+    } else {
+      velYaw *= 0.62
+    }
+    velPitch = THREE.MathUtils.clamp(
+      velPitch * RELEASE_PITCH_DAMP,
+      -MAX_VEL * RELEASE_PITCH_DAMP,
+      MAX_VEL * RELEASE_PITCH_DAMP
+    )
+
     // Small hover cooldown after dragging so we don't "flash" a hover on release.
-    const cooldown = heldMs < 160 ? 260 : 180
+    const cooldown = heldMs < 160 ? 380 : 300
     dragSuppressUntil = performance.now() + cooldown
     return
   }
@@ -826,7 +902,22 @@ function onPointerUp(e: PointerEvent) {
   const el = document.elementFromPoint(e.clientX, e.clientY)
   if (isEventOverUI(el)) return
 
-  const flightHit = getFlightHit(e.clientX, e.clientY, 0.2)
+  // Country selection gets priority over flight lines so country picking remains
+  // reliable even when routes pass above it.
+  const countryPick = getCountryPick(e.clientX, e.clientY)
+  if (countryPick?.feature) {
+    const iso3 = getISO3(countryPick.feature.properties)
+    if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
+      clearHoverHighlight(globeGroup)
+      tooltip.hide()
+      lastHoverKey = ''
+      return
+    }
+    selectCountryFeature(countryPick.feature, countryPick.worldPoint)
+    return
+  }
+
+  const flightHit = getFlightHit(e.clientX, e.clientY, 0.14)
   if (flightHit) {
     clearHoverRouteCouplingCountry()
     // Toggle selection on the same route.
@@ -874,7 +965,7 @@ function onPointerUp(e: PointerEvent) {
     return
   }
 
-  pickCountryAt(e.clientX, e.clientY)
+  pickCountryAt(e.clientX, e.clientY, { allowOceanClear: true })
 }
 
 function onPointerCancel(e: PointerEvent) {
@@ -1030,6 +1121,7 @@ function clearSelectionUIState() {
   setPinnedFlightRoute(null)
 
   isCountrySelected = false
+  selectedCountryIso3 = null
   flightRoutes?.setFocusCountry(null)
   clearHighlight(globeGroup)
   hideCountryPanel()
@@ -1202,6 +1294,24 @@ function getFlightHit(clientX: number, clientY: number, lineThreshold = 0.14) {
   return null
 }
 
+function getCountryPick(clientX: number, clientY: number) {
+  if (!countriesGeoJSON) return null
+
+  mouse.x = (clientX / window.innerWidth) * 2 - 1
+  mouse.y = -(clientY / window.innerHeight) * 2 + 1
+  raycaster.setFromCamera(mouse, camera)
+
+  const hit = raycaster.intersectObject(pickSphere, false)[0]
+  if (!hit) return null
+
+  const worldPoint = hit.point.clone()
+  const localPoint = globeGroup.worldToLocal(worldPoint.clone())
+  const { lat, lon } = vector3ToLatLon(localPoint)
+  const feature = findCountryFeature(countriesGeoJSON, lat, lon)
+
+  return { feature, worldPoint }
+}
+
 function showFlightTooltip(routeId: number, x: number, y: number) {
   if (!flightRoutes) return
   const info = flightRoutes.getRouteInfo(routeId)
@@ -1248,17 +1358,19 @@ function getFeatureFocusPoint(feature: any) {
 
 function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   if (!feature) return
+  const iso3 = getISO3(feature.properties)
+  if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
+    return
+  }
+  // Country focus should not coexist with story preset ring/spotlight.
+  storyHighlight?.setPreset(null)
   clearHoverRouteCouplingCountry()
   setCountryHeroCopy(getFeatureLabel(feature))
-  if (resultsList) {
-    resultsList.style.display = 'none'
-  }
-  hideResultsOnSelect = true
   fadeOutHover(globeGroup)
   tooltip.hide()
   highlightCountryFromFeature(feature, globeGroup, GLOBE_RADIUS)
-  const iso3 = getISO3(feature.properties)
   isCountrySelected = true
+  selectedCountryIso3 = iso3 || null
   const flightsStats = flightRoutes ? flightRoutes.getCountryFlightStats(iso3, performance.now() * 0.001) : null
   showCountryPanel(feature.properties, flightsStats)
   selectedFlightRouteId = null
@@ -1288,48 +1400,35 @@ let star: ReturnType<typeof createStarfieldShader> | null = null
 /**
  * Country pick helper (raycast only against pickSphere).
  */
-function pickCountryAt(clientX: number, clientY: number) {
+function pickCountryAt(clientX: number, clientY: number, options: { allowOceanClear?: boolean } = {}) {
   if (!countriesGeoJSON) return
 
   // Ignore interactions on top of UI elements.
   const el = document.elementFromPoint(clientX, clientY)
   if (isEventOverUI(el)) return
 
-  mouse.x = (clientX / window.innerWidth) * 2 - 1
-  mouse.y = -(clientY / window.innerHeight) * 2 + 1
-
-  raycaster.setFromCamera(mouse, camera)
-  const hit = raycaster.intersectObject(pickSphere, false)[0]
-  if (!hit) return
-
-  // desfaz rotação do globo antes de lat/lon
-  const localPoint = globeGroup.worldToLocal(hit.point.clone())
-  const { lat, lon } = vector3ToLatLon(localPoint)
-
-  const feature = findCountryFeature(countriesGeoJSON, lat, lon)
+  const allowOceanClear = options.allowOceanClear ?? true
+  const pick = getCountryPick(clientX, clientY)
+  if (!pick) return
+  const { feature, worldPoint } = pick
 
   // oceano
   if (!feature) {
-    clearHoverRouteCouplingCountry()
-    setDefaultHeroCopy()
     globeAnim = null
     velYaw = 0
     velPitch = 0
-    selectedFlightRouteId = null
-    isCountrySelected = false
-    flightRoutes?.setSelectedRoute(null)
-    flightRoutes?.setHoverRoute(null)
-    setPinnedFlightRoute(null)
-    flightRoutes?.setFocusCountry(null)
-    clearHighlight(globeGroup)
-    hideCountryPanel()
-    focusDimBase = 0
-    focusDimFlash = 0
-    hideFocusDim()
+    if (allowOceanClear) {
+      clearSelectionUIState()
+    }
     return
   }
 
-  selectCountryFeature(feature, hit.point.clone())
+  const iso3 = getISO3(feature.properties)
+  if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
+    return
+  }
+
+  selectCountryFeature(feature, worldPoint)
 }
 
 function onPointerHover(e: PointerEvent) {
@@ -1411,13 +1510,23 @@ function onPointerHover(e: PointerEvent) {
     return
   }
 
+  const iso3 = getISO3(feature.properties)
+  if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
+    clearHoverRouteCouplingCountry()
+    clearHoverHighlight(globeGroup)
+    tooltip.hide()
+    lastHoverKey = ''
+    renderer.domElement.style.cursor = 'default'
+    return
+  }
+
   // evita recalcular highlight a cada pixel
   const key = feature.properties?.ISO_A3 || feature.properties?.ADMIN || feature.properties?.NAME || 'country'
   if (key !== lastHoverKey) {
     lastHoverKey = key
     setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
   }
-  setHoverRouteCouplingCountry(getISO3(feature.properties))
+  setHoverRouteCouplingCountry(iso3)
 
   const name =
     feature.properties?.ADMIN ||
@@ -1444,143 +1553,6 @@ function onPointerHover(e: PointerEvent) {
   } else {
     tooltip.show(name, e.clientX, e.clientY)
   }
-}
-
-function initCountrySearchUI(geojson: any) {
-  const inputMaybe = searchInput
-  const listElMaybe = resultsList
-  const continentSelect = filterContinent
-  const regionSelect = filterRegion
-  const incomeSelect = filterIncome
-  const economySelect = filterEconomy
-
-  if (!inputMaybe || !listElMaybe) {
-    return
-  }
-
-  const input = inputMaybe
-  const listEl = listElMaybe
-
-  const features = geojson.features ?? []
-
-  function uniqueValues(key: string) {
-    const set = new Set<string>()
-    for (const f of features) {
-      const value = f.properties?.[key]
-      if (value) set.add(String(value))
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }
-
-  function fillSelect(select: HTMLSelectElement, values: string[], label: string) {
-    select.innerHTML = ''
-    const optAll = document.createElement('option')
-    optAll.value = ''
-    optAll.textContent = label
-    select.appendChild(optAll)
-    for (const v of values) {
-      const opt = document.createElement('option')
-      opt.value = v
-      opt.textContent = v
-      select.appendChild(opt)
-    }
-  }
-
-  if (continentSelect && regionSelect && incomeSelect && economySelect) {
-    fillSelect(continentSelect, uniqueValues('CONTINENT'), 'Continent')
-    fillSelect(regionSelect, uniqueValues('REGION_UN'), 'Region')
-    fillSelect(incomeSelect, uniqueValues('INCOME_GRP'), 'Income')
-    fillSelect(economySelect, uniqueValues('ECONOMY'), 'Economy')
-  }
-
-  function matchesFilters(feature: any) {
-    const props = feature.properties || {}
-    if (continentSelect?.value && props.CONTINENT !== continentSelect.value) return false
-    if (regionSelect?.value && props.REGION_UN !== regionSelect.value) return false
-    if (incomeSelect?.value && props.INCOME_GRP !== incomeSelect.value) return false
-    if (economySelect?.value && props.ECONOMY !== economySelect.value) return false
-    return true
-  }
-
-  function matchesSearch(feature: any, query: string) {
-    if (!query) return true
-    const name = getFeatureLabel(feature).toLowerCase()
-    const admin = (feature.properties?.ADMIN || '').toLowerCase()
-    const iso = (feature.properties?.ISO_A3 || '').toLowerCase()
-    return name.includes(query) || admin.includes(query) || iso.includes(query)
-  }
-
-  function renderResults() {
-    const query = (input.value || '').trim().toLowerCase()
-    if (!query) {
-      listEl.innerHTML = ''
-      listEl.style.display = 'none'
-      return
-    }
-
-    if (hideResultsOnSelect) {
-      listEl.style.display = 'none'
-      return
-    }
-
-    listEl.style.display = 'grid'
-    const filtered = features.filter((f: any) => matchesFilters(f) && matchesSearch(f, query))
-    const list = filtered.slice(0, 40)
-
-    listEl.innerHTML = ''
-    if (list.length === 0) {
-      const empty = document.createElement('div')
-      empty.className = 'ui-empty'
-      empty.textContent = 'No countries found'
-      listEl.appendChild(empty)
-      return
-    }
-
-    for (const feature of list) {
-      const item = document.createElement('div')
-      item.className = 'ui-result'
-
-      const name = document.createElement('div')
-      name.className = 'name'
-      const label = document.createElement('span')
-      label.textContent = getFeatureLabel(feature)
-      name.appendChild(label)
-
-      const iso2 = getISO2(feature.properties)
-      if (iso2) {
-        const img = document.createElement('img')
-        img.src = isoToFlagUrl(iso2)
-        img.alt = ''
-        img.onerror = () => {
-          img.style.display = 'none'
-        }
-        name.appendChild(img)
-      }
-
-      const meta = document.createElement('div')
-      meta.className = 'meta'
-      meta.textContent = getFeatureMeta(feature)
-
-      item.appendChild(name)
-      item.appendChild(meta)
-      item.addEventListener('click', () => {
-        selectCountryFeature(feature)
-      })
-
-      listEl.appendChild(item)
-    }
-  }
-
-  input.addEventListener('input', () => {
-    hideResultsOnSelect = false
-    renderResults()
-  })
-  continentSelect?.addEventListener('change', renderResults)
-  regionSelect?.addEventListener('change', renderResults)
-  incomeSelect?.addEventListener('change', renderResults)
-  economySelect?.addEventListener('change', renderResults)
-
-  renderResults()
 }
 
 /**
@@ -1610,7 +1582,7 @@ function animate() {
   storyHighlight?.update(now, cameraDistance)
 
   if (focusDimBase > 0 || focusDimFlash > 0) {
-    focusDimFlash *= 0.90
+    focusDimFlash *= 0.96
     if (focusDimFlash < 0.01) focusDimFlash = 0
     setFocusDimOpacity(Math.min(0.65, focusDimBase + focusDimFlash))
   }
@@ -1647,7 +1619,8 @@ function animate() {
         if (mat.userData.baseOpacity === undefined) {
           mat.userData.baseOpacity = mat.opacity
         }
-        mat.opacity = Number(mat.userData.baseOpacity) * visualTriOpacityMul
+        const lodAlpha = Number(mat.userData.lodAlpha ?? 1)
+        mat.opacity = Number(mat.userData.baseOpacity) * visualTriOpacityMul * lodAlpha
         const baseShimmer = mat.userData.baseShimmerStrength ?? (mat.uniforms as any).uShimmerStrength?.value ?? 0
         if ((mat.uniforms as any).uShimmerStrength) {
           ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * visualTriShimmerMul * (0.35 + 0.65 * zoom01)
@@ -1662,7 +1635,8 @@ function animate() {
         if (mat.userData.baseOpacity === undefined) {
           mat.userData.baseOpacity = mat.opacity
         }
-        mat.opacity = Number(mat.userData.baseOpacity) * visualLatLonOpacityMul
+        const lodAlpha = Number(mat.userData.lodAlpha ?? 1)
+        mat.opacity = Number(mat.userData.baseOpacity) * visualLatLonOpacityMul * lodAlpha
         const baseShimmer = mat.userData.baseShimmerStrength ?? (mat.uniforms as any).uShimmerStrength?.value ?? 0
         if ((mat.uniforms as any).uShimmerStrength) {
           ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * visualLatLonShimmerMul * (0.25 + 0.60 * zoom01)
@@ -1707,8 +1681,9 @@ function animate() {
       if (Math.abs(velYaw) < 0.00001) velYaw = 0
       if (Math.abs(velPitch) < 0.00001) velPitch = 0
     } else if (!hasUserInteracted && !isCountrySelected && selectedFlightRouteId === null) {
-      // Slow idle rotation until first interaction.
-      yawAccum += AUTO_ROTATE_SPEED * deltaSeconds
+      // Very slow idle rotation with periodic "breaks" (Google-like breathing pace).
+      const brakeFactor = getIdleAutoRotateFactor(now)
+      yawAccum += AUTO_ROTATE_SPEED * brakeFactor * deltaSeconds
       applyYawPitchToGlobe()
     }
   }
@@ -1780,7 +1755,8 @@ function animate() {
  * Init
  */
 async function init() {
-  globeGroup.add(createDepthMaskSphere(GLOBE_RADIUS))
+  depthMaskMesh = createDepthMaskSphere(GLOBE_RADIUS)
+  globeGroup.add(depthMaskMesh)
   // ⭐ starfield (não dentro do globeGroup!)
   star = createStarfieldShader({ count: 7000, radius: 420, size: 0.9, opacity: 0.65 })
   scene.add(star.points)
@@ -1792,8 +1768,10 @@ async function init() {
   globeGroup.add(lightingShell.group)
 
   // Story mode highlight layer (region spotlight + ring).
-  storyHighlight = createStoryHighlight(GLOBE_RADIUS)
-  globeGroup.add(storyHighlight.group)
+  if (ENABLE_STORY_HIGHLIGHT) {
+    storyHighlight = createStoryHighlight(GLOBE_RADIUS)
+    globeGroup.add(storyHighlight.group)
+  }
 
   const geojson = await loadGeoJSON(COUNTRIES_GEOJSON_PATH)
   countriesGeoJSON = geojson
@@ -1804,7 +1782,6 @@ async function init() {
 
   countriesLines = createCountries(geojson, GLOBE_RADIUS, camera)
   globeGroup.add(countriesLines.lines)
-  initCountrySearchUI(geojson)
 
   triGrid = createAdaptiveTriGrid(GLOBE_RADIUS, camera)
   globeGroup.add(triGrid.group)
@@ -1812,15 +1789,28 @@ async function init() {
   latLonGrid = createAdaptiveLatLonGrid(GLOBE_RADIUS, camera)
   globeGroup.add(latLonGrid.group)
 
+  const baseAirports = await fetch('/data/airports_points.json').then(r => r.json())
+  const denseAirports = inflateAirportsDataset(baseAirports, countriesGeoJSON, {
+    targetCount: SYNTHETIC_AIRPORT_TARGET,
+    minSpacingDeg: AIRPORT_MIN_SPACING_DEG
+  })
+  const baseCount = Array.isArray(baseAirports) ? baseAirports.length : 0
+  console.info(
+    `[airports] base=${baseCount} land_spaced=${denseAirports.length} spacingDeg=${AIRPORT_MIN_SPACING_DEG}`
+  )
+  if (SHOW_GLOBE_POINTS) {
+    languagePoints = createLanguagePoints(denseAirports, GLOBE_RADIUS)
+    globeGroup.add(languagePoints.points)
 
-  const languages = await fetch('/data/airports_points.json').then(r => r.json())
-  languagePoints = createLanguagePoints(languages, GLOBE_RADIUS)
-  globeGroup.add(languagePoints.points)
+    nightLights = createNightLights(denseAirports, GLOBE_RADIUS)
+    globeGroup.add(nightLights.points)
+  } else {
+    languagePoints = null
+    nightLights = null
+  }
 
-  nightLights = createNightLights(languages, GLOBE_RADIUS)
-  globeGroup.add(nightLights.points)
-
-  flightRoutes = createFlightRoutes(languages, GLOBE_RADIUS, countriesGeoJSON, 220)
+  flightRoutes = createFlightRoutes(denseAirports, GLOBE_RADIUS, countriesGeoJSON, MOCK_FLIGHT_ROUTE_COUNT)
+  console.info(`[flights] mocked_routes=${MOCK_FLIGHT_ROUTE_COUNT} source_airports=${denseAirports.length}`)
   globeGroup.add(flightRoutes.group)
   applyHeatmap(Boolean(heatmapToggle?.checked))
 
@@ -1846,19 +1836,7 @@ async function init() {
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      clearHoverRouteCouplingCountry()
-      setDefaultHeroCopy()
-      selectedFlightRouteId = null
-      isCountrySelected = false
-      flightRoutes?.setSelectedRoute(null)
-      flightRoutes?.setHoverRoute(null)
-      setPinnedFlightRoute(null)
-      flightRoutes?.setFocusCountry(null)
-      clearHighlight(globeGroup)
-      hideCountryPanel()
-      focusDimBase = 0
-      focusDimFlash = 0
-      hideFocusDim()
+      clearSelectionUIState()
     }
   })
 

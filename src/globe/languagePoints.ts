@@ -31,8 +31,8 @@ export function createLanguagePoints(data: any[], radius: number) {
     color.copy(GOOGLE_COLORS.white);
     colors.push(color.r, color.g, color.b);
 
-    // Dramatic airport dots (high readability).
-    sizes.push(Math.random() * 0.66 + 0.92);
+    // Smaller footprint to keep nearby airports visually separable.
+    sizes.push(Math.random() * 0.34 + 0.58);
     seeds.push(Math.random());
   }
 
@@ -65,13 +65,13 @@ export function createLanguagePoints(data: any[], radius: number) {
       uTime: { value: 0 },
       uCameraDistance: { value: 0 },
       uColorMul: { value: new THREE.Color(1, 1, 1) },
-      uAlphaMul: { value: 0.9 },
-      uFlowSpeed: { value: 0.04 },
-      uFlowWidth: { value: 0.16 },
-      uFlowStrength: { value: 0.45 },
-      uFlowColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.14) },
+      uAlphaMul: { value: 0.98 },
+      uFlowSpeed: { value: 0.058 },
+      uFlowWidth: { value: 0.13 },
+      uFlowStrength: { value: 0.82 },
+      uFlowColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.22) },
       uFlowDir: { value: new THREE.Vector3(0.74, 0.18, 0.65).normalize() },
-      uFlowScale: { value: 0.11 },
+      uFlowScale: { value: 0.16 },
       uSizeMul: { value: scaleThickness(1.0) }
     }
   });
