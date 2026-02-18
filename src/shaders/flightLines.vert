@@ -29,8 +29,7 @@ void main() {
   vRouteId = aRouteId;
   vDir = aDir;
   vHub = aHub;
-
-  // Horizon fade helper: 1 = facing camera, 0 = at the limb/horizon.
+  
   vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
   vFacing = dot(normalize(worldPos), normalize(cameraPosition));
 
