@@ -4,18 +4,9 @@ attribute vec3 aP0;
 attribute vec3 aP1;
 attribute vec3 aP2;
 
-attribute float aSpeed;
-attribute float aPhase;
-attribute float aOffset;
-attribute float aDir;
-
-attribute float aSize;
-attribute float aSeed;
-attribute float aTraffic;
-attribute float aEnable;
-attribute float aFocus;
-attribute float aRouteId;
-attribute float aHub;
+attribute vec4 aMotion; // speed, phase, offset, dir
+attribute vec4 aVisual; // size, seed, traffic, enable
+attribute vec4 aMeta; // focus, routeId, hub, spare
 
 uniform float uTime;
 uniform float uCameraDistance;
@@ -39,27 +30,39 @@ varying float vHub;
 varying float vFacing;
 
 void main() {
-  vSeed = aSeed;
-  vTraffic = aTraffic;
-  vEnable = aEnable;
-  vFocus = aFocus;
-  vRouteId = aRouteId;
-  vDir = aDir;
-  vHub = aHub;
+  float speed = aMotion.x;
+  float phase = aMotion.y;
+  float offset = aMotion.z;
+  float dir = aMotion.w;
+  float size = aVisual.x;
+  float seed = aVisual.y;
+  float traffic = aVisual.z;
+  float enable = aVisual.w;
+  float focus = aMeta.x;
+  float routeId = aMeta.y;
+  float hub = aMeta.z;
 
-  float isHover = 1.0 - step(0.5, abs(aRouteId - uHoverRouteId));
-  float isSel = 1.0 - step(0.5, abs(aRouteId - uSelectedRouteId));
+  vSeed = seed;
+  vTraffic = traffic;
+  vEnable = enable;
+  vFocus = focus;
+  vRouteId = routeId;
+  vDir = dir;
+  vHub = hub;
+
+  float isHover = 1.0 - step(0.5, abs(routeId - uHoverRouteId));
+  float isSel = 1.0 - step(0.5, abs(routeId - uSelectedRouteId));
   float emphasize = max(isHover * uHoverMix, isSel * uSelectedMix);
   vEmph = emphasize;
 
   // LOD: thin planes when zoomed out (keep mask based on seed).
-  float keepMask = smoothstep(uRouteKeep, uRouteKeep - 0.12, aSeed);
+  float keepMask = smoothstep(uRouteKeep, uRouteKeep - 0.12, seed);
   keepMask = max(keepMask, emphasize);
-  float densMask = smoothstep(uPlaneDensity, uPlaneDensity - 0.18, aSeed);
+  float densMask = smoothstep(uPlaneDensity, uPlaneDensity - 0.18, seed);
   densMask = max(densMask, emphasize);
 
   // Prefer keeping high-traffic planes when we thin things out.
-  float trafficKeep = smoothstep(0.85, 1.12, aTraffic);
+  float trafficKeep = smoothstep(0.85, 1.12, traffic);
   float thin = clamp(1.0 - uPlaneDensity, 0.0, 1.0);
   keepMask = max(keepMask, trafficKeep * thin);
   densMask = max(densMask, trafficKeep * thin);
@@ -67,12 +70,12 @@ void main() {
   // Zoom-out aggregation: keep hub-connected planes visible longer.
   float zoom = clamp((32.0 - uCameraDistance) / 16.0, 0.0, 1.0);
   float bundleMix = smoothstep(0.35, 0.95, 1.0 - zoom);
-  float hubKeep = smoothstep(0.18, 0.88, aHub);
+  float hubKeep = smoothstep(0.18, 0.88, hub);
   keepMask = max(keepMask, hubKeep * bundleMix);
   densMask = max(densMask, hubKeep * bundleMix);
 
-  float t = fract(uTime * aSpeed + aPhase + aOffset);
-  if (aDir < 0.0) {
+  float t = fract(uTime * speed + phase + offset);
+  if (dir < 0.0) {
     t = 1.0 - t;
   }
 
@@ -81,7 +84,7 @@ void main() {
 
   // Screen-space velocity direction (for a small "comet" trail in the fragment shader).
   vec3 dpdt = 2.0 * (1.0 - t) * (aP1 - aP0) + 2.0 * t * (aP2 - aP1);
-  dpdt *= aDir; // actual motion direction (handles reversed routes)
+  dpdt *= dir; // actual motion direction (handles reversed routes)
   vec3 velView = (modelViewMatrix * vec4(dpdt, 0.0)).xyz;
   vec2 vel2 = velView.xy;
   float velLen = length(vel2);
@@ -94,10 +97,10 @@ void main() {
   vec3 worldPos = (modelMatrix * vec4(p, 1.0)).xyz;
   vFacing = dot(normalize(worldPos), normalize(cameraPosition));
 
-  float baseSize = aSize * aTraffic;
+  float baseSize = size * traffic;
   float pointSize = baseSize * uSizeMul * (398.0 / dist);
   pointSize *= (1.0 + emphasize * 0.55);
-  pointSize *= aEnable * keepMask * densMask;
+  pointSize *= enable * keepMask * densMask;
 
   gl_PointSize = clamp(pointSize, 0.0, 62.0);
   gl_Position = projectionMatrix * mvPosition;

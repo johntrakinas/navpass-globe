@@ -1,12 +1,5 @@
-attribute float aT;
-attribute float aSpeed;
-attribute float aPhase;
-attribute float aSeed;
-attribute float aTraffic;
-attribute float aFocus;
-attribute float aRouteId;
-attribute float aDir;
-attribute float aHub;
+attribute vec4 aMotion; // t, speed, phase, seed
+attribute vec4 aMeta; // traffic, focus, routeId, signed(1 + hub)
 
 varying float vT;
 varying float vSpeed;
@@ -20,15 +13,16 @@ varying float vHub;
 varying float vFacing;
 
 void main() {
-  vT = aT;
-  vSpeed = aSpeed;
-  vPhase = aPhase;
-  vSeed = aSeed;
-  vTraffic = aTraffic;
-  vFocus = aFocus;
-  vRouteId = aRouteId;
-  vDir = aDir;
-  vHub = aHub;
+  float dirHub = aMeta.w;
+  vT = aMotion.x;
+  vSpeed = aMotion.y;
+  vPhase = aMotion.z;
+  vSeed = aMotion.w;
+  vTraffic = aMeta.x;
+  vFocus = aMeta.y;
+  vRouteId = aMeta.z;
+  vDir = dirHub >= 0.0 ? 1.0 : -1.0;
+  vHub = max(0.0, abs(dirHub) - 1.0);
 
   // Horizon fade helper: 1 = facing camera, 0 = at the limb/horizon.
   vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
