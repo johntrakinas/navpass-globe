@@ -4,11 +4,10 @@ export function createInnerSphere(radius: number) {
   const geometry = new THREE.SphereGeometry(radius * 0.99, 64, 64)
 
   const material = new THREE.MeshBasicMaterial({
-    // Slightly lifted base tone so the globe doesn't feel "crushed" in blacks,
-    // while keeping the Google-Research dark aesthetic.
-    color: 0x152744,
+    color: 0x07090d,
     side: THREE.BackSide,
-    depthWrite: true
+    depthWrite: true,
+    toneMapped: false
   })
 
   const mesh = new THREE.Mesh(geometry, material)

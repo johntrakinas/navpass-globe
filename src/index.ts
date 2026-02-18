@@ -91,6 +91,7 @@ let selectedFlightRouteId: number | null = null
 let isCountrySelected = false
 let selectedCountryIso3: string | null = null
 let innerSphereMesh: THREE.Mesh | null = null
+let depthMaskMesh: THREE.Mesh | null = null
 
 const tooltip = createTooltip()
 let lastHoverKey = ''
@@ -303,7 +304,7 @@ const maxPitch = Math.PI / 2.2
  * Scene / Camera / Renderer
  */
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x040a16)
+scene.background = new THREE.Color(0x07090d)
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1000)
 camera.up.set(0, 1, 0)
@@ -427,7 +428,15 @@ function applyVisualPreset() {
   scene.background = new THREE.Color(cfg.sceneBg)
 
   if (innerSphereMesh && innerSphereMesh.material instanceof THREE.MeshBasicMaterial) {
-    innerSphereMesh.material.color.setHex(cfg.innerSphere)
+    // Keep the globe interior exactly equal to the space background.
+    innerSphereMesh.material.color.setHex(cfg.sceneBg)
+    innerSphereMesh.visible = false
+  }
+  if (depthMaskMesh && depthMaskMesh.material instanceof THREE.MeshBasicMaterial) {
+    depthMaskMesh.material.color.setHex(cfg.sceneBg)
+  }
+  if (lightingShell) {
+    lightingShell.group.visible = false
   }
 
   if (landWater) {
@@ -1677,7 +1686,8 @@ function animate() {
  * Init
  */
 async function init() {
-  globeGroup.add(createDepthMaskSphere(GLOBE_RADIUS))
+  depthMaskMesh = createDepthMaskSphere(GLOBE_RADIUS)
+  globeGroup.add(depthMaskMesh)
   // ⭐ starfield (não dentro do globeGroup!)
   star = createStarfieldShader({ count: 7000, radius: 420, size: 0.9, opacity: 0.65 })
   scene.add(star.points)
