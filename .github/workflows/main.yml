@@ -16,3 +16,4 @@ jobs:
         run: |
           git remote add partner https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/navpass/navpass-website.git
           git push partner main:main
+
