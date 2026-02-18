@@ -1,4 +1,4 @@
-name: Mirror main to NAVPASS/NAVPASS_WEBSITE
+name: Mirror main to navpass/navpass-website
 
 on:
   push:
@@ -11,9 +11,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false   # <-- IMPORTANTÍSSIMO
+
+      - name: Sanity check token is present (prints only length)
+        run: |
+          TOKEN="${{ secrets.MIRROR_PAT }}"
+          echo "MIRROR_PAT length: ${#TOKEN}"
+          if [ -z "$TOKEN" ]; then
+            echo "MIRROR_PAT is empty or not available."
+            exit 1
+          fi
 
       - name: Push main to partner
         run: |
+          # Remove extraheader just in case (defensive)
+          git config --global --unset-all http.https://github.com/.extraheader || true
+
           git remote add partner https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/navpass/navpass-website.git
           git push partner main:main
-
