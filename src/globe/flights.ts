@@ -592,7 +592,6 @@ export function createFlightRoutes(
         uSizeMul: { value: scaleThickness(1.0) }
       }
     })
-    hubsMat.name = 'flightHubsMaterial'
 
     hubsPoints = new THREE.Points(geo, hubsMat)
     hubsPoints.name = 'airportHubs'
@@ -619,15 +618,14 @@ export function createFlightRoutes(
       uCameraDistance: { value: 25 },
       uOpacity: { value: 0.18 },
       // Keep it clean, but let a bit more of the mid-density show through.
-      uThreshold: { value: 0.16 },
+      uThreshold: { value: 0.085 },
       uTexel: { value: new THREE.Vector2(1 / 512, 1 / 256) },
-      uEdgeStrength: { value: 0.55 },
+      uEdgeStrength: { value: 0.85 },
       uColdColor: { value: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.34) },
       uMidColor: { value: GOOGLE_COLORS.lightBlue.clone().multiplyScalar(1.02) },
       uHotColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.32) }
     }
   })
-  heatMat.name = 'flightHeatmapMaterial'
   const heatmap = new THREE.Mesh(heatGeo, heatMat)
   heatmap.name = 'flightHeatmap'
   heatmap.renderOrder = 1.5
@@ -640,8 +638,15 @@ export function createFlightRoutes(
   // ---------------------------
   const lineVertexCount = routeData.length * segmentsPerRoute * 2
   const linePositions = new Float32Array(lineVertexCount * 3)
-  const lineMotion = new Float32Array(lineVertexCount * 4) // t, speed, phase, seed
-  const lineMeta = new Float32Array(lineVertexCount * 4) // traffic, focus, routeId, signed(1 + hub)
+  const lineT = new Float32Array(lineVertexCount)
+  const lineSpeed = new Float32Array(lineVertexCount)
+  const linePhase = new Float32Array(lineVertexCount)
+  const lineSeed = new Float32Array(lineVertexCount)
+  const lineTraffic = new Float32Array(lineVertexCount)
+  const lineFocus = new Float32Array(lineVertexCount)
+  const lineRouteId = new Float32Array(lineVertexCount)
+  const lineDir = new Float32Array(lineVertexCount)
+  const lineHub = new Float32Array(lineVertexCount)
 
   const tmp0: number[] = [0, 0, 0]
   const tmp1: number[] = [0, 0, 0]
@@ -664,27 +669,29 @@ export function createFlightRoutes(
       linePositions[vi0 * 3 + 0] = tmp0[0]
       linePositions[vi0 * 3 + 1] = tmp0[1]
       linePositions[vi0 * 3 + 2] = tmp0[2]
-      lineMotion[vi0 * 4 + 0] = t0
-      lineMotion[vi0 * 4 + 1] = r.speed
-      lineMotion[vi0 * 4 + 2] = r.phase
-      lineMotion[vi0 * 4 + 3] = r.seed
-      lineMeta[vi0 * 4 + 0] = r.traffic
-      lineMeta[vi0 * 4 + 1] = 1
-      lineMeta[vi0 * 4 + 2] = r.id
-      lineMeta[vi0 * 4 + 3] = r.dir * (1 + r.hub)
+      lineT[vi0] = t0
+      lineSpeed[vi0] = r.speed
+      linePhase[vi0] = r.phase
+      lineSeed[vi0] = r.seed
+      lineTraffic[vi0] = r.traffic
+      lineFocus[vi0] = 1
+      lineRouteId[vi0] = r.id
+      lineDir[vi0] = r.dir
+      lineHub[vi0] = r.hub
 
       // vertex 1
       linePositions[vi1 * 3 + 0] = tmp1[0]
       linePositions[vi1 * 3 + 1] = tmp1[1]
       linePositions[vi1 * 3 + 2] = tmp1[2]
-      lineMotion[vi1 * 4 + 0] = t1
-      lineMotion[vi1 * 4 + 1] = r.speed
-      lineMotion[vi1 * 4 + 2] = r.phase
-      lineMotion[vi1 * 4 + 3] = r.seed
-      lineMeta[vi1 * 4 + 0] = r.traffic
-      lineMeta[vi1 * 4 + 1] = 1
-      lineMeta[vi1 * 4 + 2] = r.id
-      lineMeta[vi1 * 4 + 3] = r.dir * (1 + r.hub)
+      lineT[vi1] = t1
+      lineSpeed[vi1] = r.speed
+      linePhase[vi1] = r.phase
+      lineSeed[vi1] = r.seed
+      lineTraffic[vi1] = r.traffic
+      lineFocus[vi1] = 1
+      lineRouteId[vi1] = r.id
+      lineDir[vi1] = r.dir
+      lineHub[vi1] = r.hub
 
       v += 2
     }
@@ -692,8 +699,15 @@ export function createFlightRoutes(
 
   const lineGeo = new THREE.BufferGeometry()
   lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3))
-  lineGeo.setAttribute('aMotion', new THREE.BufferAttribute(lineMotion, 4))
-  lineGeo.setAttribute('aMeta', new THREE.BufferAttribute(lineMeta, 4))
+  lineGeo.setAttribute('aT', new THREE.BufferAttribute(lineT, 1))
+  lineGeo.setAttribute('aSpeed', new THREE.BufferAttribute(lineSpeed, 1))
+  lineGeo.setAttribute('aPhase', new THREE.BufferAttribute(linePhase, 1))
+  lineGeo.setAttribute('aSeed', new THREE.BufferAttribute(lineSeed, 1))
+  lineGeo.setAttribute('aTraffic', new THREE.BufferAttribute(lineTraffic, 1))
+  lineGeo.setAttribute('aFocus', new THREE.BufferAttribute(lineFocus, 1))
+  lineGeo.setAttribute('aRouteId', new THREE.BufferAttribute(lineRouteId, 1))
+  lineGeo.setAttribute('aDir', new THREE.BufferAttribute(lineDir, 1))
+  lineGeo.setAttribute('aHub', new THREE.BufferAttribute(lineHub, 1))
   lineGeo.computeBoundingSphere()
 
   const lineMat = new THREE.ShaderMaterial({
@@ -721,7 +735,6 @@ export function createFlightRoutes(
       uSelectedMix: { value: 0.0 }
     }
   })
-  lineMat.name = 'flightLinesMaterial'
 
   const lines = new THREE.LineSegments(lineGeo, lineMat)
   lines.renderOrder = 5
@@ -742,9 +755,17 @@ export function createFlightRoutes(
   const planeP0 = new Float32Array(planeCount * 3)
   const planeP1 = new Float32Array(planeCount * 3)
   const planeP2 = new Float32Array(planeCount * 3)
-  const planeMotion = new Float32Array(planeCount * 4) // speed, phase, offset, dir
-  const planeVisual = new Float32Array(planeCount * 4) // size, seed, traffic, enable
-  const planeMeta = new Float32Array(planeCount * 4) // focus, routeId, hub, spare
+  const planeSpeed = new Float32Array(planeCount)
+  const planePhase = new Float32Array(planeCount)
+  const planeOffset = new Float32Array(planeCount)
+  const planeDir = new Float32Array(planeCount)
+  const planeSizes = new Float32Array(planeCount)
+  const planeSeeds = new Float32Array(planeCount)
+  const planeTraffic = new Float32Array(planeCount)
+  const planeEnable = new Float32Array(planeCount)
+  const planeFocus = new Float32Array(planeCount)
+  const planeRouteId = new Float32Array(planeCount)
+  const planeHub = new Float32Array(planeCount)
 
   function fract01(v: number) {
     return v - Math.floor(v)
@@ -773,32 +794,27 @@ export function createFlightRoutes(
       planeP2[idx * 3 + 1] = r.p2y
       planeP2[idx * 3 + 2] = r.p2z
 
+      planeSpeed[idx] = r.speed
+      planePhase[idx] = r.phase
+      planeDir[idx] = r.dir
+      planeRouteId[idx] = r.id
+      planeHub[idx] = r.hub
+
       const enabled = j < r.trafficCount ? 1 : 0
-      planeMeta[idx * 4 + 0] = 1
-      planeMeta[idx * 4 + 1] = r.id
-      planeMeta[idx * 4 + 2] = r.hub
-      planeMeta[idx * 4 + 3] = 0
+      planeEnable[idx] = enabled
+      planeFocus[idx] = 1
 
       // Spread planes along the route; add a small deterministic jitter.
       const denom = Math.max(1, r.trafficCount)
       const baseOffset = j / denom
       const jitter = (fract01(r.seed * 17.0 + j * 3.1) - 0.5) * 0.06
-      const offset = fract01(baseOffset + jitter)
+      planeOffset[idx] = fract01(baseOffset + jitter)
 
       // Subtle variety and traffic scaling.
       const sizeJitter = 0.94 - j * 0.06 + (fract01(r.seed * 11.0 + j * 1.7) - 0.5) * 0.08
-      const size = r.size * sizeJitter
-      const seed = fract01(r.seed + j * 0.23)
-
-      planeMotion[idx * 4 + 0] = r.speed
-      planeMotion[idx * 4 + 1] = r.phase
-      planeMotion[idx * 4 + 2] = offset
-      planeMotion[idx * 4 + 3] = r.dir
-
-      planeVisual[idx * 4 + 0] = size
-      planeVisual[idx * 4 + 1] = seed
-      planeVisual[idx * 4 + 2] = r.traffic
-      planeVisual[idx * 4 + 3] = enabled
+      planeSizes[idx] = r.size * sizeJitter
+      planeSeeds[idx] = fract01(r.seed + j * 0.23)
+      planeTraffic[idx] = r.traffic
     }
   }
 
@@ -806,9 +822,17 @@ export function createFlightRoutes(
   planeGeo.setAttribute('aP0', new THREE.BufferAttribute(planeP0, 3))
   planeGeo.setAttribute('aP1', new THREE.BufferAttribute(planeP1, 3))
   planeGeo.setAttribute('aP2', new THREE.BufferAttribute(planeP2, 3))
-  planeGeo.setAttribute('aMotion', new THREE.BufferAttribute(planeMotion, 4))
-  planeGeo.setAttribute('aVisual', new THREE.BufferAttribute(planeVisual, 4))
-  planeGeo.setAttribute('aMeta', new THREE.BufferAttribute(planeMeta, 4))
+  planeGeo.setAttribute('aSpeed', new THREE.BufferAttribute(planeSpeed, 1))
+  planeGeo.setAttribute('aPhase', new THREE.BufferAttribute(planePhase, 1))
+  planeGeo.setAttribute('aOffset', new THREE.BufferAttribute(planeOffset, 1))
+  planeGeo.setAttribute('aDir', new THREE.BufferAttribute(planeDir, 1))
+  planeGeo.setAttribute('aSize', new THREE.BufferAttribute(planeSizes, 1))
+  planeGeo.setAttribute('aSeed', new THREE.BufferAttribute(planeSeeds, 1))
+  planeGeo.setAttribute('aTraffic', new THREE.BufferAttribute(planeTraffic, 1))
+  planeGeo.setAttribute('aEnable', new THREE.BufferAttribute(planeEnable, 1))
+  planeGeo.setAttribute('aFocus', new THREE.BufferAttribute(planeFocus, 1))
+  planeGeo.setAttribute('aRouteId', new THREE.BufferAttribute(planeRouteId, 1))
+  planeGeo.setAttribute('aHub', new THREE.BufferAttribute(planeHub, 1))
   planeGeo.computeBoundingSphere()
 
   const planeMat = new THREE.ShaderMaterial({
@@ -835,7 +859,6 @@ export function createFlightRoutes(
       uSizeMul: { value: scaleThickness(1.0) }
     }
   })
-  planeMat.name = 'flightPlanesMaterial'
 
   const planes = new THREE.Points(planeGeo, planeMat)
   planes.renderOrder = 6
@@ -874,7 +897,6 @@ export function createFlightRoutes(
       uAlpha: { value: 1.1 }
     }
   })
-  endpointsMat.name = 'flightEndpointsMaterial'
 
   const endpoints = new THREE.Points(endpointsGeo, endpointsMat)
   endpoints.renderOrder = 7
@@ -911,7 +933,6 @@ export function createFlightRoutes(
       uAlpha: { value: 0.92 }
     }
   })
-  pinMat.name = 'flightPinMaterial'
 
   const pin = new THREE.Points(pinGeo, pinMat)
   pin.name = 'flightRoutePin'
@@ -994,29 +1015,25 @@ export function createFlightRoutes(
   const verticesPerRoute = segmentsPerRoute * 2
   function applyFocusMask() {
     if (!focusIso3) {
-      for (let i = 0; i < lineVertexCount; i++) {
-        lineMeta[i * 4 + 1] = 1
-      }
-      for (let i = 0; i < planeCount; i++) {
-        planeMeta[i * 4 + 0] = 1
-      }
+      lineFocus.fill(1)
+      planeFocus.fill(1)
     } else {
       for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
         const r = routeData[rIndex]
         const hit = r.isoA3 === focusIso3 || r.isoB3 === focusIso3 ? 1 : 0
         const base = rIndex * verticesPerRoute
         for (let j = 0; j < verticesPerRoute; j++) {
-          lineMeta[(base + j) * 4 + 1] = hit
+          lineFocus[base + j] = hit
         }
         const basePlane = rIndex * MAX_PLANES_PER_ROUTE
         for (let k = 0; k < MAX_PLANES_PER_ROUTE; k++) {
-          planeMeta[(basePlane + k) * 4 + 0] = hit
+          planeFocus[basePlane + k] = hit
         }
       }
     }
 
-    ;(lineGeo.getAttribute('aMeta') as THREE.BufferAttribute).needsUpdate = true
-    ;(planeGeo.getAttribute('aMeta') as THREE.BufferAttribute).needsUpdate = true
+    ;(lineGeo.getAttribute('aFocus') as THREE.BufferAttribute).needsUpdate = true
+    ;(planeGeo.getAttribute('aFocus') as THREE.BufferAttribute).needsUpdate = true
   }
 
   function setFocusCountry(iso3: string | null) {
@@ -1222,7 +1239,7 @@ export function createFlightRoutes(
     }
 
     const zoomOut = 1.0 - zoom
-    const baseHeatOpacity = THREE.MathUtils.lerp(0.03, 0.10, zoomOut)
+    const baseHeatOpacity = THREE.MathUtils.lerp(0.08, 0.24, zoomOut)
     const focusFade = THREE.MathUtils.lerp(1.0, 0.55, focusMix)
     const selectedFade = THREE.MathUtils.lerp(1.0, 0.72, selectedMix)
     heatMat.uniforms.uOpacity.value = baseHeatOpacity * focusFade * selectedFade * heatMix

@@ -106,7 +106,6 @@ void main() {
   float limb = smoothstep(0.02, 0.18, vFacing);
   limb = pow(limb, 1.35);
   alpha *= limb;
-  alpha = min(alpha, 0.34 + hoverEmph * 0.10 + selectedEmph * 0.18);
 
   gl_FragColor = vec4(col, alpha);
 }
