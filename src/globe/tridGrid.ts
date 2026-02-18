@@ -3,7 +3,7 @@ import { createLineFadeMaterial } from './lineFadeMaterial'
 
 // Keep grid below bloom threshold so it looks crisp instead of hazy.
 const GRID_COLOR = new THREE.Color(0xb8c0ce)
-const GRID_LINE_WIDTH = 4.5
+const GRID_LINE_WIDTH = 5.6
 
 function makeTriWire(radius: number, detail: number, opacity: number, camera: THREE.Camera) {
   const ico = new THREE.IcosahedronGeometry(radius, detail)
@@ -41,8 +41,8 @@ function makeTriWire(radius: number, detail: number, opacity: number, camera: TH
 export function createAdaptiveTriGrid(radius: number, camera: THREE.Camera) {
   // Keep tri grid very close to surface to avoid detached halo layers.
   // Higher detail keeps the triangles smaller/cleaner.
-  const coarse = makeTriWire(radius * 1.02, 8, 0.09, camera)
-  const fine = makeTriWire(radius * 1.022, 9, 0.072, camera)
+  const coarse = makeTriWire(radius * 1.024, 9, 0.106, camera)
+  const fine = makeTriWire(radius * 1.027, 10, 0.088, camera)
 
   let coarseAlpha = 1
   let fineAlpha = 0
