@@ -1,31 +1,91 @@
-name: Mirror main to navpass/navpass-website
+name: Two-way mirror (main)
 
 on:
   push:
     branches: ["main"]
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: main-mirror
+  cancel-in-progress: true
 
 jobs:
+  # 1) Sempre que sua main mudar, empurra pro parceiro
   push_to_partner:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false   # <-- IMPORTANTÍSSIMO
-
-      - name: Sanity check token is present (prints only length)
-        run: |
-          TOKEN="${{ secrets.MIRROR_PAT }}"
-          echo "MIRROR_PAT length: ${#TOKEN}"
-          if [ -z "$TOKEN" ]; then
-            echo "MIRROR_PAT is empty or not available."
-            exit 1
-          fi
+          persist-credentials: false
 
       - name: Push main to partner
         run: |
-          # Remove extraheader just in case (defensive)
           git config --global --unset-all http.https://github.com/.extraheader || true
-
           git remote add partner https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/navpass/navpass-website.git
           git push partner main:main
+
+  # 2) A cada 10 min, puxa mudanças do parceiro e aplica na sua main
+  pull_from_partner:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure git identity
+        run: |
+          git config user.name "mirror-bot"
+          git config user.email "mirror-bot@users.noreply.github.com"
+
+      - name: Use MIRROR_PAT for all github.com HTTPS operations
+        run: |
+          git config --global --unset-all http.https://github.com/.extraheader || true
+          git config --global url."https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Fetch partner main
+        run: |
+          git remote add partner https://github.com/navpass/navpass-website.git || true
+          git fetch origin main
+          git fetch partner main
+
+      - name: Merge partner/main into our main and push to origin
+        run: |
+          git checkout main
+          git reset --hard origin/main
+
+          OUR="$(git rev-parse HEAD)"
+          THEIR="$(git rev-parse partner/main)"
+          BASE="$(git merge-base origin/main partner/main)"
+
+          echo "origin/main:  $OUR"
+          echo "partner/main: $THEIR"
+          echo "merge-base:   $BASE"
+
+          if [ "$OUR" = "$THEIR" ]; then
+            echo "Already in sync. Nothing to do."
+            exit 0
+          fi
+
+          # parceiro atrás -> nada a fazer
+          if [ "$THEIR" = "$BASE" ]; then
+            echo "Partner is behind. No pull needed."
+            exit 0
+          fi
+
+          # parceiro na frente
+          if [ "$OUR" = "$BASE" ]; then
+            echo "Fast-forwarding our main to partner/main..."
+            git merge --ff-only partner/main
+          else
+            echo "Divergence detected. Attempting merge..."
+            git merge --no-edit partner/main
+          fi
+
+          # Só push pro seu repo. O espelho pro parceiro acontece via job push_to_partner
+          git push origin main
