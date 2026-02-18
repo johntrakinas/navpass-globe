@@ -3,13 +3,16 @@ import * as THREE from 'three'
 export function createDepthMaskSphere(radius: number) {
   const geometry = new THREE.SphereGeometry(radius * 1.0005, 96, 96)
 
-  // IMPORTANTE:
-  // - colorWrite: false => não desenha cor (invisível)
-  // - depthWrite: true  => escreve depth (oclusão real)
+  // NOTE:
+  // Some Safari/WebKit + Apple GPU combos can produce white square artifacts
+  // with colorWrite=false depth masks. Keep this as a real dark occluder so
+  // depth remains stable across platforms.
   const material = new THREE.MeshBasicMaterial({
-    colorWrite: false,
+    color: 0x07090d,
     depthWrite: true,
-    depthTest: true
+    depthTest: true,
+    side: THREE.FrontSide,
+    toneMapped: false
   })
 
   const mesh = new THREE.Mesh(geometry, material)
