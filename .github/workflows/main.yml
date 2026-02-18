@@ -29,43 +29,39 @@ jobs:
           git config --global --unset-all http.https://github.com/.extraheader || true
           git config --global url."https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/".insteadOf "https://github.com/"
 
-      - name: Sync-first with partner (avoid non-fast-forward) then push to partner
+      - name: Sync-first (robust refs) and push
         run: |
           git remote add partner https://github.com/navpass/navpass-website.git || true
-
-          git fetch origin main
-          git fetch partner main
-
+      
+          git fetch --prune origin  +refs/heads/main:refs/remotes/origin/main
+          git fetch --prune partner +refs/heads/main:refs/remotes/partner/main
+      
           git checkout main
-          git reset --hard origin/main
-
-          OUR="$(git rev-parse HEAD)"
-          THEIR="$(git rev-parse partner/main)"
-          BASE="$(git merge-base origin/main partner/main)"
-
+          git reset --hard refs/remotes/origin/main
+      
+          OUR="$(git rev-parse refs/remotes/origin/main)"
+          THEIR="$(git rev-parse refs/remotes/partner/main)"
+          BASE="$(git merge-base refs/remotes/origin/main refs/remotes/partner/main)"
+      
           echo "origin/main:  $OUR"
           echo "partner/main: $THEIR"
           echo "merge-base:   $BASE"
-
-          # Se parceiro está na frente, traz primeiro pro seu main
-          if [ "$OUR" != "$THEIR" ] && [ "$THEIR" != "$BASE" ]; then
-            if [ "$OUR" = "$BASE" ]; then
-              echo "Partner ahead: fast-forward our main to partner/main..."
-              git merge --ff-only partner/main
-            else
-              echo "Divergence detected: attempting merge..."
-              git merge --no-edit partner/main
-            fi
-
-            # atualiza seu repo primeiro (isso dispara outro push event, mas concurrency segura)
+      
+          if [ "$OUR" = "$THEIR" ]; then
+            echo "Already in sync."
+          elif [ "$THEIR" = "$BASE" ]; then
+            echo "Partner behind. Pushing our main to partner..."
+          elif [ "$OUR" = "$BASE" ]; then
+            echo "Fast-forward our main to partner..."
+            git merge --ff-only refs/remotes/partner/main
             git push origin main
-
-            # re-sync vars pra empurrar pro parceiro com certeza atualizado
-            git fetch origin main
-            git reset --hard origin/main
+          else
+            echo "Diverged. Attempting merge..."
+            git merge --no-edit refs/remotes/partner/main
+            git push origin main
           fi
-
-          # Agora empurra pro parceiro. Deve ser fast-forward.
+      
+          # Sempre tenta espelhar pro parceiro no final
           git push partner main:main
 
   # Agendado: puxa do parceiro e aplica na sua main
