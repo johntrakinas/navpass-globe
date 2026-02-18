@@ -32,37 +32,57 @@ jobs:
       - name: Sync-first (robust refs) and push
         run: |
           git remote add partner https://github.com/navpass/navpass-website.git || true
-      
+
           git fetch --prune origin  +refs/heads/main:refs/remotes/origin/main
           git fetch --prune partner +refs/heads/main:refs/remotes/partner/main
-      
+          
           git checkout main
           git reset --hard refs/remotes/origin/main
-      
+          
           OUR="$(git rev-parse refs/remotes/origin/main)"
           THEIR="$(git rev-parse refs/remotes/partner/main)"
-          BASE="$(git merge-base refs/remotes/origin/main refs/remotes/partner/main || true)"
-      
+          
           echo "origin/main:  $OUR"
           echo "partner/main: $THEIR"
-          echo "merge-base:   $BASE"
-      
-          if [ "$OUR" = "$THEIR" ]; then
-            echo "Already in sync."
-          elif [ "$THEIR" = "$BASE" ]; then
-            echo "Partner behind. Pushing our main to partner..."
-          elif [ "$OUR" = "$BASE" ]; then
-            echo "Fast-forward our main to partner..."
-            git merge --ff-only refs/remotes/partner/main
-            git push origin main
+          
+          # ✅ detecta "unrelated histories" pelo EXIT CODE do merge-base
+          if git merge-base --is-ancestor refs/remotes/origin/main refs/remotes/partner/main; then
+            REL="origin_is_ancestor"
+          elif git merge-base --is-ancestor refs/remotes/partner/main refs/remotes/origin/main; then
+            REL="partner_is_ancestor"
+          elif git merge-base refs/remotes/origin/main refs/remotes/partner/main >/dev/null 2>&1; then
+            REL="diverged_with_common_base"
           else
-            echo "Diverged. Attempting merge..."
-            git merge --no-edit refs/remotes/partner/main
-            git push origin main
+            REL="unrelated"
           fi
-      
-          # Sempre tenta espelhar pro parceiro no final
-          git push partner main:main
+          
+          echo "relationship: $REL"
+          
+          case "$REL" in
+            origin_is_ancestor)
+              echo "Partner ahead (fast-forward our main -> partner)..."
+              git merge --ff-only refs/remotes/partner/main
+              git push origin main
+              git push partner main:main
+              ;;
+            partner_is_ancestor)
+              echo "Partner behind (push our main -> partner)..."
+              git push partner main:main
+              ;;
+            diverged_with_common_base)
+              echo "Diverged with common base. Attempting merge..."
+              git merge --no-edit refs/remotes/partner/main
+              git push origin main
+              git push partner main:main
+              ;;
+            unrelated)
+              echo "Unrelated histories detected. Merging with --allow-unrelated-histories..."
+              git merge --no-edit --allow-unrelated-histories refs/remotes/partner/main
+              git push origin main
+              git push partner main:main
+              ;;
+          esac
+
 
   # Agendado: puxa do parceiro e aplica na sua main
   pull_from_partner:
