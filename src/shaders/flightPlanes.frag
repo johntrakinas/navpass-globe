@@ -65,19 +65,23 @@ void main() {
   float focusFade = mix(0.05, 1.0, focusKeep);
   float focusBoost = mix(1.0, 1.12, vFocus * uFocusMix);
 
+  float isHover = 1.0 - step(0.5, abs(vRouteId - uHoverRouteId));
   float isSel = 1.0 - step(0.5, abs(vRouteId - uSelectedRouteId));
-  float emphasize = max(vEmph, isSel * uSelectedMix);
+  float hoverEmph = isHover * uHoverMix;
+  float selectedEmph = isSel * uSelectedMix;
+  float emphasize = max(max(vEmph, hoverEmph), selectedEmph);
   focusKeep = mix(focusKeep, 1.0, emphasize);
   focusFade = mix(0.05, 1.0, focusKeep);
 
   // When a route is selected, de-emphasize the rest a bit.
-  float selectedContext = mix(1.0, mix(0.28, 1.0, isSel), uSelectedMix * 0.8);
+  float selectedContext = mix(1.0, mix(0.18, 1.0, isSel), uSelectedMix * 0.95);
   // When hovering a route (and nothing is selected), de-emphasize the rest.
-  float isHover = 1.0 - step(0.5, abs(vRouteId - uHoverRouteId));
   float hoverCtxMix = uHoverMix * (1.0 - uSelectedMix);
-  float hoverContext = mix(1.0, mix(0.35, 1.0, isHover), hoverCtxMix * 0.75);
+  float hoverContext = mix(1.0, mix(0.24, 1.0, isHover), hoverCtxMix * 0.9);
 
-  col = mix(col, uCoreColor, emphasize * 0.35);
+  float lightUp = clamp(hoverEmph * 0.52 + selectedEmph * 0.78, 0.0, 1.0);
+  col = mix(col, uCoreColor, lightUp);
+  col = mix(col, vec3(1.0), selectedEmph * 0.18);
 
   float alpha =
     (glow * 0.92 + tail * 0.8 + core * 0.75) *
@@ -90,7 +94,7 @@ void main() {
     hoverContext *
     vTraffic *
     (0.9 + traffic01 * 0.18) *
-    (1.0 + emphasize * 0.85);
+    (1.0 + hoverEmph * 1.0 + selectedEmph * 1.95);
 
   float bundleMix = smoothstep(0.35, 0.95, zoomOut);
   float hubKeep = smoothstep(0.18, 0.88, vHub);

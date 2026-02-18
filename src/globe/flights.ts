@@ -720,8 +720,8 @@ export function createFlightRoutes(
       uBaseColor: { value: GOOGLE_COLORS.lightBlue.clone().multiplyScalar(0.92) },
       uHeadColor: { value: GOOGLE_COLORS.white.clone() },
       uTailColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.lightBlue, 0.35) },
-      uBaseAlpha: { value: 0.045 },
-      uGlowAlpha: { value: 0.32 },
+      uBaseAlpha: { value: 0.052 },
+      uGlowAlpha: { value: 0.38 },
       uTailLength: { value: 0.18 },
       uHeadWidth: { value: 0.022 },
       uFocusMix: { value: 0.0 },
@@ -891,7 +891,7 @@ export function createFlightRoutes(
       uSelectedMix: { value: 0.0 },
       uOriginColor: { value: GOOGLE_COLORS.white.clone() },
       uDestColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.08) },
-      uAlpha: { value: 0.72 }
+      uAlpha: { value: 0.84 }
     }
   })
 
@@ -926,8 +926,8 @@ export function createFlightRoutes(
       uHoverMix: { value: 0.0 },
       uSelectedMix: { value: 0.0 },
       uHoverColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.lightBlue, 0.08) },
-      uSelectedColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.12) },
-      uAlpha: { value: 0.78 }
+      uSelectedColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.24) },
+      uAlpha: { value: 0.92 }
     }
   })
 
@@ -1146,17 +1146,17 @@ export function createFlightRoutes(
   // Update positions + uniforms.
   function update(deltaSeconds: number, timeSeconds: number, cameraDistance: number) {
     // smooth focus crossfade
-    const k = 1.0 - Math.exp(-deltaSeconds * 8.0)
+    const k = 1.0 - Math.exp(-deltaSeconds * 4.2)
     focusMix += (focusTarget - focusMix) * k
     lineMat.uniforms.uFocusMix.value = focusMix
     planeMat.uniforms.uFocusMix.value = focusMix
 
     // smooth hover/selection crossfade
-    const kHover = 1.0 - Math.exp(-deltaSeconds * 14.0)
+    const kHover = 1.0 - Math.exp(-deltaSeconds * 5.0)
     hoverMix += (hoverTarget - hoverMix) * kHover
     if (hoverTarget === 0 && hoverMix < 0.002) hoverRouteId = -999
 
-    const kSel = 1.0 - Math.exp(-deltaSeconds * 10.0)
+    const kSel = 1.0 - Math.exp(-deltaSeconds * 4.0)
     selectedMix += (selectedTarget - selectedMix) * kSel
     if (selectedTarget === 0 && selectedMix < 0.002) selectedRouteId = -999
 
@@ -1174,11 +1174,21 @@ export function createFlightRoutes(
     endpointsMat.uniforms.uCameraDistance.value = cameraDistance
     endpointsMat.uniforms.uHoverMix.value = hoverMix
     endpointsMat.uniforms.uSelectedMix.value = selectedMix
+    endpointsMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(
+      0.84,
+      1.12,
+      THREE.MathUtils.clamp(Math.max(hoverMix, selectedMix), 0, 1)
+    )
 
     pinMat.uniforms.uTime.value = timeSeconds
     pinMat.uniforms.uCameraDistance.value = cameraDistance
     pinMat.uniforms.uHoverMix.value = hoverMix
     pinMat.uniforms.uSelectedMix.value = selectedMix
+    pinMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(
+      0.92,
+      1.18,
+      THREE.MathUtils.clamp(selectedMix + hoverMix * 0.35, 0, 1)
+    )
 
     if (hubsMat) {
       hubsMat.uniforms.uTime.value = timeSeconds
@@ -1211,7 +1221,7 @@ export function createFlightRoutes(
     planeMat.uniforms.uPlaneDensity.value = planeDensity
 
     // Heatmap: stronger when zoomed out; slightly reduced during country focus or route selection.
-    const kHeat = 1.0 - Math.exp(-deltaSeconds * 7.0)
+    const kHeat = 1.0 - Math.exp(-deltaSeconds * 3.6)
     heatMix += (heatTarget - heatMix) * kHeat
     if (heatTarget === 0 && heatMix < 0.002) {
       heatMix = 0
@@ -1229,14 +1239,16 @@ export function createFlightRoutes(
       0.02,
       0.5
     )
-    lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.18, 0.34, zoom)
-    lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.028, 0.05, zoom)
+    const hoverBoost = THREE.MathUtils.lerp(1.0, 1.26, hoverMix * (1.0 - selectedMix * 0.35))
+    const selectedBoost = THREE.MathUtils.lerp(1.0, 1.52, selectedMix)
+    lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.2, 0.38, zoom) * hoverBoost * selectedBoost
+    lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.032, 0.058, zoom) * THREE.MathUtils.lerp(1.0, 1.24, selectedMix)
     lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
-      scaleThickness(THREE.MathUtils.lerp(0.018, 0.024, zoom)),
+      scaleThickness(THREE.MathUtils.lerp(0.0185, 0.026, zoom) * THREE.MathUtils.lerp(1.0, 1.22, Math.max(hoverMix, selectedMix))),
       0.004,
       0.1
     )
-    planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.82, 1.0, zoom)
+    planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.82, 1.0, zoom) * THREE.MathUtils.lerp(1.0, 1.14, Math.max(hoverMix, selectedMix))
   }
 
   return {

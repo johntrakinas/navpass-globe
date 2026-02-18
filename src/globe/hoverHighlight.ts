@@ -1,9 +1,13 @@
 import * as THREE from 'three'
 import { latLongToVector3 } from './latLongtoVector3'
 import { GOOGLE_COLORS, googlePaletteLerp } from '../theme/googleColors'
+import { scaleThickness } from './thicknessScale'
 
-let hoverLines: THREE.LineSegments | null = null
-let hoverMat: THREE.LineBasicMaterial | null = null
+let hoverGroup: THREE.Group | null = null
+let hoverGlowLine: THREE.LineSegments | null = null
+let hoverCoreLine: THREE.LineSegments | null = null
+let hoverGlowMat: THREE.ShaderMaterial | null = null
+let hoverCoreMat: THREE.ShaderMaterial | null = null
 
 let targetOpacity = 0
 let currentOpacity = 0
@@ -12,11 +16,67 @@ let hoverColorA = GOOGLE_COLORS.white.clone()
 let hoverColorB = GOOGLE_COLORS.yellow.clone()
 let hoverOpacityMul = 1
 const glowColor = new THREE.Color()
+const coreColor = new THREE.Color()
 let hoverScale = 1
 let hoverScaleTarget = 1
 const HOVER_RADIUS_MULT = 1.016
-const HOVER_POP_START = 0.986
-const HOVER_POP_TARGET = 1.006
+const HOVER_POP_START = 0.97
+const HOVER_POP_TARGET = 1.012
+
+const HOVER_VERT = /* glsl */ `
+uniform float uThickness;
+
+void main() {
+  vec3 p = position * (1.0 + uThickness);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}
+`
+
+const HOVER_FRAG = /* glsl */ `
+precision mediump float;
+uniform vec3 uColor;
+uniform float uOpacity;
+
+void main() {
+  gl_FragColor = vec4(uColor, uOpacity);
+}
+`
+
+function createHoverMaterial(thickness: number) {
+  return new THREE.ShaderMaterial({
+    vertexShader: HOVER_VERT,
+    fragmentShader: HOVER_FRAG,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor: { value: new THREE.Color(0xffffff) },
+      uOpacity: { value: 0.0 },
+      uThickness: { value: thickness }
+    }
+  })
+}
+
+function disposeHover(parent: THREE.Object3D) {
+  if (!hoverGroup) return
+
+  parent.remove(hoverGroup)
+
+  if (hoverGlowLine) {
+    hoverGlowLine.geometry.dispose()
+    hoverGlowLine = null
+  }
+  if (hoverCoreLine) {
+    hoverCoreLine.geometry.dispose()
+    hoverCoreLine = null
+  }
+
+  hoverGlowMat?.dispose()
+  hoverCoreMat?.dispose()
+  hoverGlowMat = null
+  hoverCoreMat = null
+  hoverGroup = null
+}
 
 function featureToLineGeometry(feature: any, radius: number) {
   const positions: number[] = []
@@ -44,14 +104,7 @@ function featureToLineGeometry(feature: any, radius: number) {
 }
 
 export function setHoverHighlight(feature: any | null, parent: THREE.Object3D, radius: number) {
-  // remove antigo
-  if (hoverLines) {
-    parent.remove(hoverLines)
-    hoverLines.geometry.dispose()
-    ;(hoverLines.material as THREE.Material).dispose()
-    hoverLines = null
-    hoverMat = null
-  }
+  disposeHover(parent)
 
   targetOpacity = 0
   currentOpacity = 0
@@ -62,24 +115,29 @@ export function setHoverHighlight(feature: any | null, parent: THREE.Object3D, r
   if (!feature) return
 
   const geo = featureToLineGeometry(feature, radius)
+  const geoCore = geo.clone()
 
-  hoverMat = new THREE.LineBasicMaterial({
-    color: hoverColorA,
-    transparent: true,
-    opacity: 0.0, // começa invisível
-    depthWrite: false
-  })
-  hoverMat.blending = THREE.AdditiveBlending
+  hoverGlowMat = createHoverMaterial(scaleThickness(0.0058))
+  hoverCoreMat = createHoverMaterial(scaleThickness(0.0023))
 
-  hoverLines = new THREE.LineSegments(geo, hoverMat)
-  hoverLines.renderOrder = 60
-  hoverLines.frustumCulled = false
+  hoverGlowLine = new THREE.LineSegments(geo, hoverGlowMat)
+  hoverCoreLine = new THREE.LineSegments(geoCore, hoverCoreMat)
+
+  hoverGlowLine.renderOrder = 60
+  hoverCoreLine.renderOrder = 61
+  hoverGlowLine.frustumCulled = false
+  hoverCoreLine.frustumCulled = false
+
+  hoverGroup = new THREE.Group()
+  hoverGroup.add(hoverGlowLine)
+  hoverGroup.add(hoverCoreLine)
+
   // Pop-out animation: start slightly "closer" and quickly expand to the real hover radius.
   hoverScale = HOVER_POP_START
   hoverScaleTarget = HOVER_POP_TARGET
-  hoverLines.scale.setScalar(hoverScale)
+  hoverGroup.scale.setScalar(hoverScale)
 
-  parent.add(hoverLines)
+  parent.add(hoverGroup)
 
   // fade-in alvo padrão (o updateHover vai aplicar)
   targetOpacity = 1
@@ -97,38 +155,39 @@ export function fadeOutHover(parent: THREE.Object3D) {
 }
 
 export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number, cameraDistance: number) {
-  if (!hoverMat || !hoverLines) return
+  if (!hoverGroup || !hoverGlowMat || !hoverCoreMat) return
 
   // ✅ opacidade adaptativa ao zoom (longe = menos forte)
   // ajuste fino: quanto menor o número, mais cedo ele fica forte
   const zoomFactor = THREE.MathUtils.clamp((28 - cameraDistance) / 12, 0, 1)
-  const desiredMax = 0.24 + 0.5 * zoomFactor // 0.24..0.74 (perto mais visível)
+  const desiredMax = 0.32 + 0.58 * zoomFactor // 0.32..0.90 (perto mais visível)
 
-  const maxOp = Math.min(desiredMax, 0.78)
+  const maxOp = Math.min(desiredMax, 0.86)
   const tgt = Math.min(targetOpacity, maxOp)
 
   // ✅ fade suave (critico pro "Google feel")
-  const smoothing = 0.18 // maior = mais rápido (0.12..0.22)
+  const smoothing = 0.11 // maior = mais rápido (0.12..0.22)
   currentOpacity += (tgt - currentOpacity) * smoothing
-  const pulse = 0.72 + 0.28 * Math.sin(timeSeconds * 2.8 + pulsePhase)
-  const shimmer = 0.5 + 0.5 * Math.sin(timeSeconds * 3.6 + pulsePhase * 0.7)
+  const pulse = 0.8 + 0.2 * Math.sin(timeSeconds * 2.1 + pulsePhase)
+  const shimmer = 0.5 + 0.5 * Math.sin(timeSeconds * 2.6 + pulsePhase * 0.7)
   const palette = googlePaletteLerp((timeSeconds * 0.08 + pulsePhase * 0.12) % 1)
   glowColor.copy(hoverColorA).lerp(hoverColorB, shimmer).lerp(palette, 0.55)
-  hoverMat.color.copy(glowColor)
-  hoverMat.opacity = currentOpacity * pulse * hoverOpacityMul
+  coreColor.copy(glowColor).lerp(GOOGLE_COLORS.white, 0.42)
+
+  ;(hoverGlowMat.uniforms.uColor.value as THREE.Color).copy(glowColor)
+  hoverGlowMat.uniforms.uOpacity.value = currentOpacity * pulse * hoverOpacityMul * 0.85
+
+  ;(hoverCoreMat.uniforms.uColor.value as THREE.Color).copy(coreColor)
+  hoverCoreMat.uniforms.uOpacity.value = currentOpacity * (0.72 + 0.28 * pulse) * hoverOpacityMul * 0.98
 
   // subtle "raise" animation (helps the border feel like it lifts off the globe)
-  const popSmoothing = 0.22
+  const popSmoothing = 0.12
   hoverScale += (hoverScaleTarget - hoverScale) * popSmoothing
-  hoverLines.scale.setScalar(hoverScale)
+  hoverGroup.scale.setScalar(hoverScale)
 
   // quando chega em ~0, remove de vez
   if (targetOpacity === 0 && currentOpacity < 0.01) {
-    parent.remove(hoverLines)
-    hoverLines.geometry.dispose()
-    ;(hoverLines.material as THREE.Material).dispose()
-    hoverLines = null
-    hoverMat = null
+    disposeHover(parent)
     targetOpacity = 0
     currentOpacity = 0
     hoverScale = 1
@@ -139,8 +198,5 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
 export function setHoverTheme(isLight: boolean) {
   hoverColorA = isLight ? GOOGLE_COLORS.deepBlue.clone() : GOOGLE_COLORS.white.clone()
   hoverColorB = GOOGLE_COLORS.yellow.clone()
-  hoverOpacityMul = isLight ? 1.55 : 1.3
-  if (hoverMat) {
-    hoverMat.color.copy(hoverColorA)
-  }
+  hoverOpacityMul = isLight ? 1.65 : 1.45
 }

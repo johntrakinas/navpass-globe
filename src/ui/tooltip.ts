@@ -14,7 +14,7 @@ export function createTooltip() {
   el.style.letterSpacing = '0.2px'
   el.style.backdropFilter = 'blur(6px)'
   el.style.opacity = '0'
-  el.style.transition = 'opacity 120ms ease'
+  el.style.transition = 'opacity 340ms ease'
   el.style.zIndex = '99999'
 
   document.body.appendChild(el)
