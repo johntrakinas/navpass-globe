@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 1) Sempre que sua main mudar, empurra pro parceiro
+  # Quando sua main muda: primeiro garante que está alinhado com o parceiro, depois espelha.
   push_to_partner:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -22,13 +22,53 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Push main to partner
+      - name: Configure git + auth
         run: |
+          git config user.name "mirror-bot"
+          git config user.email "mirror-bot@users.noreply.github.com"
           git config --global --unset-all http.https://github.com/.extraheader || true
-          git remote add partner https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/navpass/navpass-website.git
+          git config --global url."https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Sync-first with partner (avoid non-fast-forward) then push to partner
+        run: |
+          git remote add partner https://github.com/navpass/navpass-website.git || true
+
+          git fetch origin main
+          git fetch partner main
+
+          git checkout main
+          git reset --hard origin/main
+
+          OUR="$(git rev-parse HEAD)"
+          THEIR="$(git rev-parse partner/main)"
+          BASE="$(git merge-base origin/main partner/main)"
+
+          echo "origin/main:  $OUR"
+          echo "partner/main: $THEIR"
+          echo "merge-base:   $BASE"
+
+          # Se parceiro está na frente, traz primeiro pro seu main
+          if [ "$OUR" != "$THEIR" ] && [ "$THEIR" != "$BASE" ]; then
+            if [ "$OUR" = "$BASE" ]; then
+              echo "Partner ahead: fast-forward our main to partner/main..."
+              git merge --ff-only partner/main
+            else
+              echo "Divergence detected: attempting merge..."
+              git merge --no-edit partner/main
+            fi
+
+            # atualiza seu repo primeiro (isso dispara outro push event, mas concurrency segura)
+            git push origin main
+
+            # re-sync vars pra empurrar pro parceiro com certeza atualizado
+            git fetch origin main
+            git reset --hard origin/main
+          fi
+
+          # Agora empurra pro parceiro. Deve ser fast-forward.
           git push partner main:main
 
-  # 2) A cada 10 min, puxa mudanças do parceiro e aplica na sua main
+  # Agendado: puxa do parceiro e aplica na sua main
   pull_from_partner:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
@@ -38,24 +78,20 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Configure git identity
+      - name: Configure git + auth
         run: |
           git config user.name "mirror-bot"
           git config user.email "mirror-bot@users.noreply.github.com"
-
-      - name: Use MIRROR_PAT for all github.com HTTPS operations
-        run: |
           git config --global --unset-all http.https://github.com/.extraheader || true
           git config --global url."https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/".insteadOf "https://github.com/"
 
-      - name: Fetch partner main
+      - name: Pull partner -> merge -> push origin
         run: |
           git remote add partner https://github.com/navpass/navpass-website.git || true
+
           git fetch origin main
           git fetch partner main
 
-      - name: Merge partner/main into our main and push to origin
-        run: |
           git checkout main
           git reset --hard origin/main
 
@@ -78,7 +114,7 @@ jobs:
             exit 0
           fi
 
-          # parceiro na frente
+          # parceiro na frente -> traz pra cá
           if [ "$OUR" = "$BASE" ]; then
             echo "Fast-forwarding our main to partner/main..."
             git merge --ff-only partner/main
@@ -87,5 +123,4 @@ jobs:
             git merge --no-edit partner/main
           fi
 
-          # Só push pro seu repo. O espelho pro parceiro acontece via job push_to_partner
           git push origin main
