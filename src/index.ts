@@ -709,16 +709,29 @@ for (const topLink of document.querySelectorAll<HTMLAnchorElement>('#figma-shell
 let isDragging = false
 let lastX = 0
 let lastY = 0
-const ROTATE_SPEED = 0.0035
+const ROTATE_SPEED = 0.00175
 
 let velYaw = 0
 let velPitch = 0
 let lastMoveTime = performance.now()
+let peakVelYaw = 0
+let peakVelPitch = 0
+let lastYawDragSign = 0
 
-const INERTIA = 0.88          // atrito (0.85..0.95) — menor = mais “pesado”
-const MAX_VEL = 1.2           // rad/s (limita velocidade pra não “pirar”)
+const INERTIA = 0.91          // atrito (0.85..0.95) — menor = mais “pesado”
+const MAX_VEL = 0.38          // rad/s (limita velocidade pra não “pirar”)
+const MAX_DRAG_STEP_RAD = THREE.MathUtils.degToRad(0.82)
+const RELEASE_SPIN_TRIGGER_DISTANCE = 170
+const RELEASE_SPIN_TRIGGER_SPEED = 0.16
+const RELEASE_SPIN_MIN = 0.085
+const RELEASE_SPIN_MAX = 0.22
+const RELEASE_SPIN_BOOST = 0.045
+const RELEASE_PITCH_DAMP = 0.34
 const CLICK_DRAG_THRESHOLD = 4 // px: acima disso consideramos que foi drag
-const AUTO_ROTATE_SPEED = THREE.MathUtils.degToRad(0.78)
+const AUTO_ROTATE_SPEED = THREE.MathUtils.degToRad(0.14)
+const AUTO_ROTATE_BREAK_CYCLE_SEC = 18.0
+const AUTO_ROTATE_BREAK_WINDOW_SEC = 6.6
+const AUTO_ROTATE_BREAK_MIN_FACTOR = 0.04
 let dragDistance = 0
 let dragSuppressUntil = 0
 let activePointerId: number | null = null
@@ -732,10 +745,27 @@ function markUserInteracted() {
   hasUserInteracted = true
 }
 
+function getIdleAutoRotateFactor(timeSeconds: number) {
+  const phaseSec = timeSeconds % AUTO_ROTATE_BREAK_CYCLE_SEC
+  if (phaseSec > AUTO_ROTATE_BREAK_WINDOW_SEC) return 1
+
+  const t = THREE.MathUtils.clamp(phaseSec / AUTO_ROTATE_BREAK_WINDOW_SEC, 0, 1)
+  // Smooth brake envelope: slow down, almost pause, then recover.
+  const brake = Math.pow(Math.sin(Math.PI * t), 0.58)
+  return 1.0 - brake * (1.0 - AUTO_ROTATE_BREAK_MIN_FACTOR)
+}
+
+function clampDragDelta(deltaRad: number) {
+  return Math.tanh(deltaRad / MAX_DRAG_STEP_RAD) * MAX_DRAG_STEP_RAD
+}
+
 function resetDragState() {
   isDragging = false
   activePointerId = null
   dragDistance = 0
+  peakVelYaw = 0
+  peakVelPitch = 0
+  lastYawDragSign = 0
 }
 
 function isEventOverUI(target: EventTarget | null) {
@@ -761,6 +791,9 @@ function onPointerDown(e: PointerEvent) {
   lastMoveTime = performance.now()
   velYaw = 0
   velPitch = 0
+  peakVelYaw = 0
+  peakVelPitch = 0
+  lastYawDragSign = 0
   if (globeAnim) {
     // If the user grabs the globe mid-focus animation, sync angles to avoid a jump.
     syncYawPitchFromGlobe()
@@ -799,18 +832,25 @@ function onPointerMove(e: PointerEvent) {
   globeAnim = null
 
   // acumula yaw/pitch e aplica sem roll
-  yawAccum += dx * ROTATE_SPEED
+  const yawDelta = clampDragDelta(dx * ROTATE_SPEED)
+  const pitchDelta = clampDragDelta(dy * ROTATE_SPEED)
+  yawAccum += yawDelta
   // Pitch acompanha o movimento vertical do mouse (drag para baixo = inclina para baixo).
-  pitchAccum = THREE.MathUtils.clamp(pitchAccum + dy * ROTATE_SPEED, -maxPitch, maxPitch)
+  pitchAccum = THREE.MathUtils.clamp(pitchAccum + pitchDelta, -maxPitch, maxPitch)
 
   applyYawPitchToGlobe()
 
   // velocidade para inércia (normaliza por tempo)
   const dtSeconds = dt / 1000
-  const velYawPerSec = (dx * ROTATE_SPEED) / Math.max(0.0001, dtSeconds)
-  const velPitchPerSec = (dy * ROTATE_SPEED) / Math.max(0.0001, dtSeconds)
+  const velYawPerSec = yawDelta / Math.max(0.0001, dtSeconds)
+  const velPitchPerSec = pitchDelta / Math.max(0.0001, dtSeconds)
   velYaw = THREE.MathUtils.clamp(velYawPerSec, -MAX_VEL, MAX_VEL)
   velPitch = THREE.MathUtils.clamp(velPitchPerSec, -MAX_VEL, MAX_VEL)
+  if (Math.abs(velYaw) > Math.abs(peakVelYaw)) peakVelYaw = velYaw
+  if (Math.abs(velPitch) > Math.abs(peakVelPitch)) peakVelPitch = velPitch
+  if (Math.abs(yawDelta) > 0.00005) {
+    lastYawDragSign = Math.sign(yawDelta)
+  }
 
   tooltip.hide() // (se você já estava fazendo)
 }
@@ -824,6 +864,34 @@ function onPointerUp(e: PointerEvent) {
   activePointerId = null
   const heldMs = performance.now() - dragStartTime
   if (dragDistance > CLICK_DRAG_THRESHOLD) {
+    const strongPull =
+      dragDistance >= RELEASE_SPIN_TRIGGER_DISTANCE ||
+      Math.abs(peakVelYaw) >= RELEASE_SPIN_TRIGGER_SPEED
+    if (strongPull) {
+      const spinSign =
+        lastYawDragSign !== 0
+          ? lastYawDragSign
+          : (Math.abs(peakVelYaw) > 0.0001 ? Math.sign(peakVelYaw) : Math.sign(velYaw))
+      const baseSpeed = Math.max(Math.abs(velYaw), Math.abs(peakVelYaw) * 0.55)
+      const releaseSpeed = THREE.MathUtils.clamp(
+        baseSpeed + RELEASE_SPIN_BOOST,
+        RELEASE_SPIN_MIN,
+        RELEASE_SPIN_MAX
+      )
+      if (spinSign !== 0) {
+        velYaw = spinSign * releaseSpeed
+      } else {
+        velYaw = THREE.MathUtils.clamp(velYaw, -RELEASE_SPIN_MAX, RELEASE_SPIN_MAX)
+      }
+    } else {
+      velYaw *= 0.62
+    }
+    velPitch = THREE.MathUtils.clamp(
+      velPitch * RELEASE_PITCH_DAMP,
+      -MAX_VEL * RELEASE_PITCH_DAMP,
+      MAX_VEL * RELEASE_PITCH_DAMP
+    )
+
     // Small hover cooldown after dragging so we don't "flash" a hover on release.
     const cooldown = heldMs < 160 ? 380 : 300
     dragSuppressUntil = performance.now() + cooldown
@@ -1613,8 +1681,9 @@ function animate() {
       if (Math.abs(velYaw) < 0.00001) velYaw = 0
       if (Math.abs(velPitch) < 0.00001) velPitch = 0
     } else if (!hasUserInteracted && !isCountrySelected && selectedFlightRouteId === null) {
-      // Slow idle rotation until first interaction.
-      yawAccum += AUTO_ROTATE_SPEED * deltaSeconds
+      // Very slow idle rotation with periodic "breaks" (Google-like breathing pace).
+      const brakeFactor = getIdleAutoRotateFactor(now)
+      yawAccum += AUTO_ROTATE_SPEED * brakeFactor * deltaSeconds
       applyYawPitchToGlobe()
     }
   }

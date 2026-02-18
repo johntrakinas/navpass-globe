@@ -5,12 +5,15 @@ import { createLineFadeMaterial } from './lineFadeMaterial'
 // Keep grid below bloom threshold so it reads as lines, not as a halo.
 const GRID_COLOR = new THREE.Color(0xb8c0ce)
 const GRID_LINE_WIDTH = 4.5
+const SOUTH_POLE_RING_CUTOFF = -78
 
 function buildGridGeometry(radius: number, latStep: number, lonStep: number) {
   const positions: number[] = []
 
   // lat lines
   for (let lat = -80; lat <= 80; lat += latStep) {
+    // Remove the closed ring artifact near the south pole.
+    if (lat <= SOUTH_POLE_RING_CUTOFF) continue
     for (let lon = -180; lon < 180; lon += 2) {
       const a = latLongToVector3(lat, lon, radius)
       const b = latLongToVector3(lat, lon + 2, radius)
