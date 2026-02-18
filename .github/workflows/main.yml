@@ -12,7 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Quando sua main muda: primeiro garante que está alinhado com o parceiro, depois espelha.
   push_to_partner:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -22,69 +21,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Configure git + auth
+      - name: Use MIRROR_PAT for GitHub HTTPS
         run: |
-          git config user.name "mirror-bot"
-          git config user.email "mirror-bot@users.noreply.github.com"
           git config --global --unset-all http.https://github.com/.extraheader || true
           git config --global url."https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/".insteadOf "https://github.com/"
 
-      - name: Sync-first (robust refs) and push
+      - name: Push main to partner
         run: |
           git remote add partner https://github.com/navpass/navpass-website.git || true
-
-          git fetch --prune origin  +refs/heads/main:refs/remotes/origin/main
           git fetch --prune partner +refs/heads/main:refs/remotes/partner/main
-          
-          git checkout main
-          git reset --hard refs/remotes/origin/main
-          
-          OUR="$(git rev-parse refs/remotes/origin/main)"
-          THEIR="$(git rev-parse refs/remotes/partner/main)"
-          
-          echo "origin/main:  $OUR"
-          echo "partner/main: $THEIR"
-          
-          # ✅ detecta "unrelated histories" pelo EXIT CODE do merge-base
-          if git merge-base --is-ancestor refs/remotes/origin/main refs/remotes/partner/main; then
-            REL="origin_is_ancestor"
-          elif git merge-base --is-ancestor refs/remotes/partner/main refs/remotes/origin/main; then
-            REL="partner_is_ancestor"
-          elif git merge-base refs/remotes/origin/main refs/remotes/partner/main >/dev/null 2>&1; then
-            REL="diverged_with_common_base"
-          else
-            REL="unrelated"
-          fi
-          
-          echo "relationship: $REL"
-          
-          case "$REL" in
-            origin_is_ancestor)
-              echo "Partner ahead (fast-forward our main -> partner)..."
-              git merge --ff-only refs/remotes/partner/main
-              git push origin main
-              git push partner main:main
-              ;;
-            partner_is_ancestor)
-              echo "Partner behind (push our main -> partner)..."
-              git push partner main:main
-              ;;
-            diverged_with_common_base)
-              echo "Diverged with common base. Attempting merge..."
-              git merge --no-edit refs/remotes/partner/main
-              git push origin main
-              git push partner main:main
-              ;;
-            unrelated)
-              echo "Unrelated histories detected. Merging with --allow-unrelated-histories..."
-              git merge --no-edit --allow-unrelated-histories refs/remotes/partner/main
-              git push origin main
-              git push partner main:main
-              ;;
-          esac
+          # tenta push normal; se parceiro estiver na frente, falha (correto)
+          git push partner main:main
 
-
-  # Agendado: puxa do parceiro e aplica na sua main
   pull_from_partner:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
@@ -94,33 +42,34 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Configure git + auth
+      - name: Configure git identity + auth
         run: |
           git config user.name "mirror-bot"
           git config user.email "mirror-bot@users.noreply.github.com"
           git config --global --unset-all http.https://github.com/.extraheader || true
           git config --global url."https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/".insteadOf "https://github.com/"
 
-      - name: Pull partner -> merge -> push origin
+      - name: Pull partner -> fast-forward/merge -> push origin
         run: |
           git remote add partner https://github.com/navpass/navpass-website.git || true
 
-          git fetch origin main
-          git fetch partner main
+          # Atualiza refs de forma determinística
+          git fetch --prune origin  +refs/heads/main:refs/remotes/origin/main
+          git fetch --prune partner +refs/heads/main:refs/remotes/partner/main
 
           git checkout main
-          git reset --hard origin/main
+          git reset --hard refs/remotes/origin/main
 
-          OUR="$(git rev-parse HEAD)"
-          THEIR="$(git rev-parse partner/main)"
-          BASE="$(git merge-base origin/main partner/main)"
+          OUR="$(git rev-parse refs/remotes/origin/main)"
+          THEIR="$(git rev-parse refs/remotes/partner/main)"
+          BASE="$(git merge-base refs/remotes/origin/main refs/remotes/partner/main)"
 
           echo "origin/main:  $OUR"
           echo "partner/main: $THEIR"
           echo "merge-base:   $BASE"
 
           if [ "$OUR" = "$THEIR" ]; then
-            echo "Already in sync. Nothing to do."
+            echo "Already in sync."
             exit 0
           fi
 
@@ -130,13 +79,14 @@ jobs:
             exit 0
           fi
 
-          # parceiro na frente -> traz pra cá
+          # parceiro na frente
           if [ "$OUR" = "$BASE" ]; then
             echo "Fast-forwarding our main to partner/main..."
-            git merge --ff-only partner/main
+            git merge --ff-only refs/remotes/partner/main
           else
-            echo "Divergence detected. Attempting merge..."
-            git merge --no-edit partner/main
+            echo "Diverged. Attempting merge..."
+            # se conflitar, o job falha (você resolve manualmente)
+            git merge --no-edit refs/remotes/partner/main
           fi
 
           git push origin main
