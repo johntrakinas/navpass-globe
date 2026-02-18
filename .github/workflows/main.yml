@@ -41,7 +41,7 @@ jobs:
       
           OUR="$(git rev-parse refs/remotes/origin/main)"
           THEIR="$(git rev-parse refs/remotes/partner/main)"
-          BASE="$(git merge-base refs/remotes/origin/main refs/remotes/partner/main)"
+          BASE="$(git merge-base refs/remotes/origin/main refs/remotes/partner/main || true)"
       
           echo "origin/main:  $OUR"
           echo "partner/main: $THEIR"
