@@ -1,0 +1,82 @@
+name: Two-way sync main (poll partner -> merge -> push)
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # a cada 10 min
+  workflow_dispatch:
+
+# Evita duas execuções simultâneas brigarem entre si
+concurrency:
+  group: twoway-main-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false   # IMPORTANTÍSSIMO
+
+      - name: Configure git identity
+        run: |
+          git config user.name "mirror-bot"
+          git config user.email "mirror-bot@users.noreply.github.com"
+
+      - name: Use MIRROR_PAT for all github.com HTTPS operations
+        run: |
+          # Remove header de auth do GITHUB_TOKEN (defensive)
+          git config --global --unset-all http.https://github.com/.extraheader || true
+
+          # Força qualquer https://github.com/... usar seu PAT
+          git config --global url."https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Fetch both remotes
+        run: |
+          git remote -v
+          git remote add partner https://github.com/navpass/navpass-website.git || true
+
+          git fetch origin main
+          git fetch partner main
+
+      - name: Merge partner/main into our main and push
+        run: |
+          # garante que estamos em main atualizada do origin
+          git checkout main
+          git reset --hard origin/main
+
+          OUR="$(git rev-parse HEAD)"
+          THEIR="$(git rev-parse partner/main)"
+          BASE="$(git merge-base origin/main partner/main)"
+
+          echo "origin/main:  $OUR"
+          echo "partner/main: $THEIR"
+          echo "merge-base:   $BASE"
+
+          if [ "$OUR" = "$THEIR" ]; then
+            echo "Already in sync. Nothing to do."
+            exit 0
+          fi
+
+          # Se partner estiver atrás, não puxa nada (o seu push workflow já garante espelho pro parceiro)
+          if [ "$THEIR" = "$BASE" ]; then
+            echo "Partner is behind. No pull needed."
+            exit 0
+          fi
+
+          # Se for fast-forward, atualiza sem criar merge commit
+          if [ "$OUR" = "$BASE" ]; then
+            echo "Fast-forwarding our main to partner/main..."
+            git merge --ff-only partner/main
+          else
+            echo "Divergence detected. Attempting merge..."
+            # Se houver conflito, esse comando vai falhar e o job para (correto, sem PR não tem resolução segura)
+            git merge --no-edit partner/main
+          fi
+
+          # push para o seu repo
+          git push origin main
+
+          # Opcional: push direto pro parceiro (pode deixar, ou remover e confiar no workflow de push)
+          git push partner main:main
