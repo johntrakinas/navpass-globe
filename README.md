@@ -2,6 +2,47 @@
 
 Interactive 3D globe for global flight visualization, built with pure Three.js and custom shaders.
 
+## Package Usage
+
+```ts
+import globe from '@bytenana/globe'
+
+const app = globe()
+await app.ready
+```
+
+Optional mount targets:
+
+```ts
+import globe from '@bytenana/globe'
+
+const app = globe({
+  mountTarget: document.getElementById('app')!,
+  overlayTarget: document.body,
+  assetBaseUrl: '/globe-assets'
+})
+```
+
+`assetBaseUrl` must point to a folder containing:
+- `data/ne_110m_admin_0_countries.geojson`
+- `data/airports_points.json`
+- `flags/*.svg`
+
+## Install From GitHub Packages (Private)
+
+In the consumer project `.npmrc`:
+
+```ini
+@bytenana:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+```
+
+Then install:
+
+```bash
+NODE_AUTH_TOKEN=ghp_xxx npm i @bytenana/globe
+```
+
 This project focuses on a dramatic, high-contrast visual language and stable, deliberate interaction:
 - dark monochromatic globe style with brighter borders and atmospheric grid layers
 - slow drag behavior with damping/inertia (no frantic spinning)
@@ -32,7 +73,9 @@ The current implementation includes:
 
 ## Project Structure
 
-- `src/index.ts`: scene bootstrap, interaction flow, UI integration, data wiring
+- `src/index.ts`: package entry (`globe(options)`) and runtime wiring
+- `src/main.ts`: demo app bootstrap for local Vite development
+- `src/lib.ts`: library build entry re-export
 - `src/globe/*`: globe layers, flight system, picking/highlight logic, lighting
 - `src/shaders/*`: shader programs for routes, planes, atmosphere, endpoints, heatmap
 - `src/background/*`: starfield rendering
@@ -60,11 +103,18 @@ npm run build
 npm run preview
 ```
 
+Build package artifacts (ESM + `.d.ts`):
+
+```bash
+npm run build:lib
+```
+
 ## Available Scripts
 
 - `npm run dev`: starts local dev server
 - `npm run typecheck`: runs TypeScript checks (`tsc --noEmit`)
 - `npm run build`: typecheck + production build
+- `npm run build:lib`: typecheck + library build (`dist/globe.*.js` + types)
 - `npm run preview`: serves the production build locally
 
 ## Data Sources

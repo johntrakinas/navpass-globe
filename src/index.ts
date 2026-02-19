@@ -34,17 +34,40 @@ import { createStoryHighlight } from './globe/storyHighlight'
 import { scaleThickness } from './globe/thicknessScale'
 import { inflateAirportsDataset } from './globe/syntheticAirports'
 
-/* 
- * Config
- */
-const GLOBE_RADIUS = 10
-const COUNTRIES_GEOJSON_PATH = '/data/ne_110m_admin_0_countries.geojson'
-const ENABLE_STORY_HIGHLIGHT = false
-const SYNTHETIC_AIRPORT_TARGET = 5200
-const AIRPORT_MIN_SPACING_DEG = 0.5
-const SHOW_GLOBE_POINTS = false
-const MOCK_FLIGHT_ROUTE_COUNT = 700
-let countriesGeoJSON: any = null
+export type GlobeOptions = {
+  mountTarget?: HTMLElement
+  overlayTarget?: HTMLElement
+  assetBaseUrl?: string
+}
+
+export type GlobeInstance = {
+  ready: Promise<void>
+}
+
+export default function globe(options: GlobeOptions = {}): GlobeInstance {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    throw new Error('The globe package must be instantiated in a browser environment.')
+  }
+
+  const mountTarget = options.mountTarget ?? document.body
+  const overlayTarget = options.overlayTarget ?? document.body
+  const assetBaseUrl = (options.assetBaseUrl ?? '').replace(/\/+$/, '')
+  const resolveAssetPath = (assetPath: string) => {
+    const normalizedAssetPath = assetPath.replace(/^\/+/, '')
+    return assetBaseUrl ? `${assetBaseUrl}/${normalizedAssetPath}` : `/${normalizedAssetPath}`
+  }
+
+  /* 
+   * Config
+   */
+  const GLOBE_RADIUS = 10
+  const COUNTRIES_GEOJSON_PATH = resolveAssetPath('data/ne_110m_admin_0_countries.geojson')
+  const ENABLE_STORY_HIGHLIGHT = false
+  const SYNTHETIC_AIRPORT_TARGET = 5200
+  const AIRPORT_MIN_SPACING_DEG = 0.5
+  const SHOW_GLOBE_POINTS = false
+  const MOCK_FLIGHT_ROUTE_COUNT = 700
+  let countriesGeoJSON: any = null
 
 let triGrid: ReturnType<typeof createAdaptiveTriGrid> | null = null
 let latLonGrid: ReturnType<typeof createAdaptiveLatLonGrid> | null = null
@@ -93,7 +116,7 @@ let selectedCountryIso3: string | null = null
 let innerSphereMesh: THREE.Mesh | null = null
 let depthMaskMesh: THREE.Mesh | null = null
 
-const tooltip = createTooltip()
+const tooltip = createTooltip(overlayTarget)
 let lastHoverKey = ''
 
 // Pinned flight label (minimal, Google-style): persists when a route is selected.
@@ -167,7 +190,7 @@ flightRouteText.appendChild(flightRouteTitle)
 flightRouteText.appendChild(flightRouteMeta)
 flightRouteLabel.appendChild(flightRouteText)
 flightRouteLabel.appendChild(flightRouteClose)
-document.body.appendChild(flightRouteLabel)
+overlayTarget.appendChild(flightRouteLabel)
 
 let flightRouteLabelBaseAlpha = 0
 const _routeLabelMidLocal = new THREE.Vector3()
@@ -314,7 +337,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(innerWidth, innerHeight)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.debug.checkShaderErrors = true
-document.body.appendChild(renderer.domElement)
+mountTarget.appendChild(renderer.domElement)
 
 /**
  * Postprocessing (subtle Google-Research polish)
@@ -1251,7 +1274,7 @@ function clearHoverRouteCouplingCountry() {
 
 function isoToFlagUrl(iso2: string) {
   if (!iso2) return ''
-  return `/flags/${iso2.toLowerCase()}.svg`
+  return resolveAssetPath(`flags/${iso2.toLowerCase()}.svg`)
 }
 
 function compactAirportName(name: string) {
@@ -1795,7 +1818,7 @@ async function init() {
   latLonGrid = createAdaptiveLatLonGrid(GLOBE_RADIUS, camera)
   globeGroup.add(latLonGrid.group)
 
-  const baseAirports = await fetch('/data/airports_points.json').then(r => r.json())
+  const baseAirports = await fetch(resolveAssetPath('data/airports_points.json')).then(r => r.json())
   const denseAirports = inflateAirportsDataset(baseAirports, countriesGeoJSON, {
     targetCount: SYNTHETIC_AIRPORT_TARGET,
     minSpacingDeg: AIRPORT_MIN_SPACING_DEG
@@ -1870,4 +1893,6 @@ async function init() {
   animate()
 }
 
-init()
+  const ready = init()
+  return { ready }
+}

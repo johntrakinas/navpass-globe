@@ -1,16 +1,37 @@
 {
-  "name": "language-globe",
-  "private": true,
-  "version": "0.0.0",
+  "name": "@bytenana/globe",
+  "version": "0.1.0",
   "type": "module",
+  "main": "./dist/globe.es.js",
+  "module": "./dist/globe.es.js",
+  "types": "./dist/types/lib.d.ts",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ByteNana/navpass-globe.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/types/lib.d.ts",
+      "import": "./dist/globe.es.js",
+      "default": "./dist/globe.es.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck && vite build",
+    "build:lib": "npm run typecheck && vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },
   "devDependencies": {
     "@types/three": "^0.182.0",
+    "three": "^0.182.0",
     "typescript": "~5.9.3",
     "vite": "npm:rolldown-vite@7.2.5"
   },
@@ -18,7 +39,9 @@
     "vite": "npm:rolldown-vite@7.2.5"
   },
   "dependencies": {
-    "flag-icons": "^7.5.0",
+    "flag-icons": "^7.5.0"
+  },
+  "peerDependencies": {
     "three": "^0.182.0"
   }
 }

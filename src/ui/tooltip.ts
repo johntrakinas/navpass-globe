@@ -1,4 +1,4 @@
-export function createTooltip() {
+export function createTooltip(mountTarget: HTMLElement = document.body) {
   const el = document.createElement('div')
   el.style.position = 'fixed'
   el.style.left = '0px'
@@ -17,7 +17,7 @@ export function createTooltip() {
   el.style.transition = 'opacity 340ms ease'
   el.style.zIndex = '99999'
 
-  document.body.appendChild(el)
+  mountTarget.appendChild(el)
 
   function show(text: string, x?: number, y?: number) {
     el.textContent = text
@@ -53,5 +53,9 @@ export function createTooltip() {
     el.style.color = 'var(--tooltip-text)'
   }
 
-  return { el, show, showHTML, move, hide, setTheme }
+  function destroy() {
+    el.remove()
+  }
+
+  return { el, show, showHTML, move, hide, setTheme, destroy }
 }
