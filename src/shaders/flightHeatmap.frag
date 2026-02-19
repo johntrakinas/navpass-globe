@@ -11,6 +11,7 @@ uniform float uEdgeStrength;
 uniform vec3 uColdColor;
 uniform vec3 uMidColor;
 uniform vec3 uHotColor;
+uniform vec3 uEdgeAccentColor;
 
 varying vec2 vUv;
 
@@ -41,7 +42,7 @@ void main() {
   col = mix(col, uHotColor, smoothstep(0.38, 1.0, h));
 
   vec3 edgeCol = mix(uMidColor, uHotColor, smoothstep(0.25, 1.0, h));
-  edgeCol = mix(edgeCol, vec3(1.0), 0.35);
+  edgeCol = mix(edgeCol, uEdgeAccentColor, 0.35);
   col = mix(col, edgeCol, edge * 0.45 * uEdgeStrength);
 
   float alpha = h * uOpacity * zoomFade * shimmer;

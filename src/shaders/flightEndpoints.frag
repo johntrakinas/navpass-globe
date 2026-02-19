@@ -3,6 +3,7 @@ precision mediump float;
 uniform float uTime;
 uniform vec3 uOriginColor;
 uniform vec3 uDestColor;
+uniform vec3 uAccentColor;
 uniform float uAlpha;
 
 varying float vRole;
@@ -20,7 +21,7 @@ void main() {
 
   float shimmer = 0.94 + 0.06 * sin(uTime * 1.1 + vSeed * 6.2831);
   vec3 col = mix(uOriginColor, uDestColor, step(0.5, vRole));
-  col = mix(col, vec3(1.0), 0.16);
+  col = mix(col, uAccentColor, 0.16);
 
   float alpha = (glow * 0.34 + core * 1.08) * uAlpha * shimmer * vMix;
 

@@ -3,6 +3,13 @@ import { latLongToVector3 } from './latLongtoVector3'
 import { GOOGLE_COLORS, googlePaletteLerp } from '../theme/googleColors'
 import { scaleThickness } from './thicknessScale'
 
+export type HoverHighlightColorTheme = {
+  colorA?: THREE.ColorRepresentation
+  colorB?: THREE.ColorRepresentation
+  coreColor?: THREE.ColorRepresentation
+  paletteMix?: number
+}
+
 let hoverGroup: THREE.Group | null = null
 let hoverGlowLine: THREE.LineSegments | null = null
 let hoverCoreLine: THREE.LineSegments | null = null
@@ -14,6 +21,8 @@ let currentOpacity = 0
 let pulsePhase = Math.random() * Math.PI * 2
 let hoverColorA = GOOGLE_COLORS.white.clone()
 let hoverColorB = GOOGLE_COLORS.yellow.clone()
+let hoverCoreColor = GOOGLE_COLORS.white.clone()
+let hoverPaletteMix = 0.42
 let hoverOpacityMul = 1
 const glowColor = new THREE.Color()
 const coreColor = new THREE.Color()
@@ -173,8 +182,11 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
   const pulse = 0.9 + 0.1 * Math.sin(timeSeconds * 1.9 + pulsePhase)
   const shimmer = 0.5 + 0.35 * Math.sin(timeSeconds * 2.2 + pulsePhase * 0.7)
   const palette = googlePaletteLerp((timeSeconds * 0.08 + pulsePhase * 0.12) % 1)
-  glowColor.copy(hoverColorA).lerp(hoverColorB, shimmer).lerp(palette, 0.42)
-  coreColor.copy(glowColor).lerp(GOOGLE_COLORS.white, 0.30)
+  glowColor.copy(hoverColorA).lerp(hoverColorB, shimmer)
+  if (hoverPaletteMix > 0.0001) {
+    glowColor.lerp(palette, hoverPaletteMix)
+  }
+  coreColor.copy(glowColor).lerp(hoverCoreColor, 0.30)
 
   ;(hoverGlowMat.uniforms.uColor.value as THREE.Color).copy(glowColor)
   hoverGlowMat.uniforms.uOpacity.value = currentOpacity * pulse * hoverOpacityMul * 0.72
@@ -203,5 +215,22 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
 export function setHoverTheme(isLight: boolean) {
   hoverColorA = isLight ? GOOGLE_COLORS.deepBlue.clone() : GOOGLE_COLORS.white.clone()
   hoverColorB = GOOGLE_COLORS.yellow.clone()
+  hoverCoreColor = GOOGLE_COLORS.white.clone()
+  hoverPaletteMix = isLight ? 0.28 : 0.42
   hoverOpacityMul = isLight ? 1.35 : 1.20
+}
+
+export function configureHoverHighlightColors(theme: HoverHighlightColorTheme = {}) {
+  if (theme.colorA !== undefined) {
+    hoverColorA.set(theme.colorA)
+  }
+  if (theme.colorB !== undefined) {
+    hoverColorB.set(theme.colorB)
+  }
+  if (theme.coreColor !== undefined) {
+    hoverCoreColor.set(theme.coreColor)
+  }
+  if (typeof theme.paletteMix === 'number') {
+    hoverPaletteMix = THREE.MathUtils.clamp(theme.paletteMix, 0, 1)
+  }
 }

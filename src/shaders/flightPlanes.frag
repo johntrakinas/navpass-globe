@@ -5,6 +5,7 @@ uniform float uCameraDistance;
 uniform vec3 uCoreColor;
 uniform vec3 uGlowColor;
 uniform vec3 uTintColor;
+uniform vec3 uAccentColor;
 uniform float uAlpha;
 uniform float uFocusMix;
 uniform float uHoverRouteId;
@@ -83,7 +84,7 @@ void main() {
 
   float lightUp = clamp(hoverEmph * 0.52 + selectedEmph * 0.78, 0.0, 1.0);
   col = mix(col, uCoreColor, lightUp);
-  col = mix(col, vec3(1.0), selectedEmph * 0.18);
+  col = mix(col, uAccentColor, selectedEmph * 0.18);
 
   float alpha =
     (glow * 0.46 + tail * 0.34 + core * 0.52) *

@@ -60,6 +60,29 @@ type CountryFlightStats = {
   routes: number
 }
 
+export type FlightRouteMaterials = {
+  line: THREE.ShaderMaterial
+  plane: THREE.ShaderMaterial
+  heatmap: THREE.ShaderMaterial
+  endpoints: THREE.ShaderMaterial
+  pin: THREE.ShaderMaterial
+  hubs: THREE.ShaderMaterial | null
+}
+
+export type FlightRoutesLayer = {
+  group: THREE.Group
+  lines: THREE.LineSegments
+  planes: THREE.Points
+  materials: FlightRouteMaterials
+  update: (deltaSeconds: number, timeSeconds: number, cameraDistance: number) => void
+  setFocusCountry: (iso3: string | null) => void
+  setHoverRoute: (routeId: number | null) => void
+  setSelectedRoute: (routeId: number | null) => void
+  getRouteInfo: (routeId: number) => any | null
+  getCountryFlightStats: (iso3: string, timeSeconds: number) => CountryFlightStats
+  setHeatmapEnabled: (enabled: boolean) => void
+}
+
 type KernelTap = { dx: number; dy: number; w: number }
 
 function buildGaussianKernel(radius: number, sigma: number): KernelTap[] {
@@ -402,7 +425,7 @@ export function createFlightRoutes(
   radius: number,
   countriesGeoJSON: any | null,
   count = 180
-) {
+): FlightRoutesLayer {
   const group = new THREE.Group()
   group.name = 'flightRoutes'
   const SHOW_ROUTE_ENDPOINTS = false
@@ -625,7 +648,8 @@ export function createFlightRoutes(
       uEdgeStrength: { value: 0.85 },
       uColdColor: { value: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.34) },
       uMidColor: { value: GOOGLE_COLORS.lightBlue.clone().multiplyScalar(1.02) },
-      uHotColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.32) }
+      uHotColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.32) },
+      uEdgeAccentColor: { value: GOOGLE_COLORS.white.clone() }
     }
   })
   const heatmap = new THREE.Mesh(heatGeo, heatMat)
@@ -715,6 +739,7 @@ export function createFlightRoutes(
       uHeadColor: { value: GOOGLE_COLORS.white.clone() },
       uTailColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.16) },
       uBaseColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.28) },
+      uAccentColor: { value: GOOGLE_COLORS.white.clone() },
       uBaseAlpha: { value: 0.074 },
       uGlowAlpha: { value: 0.56 },
       uTailLength: { value: 0.22 },
@@ -820,6 +845,7 @@ export function createFlightRoutes(
       uCoreColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.22) },
       uGlowColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.16) },
       uTintColor: { value: GOOGLE_COLORS.yellow.clone().multiplyScalar(1.0) },
+      uAccentColor: { value: GOOGLE_COLORS.white.clone() },
       uAlpha: { value: 1.14 },
       uFocusMix: { value: 0.0 },
       uRouteKeep: { value: 1.0 },
@@ -867,6 +893,7 @@ export function createFlightRoutes(
       uSelectedMix: { value: 0.0 },
       uOriginColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.08) },
       uDestColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.18) },
+      uAccentColor: { value: GOOGLE_COLORS.white.clone() },
       uAlpha: { value: 1.1 }
     }
   })
@@ -1243,6 +1270,14 @@ export function createFlightRoutes(
     getCountryFlightStats,
     setHeatmapEnabled,
     lines,
-    planes
+    planes,
+    materials: {
+      line: lineMat,
+      plane: planeMat,
+      heatmap: heatMat,
+      endpoints: endpointsMat,
+      pin: pinMat,
+      hubs: hubsMat
+    }
   }
 }

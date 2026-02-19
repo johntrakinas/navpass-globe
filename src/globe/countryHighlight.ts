@@ -2,6 +2,13 @@ import * as THREE from 'three'
 import { latLongToVector3 } from './latLongtoVector3'
 import { scaleThickness } from './thicknessScale'
 
+export type CountryHighlightPaletteTheme = {
+  colorA?: THREE.ColorRepresentation
+  colorB?: THREE.ColorRepresentation
+  colorC?: THREE.ColorRepresentation
+  colorD?: THREE.ColorRepresentation
+}
+
 let current: THREE.Object3D | null = null
 let currentMats: THREE.ShaderMaterial[] = []
 let pulsePhase = Math.random() * Math.PI * 2
@@ -9,6 +16,12 @@ const SELECT_RADIUS_MULT = 1.022
 const SELECT_SCALE = 1.02
 const SELECT_BREATH_BASE = 0.0015
 const SELECT_BREATH_AMP = 0.006
+const selectedPalette = {
+  a: new THREE.Color('#4285F4'),
+  b: new THREE.Color('#34A853'),
+  c: new THREE.Color('#FBBC05'),
+  d: new THREE.Color('#EA4335')
+}
 
 const VERT = /* glsl */ `
 attribute float aT;
@@ -30,18 +43,17 @@ const FRAG = /* glsl */ `
 precision mediump float;
 uniform float uTime;
 uniform float uOpacity;
+uniform vec3 uColorA;
+uniform vec3 uColorB;
+uniform vec3 uColorC;
+uniform vec3 uColorD;
 varying float vT;
 varying float vSeed;
 
 vec3 googlePaletteSmooth(float t) {
-  vec3 c0 = vec3(0.2588, 0.5216, 0.9569); // blue
-  vec3 c1 = vec3(0.2039, 0.6588, 0.3255); // green
-  vec3 c2 = vec3(0.9843, 0.7373, 0.0196); // yellow
-  vec3 c3 = vec3(0.9176, 0.2627, 0.2078); // red
-
   float a = smoothstep(0.0, 1.0, sin(t * 6.2831) * 0.5 + 0.5);
-  vec3 mix1 = mix(c0, c1, a);
-  vec3 mix2 = mix(c2, c3, a);
+  vec3 mix1 = mix(uColorA, uColorB, a);
+  vec3 mix2 = mix(uColorC, uColorD, a);
   return mix(mix1, mix2, smoothstep(0.0, 1.0, cos(t * 3.1416) * 0.5 + 0.5));
 }
 
@@ -54,6 +66,13 @@ void main() {
 }
 `
 
+function applySelectedPalette(mat: THREE.ShaderMaterial) {
+  ;(mat.uniforms.uColorA.value as THREE.Color).copy(selectedPalette.a)
+  ;(mat.uniforms.uColorB.value as THREE.Color).copy(selectedPalette.b)
+  ;(mat.uniforms.uColorC.value as THREE.Color).copy(selectedPalette.c)
+  ;(mat.uniforms.uColorD.value as THREE.Color).copy(selectedPalette.d)
+}
+
 function createHighlightMaterial(opacity: number, thickness: number) {
   const mat = new THREE.ShaderMaterial({
     vertexShader: VERT,
@@ -65,11 +84,16 @@ function createHighlightMaterial(opacity: number, thickness: number) {
       uTime: { value: 0 },
       uOpacity: { value: opacity },
       uPulse: { value: 0 },
-      uThickness: { value: thickness }
+      uThickness: { value: thickness },
+      uColorA: { value: selectedPalette.a.clone() },
+      uColorB: { value: selectedPalette.b.clone() },
+      uColorC: { value: selectedPalette.c.clone() },
+      uColorD: { value: selectedPalette.d.clone() }
     }
   })
   mat.userData.baseOpacity = opacity
   mat.userData.baseThickness = thickness
+  applySelectedPalette(mat)
   return mat
 }
 
@@ -157,5 +181,16 @@ export function updateCountryHighlight(timeSeconds: number) {
     mat.uniforms.uTime.value = timeSeconds
     mat.uniforms.uPulse.value = pulse * (thickness > 0.003 ? 0.72 : 1.0)
     mat.uniforms.uOpacity.value = alpha * baseOpacity
+  }
+}
+
+export function configureCountryHighlightPalette(theme: CountryHighlightPaletteTheme = {}) {
+  if (theme.colorA !== undefined) selectedPalette.a.set(theme.colorA)
+  if (theme.colorB !== undefined) selectedPalette.b.set(theme.colorB)
+  if (theme.colorC !== undefined) selectedPalette.c.set(theme.colorC)
+  if (theme.colorD !== undefined) selectedPalette.d.set(theme.colorD)
+
+  for (const mat of currentMats) {
+    applySelectedPalette(mat)
   }
 }

@@ -6,6 +6,7 @@ uniform float uCameraDistance;
 uniform vec3 uBaseColor;
 uniform vec3 uHeadColor;
 uniform vec3 uTailColor;
+uniform vec3 uAccentColor;
 
 uniform float uBaseAlpha;
 uniform float uGlowAlpha;
@@ -66,7 +67,7 @@ void main() {
 
   vec3 color = mix(uBaseColor, tailColor, tailMask);
   // Stronger "head glint"
-  color = mix(color, vec3(1.0), headMask * 0.55);
+  color = mix(color, uAccentColor, headMask * 0.55);
   color = mix(color, uTailColor, traffic01 * 0.16);
 
   // When a country is selected we keep routes connected to it and softly fade the rest.
@@ -87,7 +88,7 @@ void main() {
   // Brighten on hover/selection.
   float lightUp = clamp(hoverEmph * 0.62 + selectedEmph * 0.9, 0.0, 1.0);
   color = mix(color, uHeadColor, lightUp);
-  color = mix(color, vec3(1.0), selectedEmph * 0.22);
+  color = mix(color, uAccentColor, selectedEmph * 0.22);
 
   // LOD: when zoomed out, keep only a subset of routes (smoothly) to avoid clutter.
   float keepMask = 1.0 - smoothstep(uRouteKeep - 0.12, uRouteKeep, vSeed);

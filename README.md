@@ -23,12 +23,80 @@ const app = globe({
 })
 ```
 
+Color theming (all project color groups are overridable):
+
+```ts
+import globe from '@bytenana/globe'
+
+const app = globe({
+  theme: {
+    ui: {
+      panelShellBg: '#10131f',
+      panelText: '#e8f0ff',
+      tooltipBg: 'rgba(12, 16, 28, 0.92)',
+      uiThumb: '#7ef7d8'
+    },
+    scene: {
+      background: '#04070d',
+      depthMask: '#04070d',
+      innerSphere: '#04070d'
+    },
+    countries: {
+      border: '#7ef7d8'
+    },
+    grids: {
+      triColor: '#8dd7ff',
+      latLonColor: '#78ffd6'
+    },
+    landWater: {
+      landTint: '#2e5a7a',
+      coastTint: '#8fd5ff'
+    },
+    atmosphere: {
+      innerRim: '#8fd5ff',
+      outerRim: '#b1e6ff'
+    },
+    lighting: {
+      shadow: '#0d2f5f',
+      day: '#b7e4ff'
+    },
+    points: {
+      dotColorMul: '#d8f2ff',
+      dotFlowColor: '#7ef7d8',
+      nightWarmA: '#ffe08a',
+      nightWarmB: '#fff2c9'
+    },
+    flights: {
+      lineBaseColor: '#7ef7d8',
+      lineHeadColor: '#eaffff',
+      lineTailColor: '#9cd2ff',
+      heatColdColor: '#184c8f',
+      heatMidColor: '#4dd8ff',
+      heatHotColor: '#ffe98f'
+    },
+    highlights: {
+      hoverA: '#c6faff',
+      hoverB: '#7ef7d8',
+      hoverPaletteMix: 0.0,
+      selectedA: '#58c4ff',
+      selectedB: '#43d187',
+      selectedC: '#ffd166',
+      selectedD: '#ff6b6b'
+    }
+  }
+})
+```
+
+All theme keys are optional. The exported TypeScript types (`GlobeTheme`, `GlobeUiTheme`, etc.) describe every available color token.
+
 `assetBaseUrl` must point to a folder containing:
 - `data/ne_110m_admin_0_countries.geojson`
 - `data/airports_points.json`
 - `flags/*.svg`
 
 ## Install From GitHub Packages (Private)
+
+For a complete team onboarding guide, see `PACKAGE_SETUP.md`.
 
 In the consumer project `.npmrc`:
 

@@ -13,11 +13,16 @@ import { createAtmosphere } from './globe/atmosphere'
 import { createInnerSphere } from './globe/innerSphere'
 import { createLightingShell } from './globe/lighting'
 import { latLongToVector3 } from './globe/latLongtoVector3'
-import { createFlightRoutes } from './globe/flights'
+import { createFlightRoutes, type FlightRoutesLayer } from './globe/flights'
 import { getSunDirectionUTC } from './globe/solar'
 import { loadGeoJSON } from './loaders/loadGeoJSON'
 
-import { highlightCountryFromFeature, clearHighlight, updateCountryHighlight } from './globe/countryHighlight'
+import {
+  highlightCountryFromFeature,
+  clearHighlight,
+  updateCountryHighlight,
+  configureCountryHighlightPalette
+} from './globe/countryHighlight'
 import { vector3ToLatLon } from './globe/math'
 import { findCountryFeature } from './globe/countryLookUp'
 import { showCountryPanel, hideCountryPanel, showFocusDim, hideFocusDim, setFocusDimOpacity } from './scene/camera'
@@ -28,11 +33,379 @@ import { createLandWaterLayer } from './globe/landWater'
 
 import { createStarfieldShader } from './background/starfieldShaders'
 import { createTooltip } from './ui/tooltip'
-import { setHoverHighlight, clearHoverHighlight, updateHoverHighlight, fadeOutHover } from './globe/hoverHighlight'
+import {
+  setHoverHighlight,
+  clearHoverHighlight,
+  updateHoverHighlight,
+  fadeOutHover,
+  configureHoverHighlightColors
+} from './globe/hoverHighlight'
 import { VignetteGrainShader } from './postprocess/vignetteGrain'
 import { createStoryHighlight } from './globe/storyHighlight'
 import { scaleThickness } from './globe/thicknessScale'
 import { inflateAirportsDataset } from './globe/syntheticAirports'
+
+export type GlobeUiTheme = {
+  panelBg: string
+  panelBorder: string
+  panelText: string
+  panelShadow: string
+  panelSurface: string
+  panelSurfaceBorder: string
+  panelShellBg: string
+  panelShellBorder: string
+  panelShellShadow: string
+  panelDivider: string
+  panelLiveText: string
+  panelLiveDot: string
+  panelClose: string
+  panelFlagBorder: string
+  panelFlagEmptyBg: string
+  panelStatLabel: string
+  panelStatValue: string
+  panelStatSub: string
+  panelAircraftLabel: string
+  panelAircraftValue: string
+  panelFooterBg: string
+  panelTotalLabel: string
+  panelTotalValue: string
+  panelMoreBorder: string
+  panelMoreBg: string
+  panelMoreText: string
+  panelMoreHoverBg: string
+  tooltipBg: string
+  tooltipBorder: string
+  tooltipText: string
+  uiBg: string
+  uiBorder: string
+  uiText: string
+  uiTrack: string
+  uiThumb: string
+  uiShadow: string
+  focusDimBg: string
+  railInfoBorderIdle: string
+  railInfoBorderActive: string
+}
+
+export type GlobeSceneTheme = {
+  background: THREE.ColorRepresentation
+  depthMask: THREE.ColorRepresentation
+  innerSphere: THREE.ColorRepresentation
+}
+
+export type GlobeCountriesTheme = {
+  border: THREE.ColorRepresentation
+}
+
+export type GlobeGridTheme = {
+  triColor: THREE.ColorRepresentation
+  triShimmerColor: THREE.ColorRepresentation
+  latLonColor: THREE.ColorRepresentation
+  latLonShimmerColor: THREE.ColorRepresentation
+}
+
+export type GlobeLandWaterTheme = {
+  landTint: THREE.ColorRepresentation
+  coastTint: THREE.ColorRepresentation
+}
+
+export type GlobeAtmosphereTheme = {
+  innerCore: THREE.ColorRepresentation
+  innerRim: THREE.ColorRepresentation
+  outerCore: THREE.ColorRepresentation
+  outerRim: THREE.ColorRepresentation
+  subsurfaceCore: THREE.ColorRepresentation
+  subsurfaceRim: THREE.ColorRepresentation
+}
+
+export type GlobeLightingTheme = {
+  shadow: THREE.ColorRepresentation
+  day: THREE.ColorRepresentation
+}
+
+export type GlobePointsTheme = {
+  dotColorMul: THREE.ColorRepresentation
+  dotFlowColor: THREE.ColorRepresentation
+  nightWarmA: THREE.ColorRepresentation
+  nightWarmB: THREE.ColorRepresentation
+}
+
+export type GlobeFlightsTheme = {
+  lineBaseColor: THREE.ColorRepresentation
+  lineHeadColor: THREE.ColorRepresentation
+  lineTailColor: THREE.ColorRepresentation
+  lineAccentColor: THREE.ColorRepresentation
+  planeCoreColor: THREE.ColorRepresentation
+  planeGlowColor: THREE.ColorRepresentation
+  planeTintColor: THREE.ColorRepresentation
+  planeAccentColor: THREE.ColorRepresentation
+  heatColdColor: THREE.ColorRepresentation
+  heatMidColor: THREE.ColorRepresentation
+  heatHotColor: THREE.ColorRepresentation
+  heatEdgeAccentColor: THREE.ColorRepresentation
+  endpointOriginColor: THREE.ColorRepresentation
+  endpointDestColor: THREE.ColorRepresentation
+  endpointAccentColor: THREE.ColorRepresentation
+  pinHoverColor: THREE.ColorRepresentation
+  pinSelectedColor: THREE.ColorRepresentation
+  hubColorMul: THREE.ColorRepresentation
+}
+
+export type GlobeHighlightTheme = {
+  hoverA: THREE.ColorRepresentation
+  hoverB: THREE.ColorRepresentation
+  hoverCore: THREE.ColorRepresentation
+  hoverPaletteMix: number
+  selectedA: THREE.ColorRepresentation
+  selectedB: THREE.ColorRepresentation
+  selectedC: THREE.ColorRepresentation
+  selectedD: THREE.ColorRepresentation
+}
+
+export type GlobeTheme = {
+  ui?: Partial<GlobeUiTheme>
+  scene?: Partial<GlobeSceneTheme>
+  countries?: Partial<GlobeCountriesTheme>
+  grids?: Partial<GlobeGridTheme>
+  landWater?: Partial<GlobeLandWaterTheme>
+  atmosphere?: Partial<GlobeAtmosphereTheme>
+  lighting?: Partial<GlobeLightingTheme>
+  points?: Partial<GlobePointsTheme>
+  flights?: Partial<GlobeFlightsTheme>
+  highlights?: Partial<GlobeHighlightTheme>
+}
+
+type ResolvedGlobeTheme = {
+  ui: GlobeUiTheme
+  scene: GlobeSceneTheme
+  countries: GlobeCountriesTheme
+  grids: GlobeGridTheme
+  landWater: GlobeLandWaterTheme
+  atmosphere: GlobeAtmosphereTheme
+  lighting: GlobeLightingTheme
+  points: GlobePointsTheme
+  flights: GlobeFlightsTheme
+  highlights: GlobeHighlightTheme
+}
+
+function mixColor(
+  a: THREE.ColorRepresentation,
+  b: THREE.ColorRepresentation,
+  t: number
+): THREE.ColorRepresentation {
+  return new THREE.Color(a).lerp(new THREE.Color(b), t).getHex()
+}
+
+function scaleColor(color: THREE.ColorRepresentation, factor: number): THREE.ColorRepresentation {
+  return new THREE.Color(color).multiplyScalar(factor).getHex()
+}
+
+const DEFAULT_UI_THEME: GlobeUiTheme = {
+  panelBg: 'rgba(6, 18, 38, 0.74)',
+  panelBorder: 'rgba(255, 255, 255, 0.2)',
+  panelText: 'rgba(255, 255, 255, 0.94)',
+  panelShadow: 'rgba(0, 0, 0, 0.45)',
+  panelSurface: 'rgba(255, 255, 255, 0.06)',
+  panelSurfaceBorder: 'rgba(255, 255, 255, 0.16)',
+  panelShellBg: '#0d1c30',
+  panelShellBorder: 'rgba(255, 255, 255, 0.34)',
+  panelShellShadow: 'rgba(0, 0, 0, 0.42)',
+  panelDivider: 'rgba(255, 255, 255, 0.12)',
+  panelLiveText: 'rgba(255, 255, 255, 0.52)',
+  panelLiveDot: '#ecb200',
+  panelClose: 'rgba(255, 255, 255, 0.82)',
+  panelFlagBorder: 'rgba(255, 255, 255, 0.1)',
+  panelFlagEmptyBg: 'rgba(255, 255, 255, 0.04)',
+  panelStatLabel: 'rgba(255, 255, 255, 0.48)',
+  panelStatValue: '#ffffff',
+  panelStatSub: 'rgba(255, 255, 255, 0.32)',
+  panelAircraftLabel: 'rgba(255, 255, 255, 0.48)',
+  panelAircraftValue: 'rgba(255, 255, 255, 0.92)',
+  panelFooterBg: 'rgba(255, 255, 255, 0.05)',
+  panelTotalLabel: 'rgba(255, 255, 255, 0.42)',
+  panelTotalValue: '#ffffff',
+  panelMoreBorder: 'rgba(255, 255, 255, 0.16)',
+  panelMoreBg: 'rgba(255, 255, 255, 0.08)',
+  panelMoreText: '#ffffff',
+  panelMoreHoverBg: 'rgba(255, 255, 255, 0.16)',
+  tooltipBg: 'rgba(6, 18, 38, 0.88)',
+  tooltipBorder: 'rgba(255, 255, 255, 0.22)',
+  tooltipText: 'rgba(255, 255, 255, 0.95)',
+  uiBg: 'rgba(6, 18, 38, 0.74)',
+  uiBorder: 'rgba(255, 255, 255, 0.18)',
+  uiText: 'rgba(255, 255, 255, 0.9)',
+  uiTrack: 'rgba(255, 255, 255, 0.24)',
+  uiThumb: '#ffffff',
+  uiShadow: 'rgba(0, 0, 0, 0.28)',
+  focusDimBg: 'rgba(2, 6, 12, 0.3)',
+  railInfoBorderIdle: 'rgba(255, 255, 255, 0.2)',
+  railInfoBorderActive: 'rgba(255, 255, 255, 0.46)'
+}
+
+const DEFAULT_SCENE_THEME: GlobeSceneTheme = {
+  background: 0x07090d,
+  depthMask: 0x07090d,
+  innerSphere: 0x07090d
+}
+
+const DEFAULT_COUNTRIES_THEME: GlobeCountriesTheme = {
+  border: 0xffffff
+}
+
+const DEFAULT_GRID_THEME: GlobeGridTheme = {
+  triColor: 0xb8c0ce,
+  triShimmerColor: 0xb8c0ce,
+  latLonColor: 0xb8c0ce,
+  latLonShimmerColor: 0xb8c0ce
+}
+
+const DEFAULT_LAND_WATER_THEME: GlobeLandWaterTheme = {
+  landTint: mixColor('#12203a', '#8AB4F8', 0.38),
+  coastTint: mixColor(mixColor('#12203a', '#8AB4F8', 0.38), '#ffffff', 0.3)
+}
+
+const DEFAULT_ATMOSPHERE_THEME: GlobeAtmosphereTheme = {
+  innerCore: scaleColor('#1A73E8', 0.14),
+  innerRim: mixColor('#8AB4F8', '#ffffff', 0.42),
+  outerCore: scaleColor('#1A73E8', 0.08),
+  outerRim: mixColor('#8AB4F8', '#ffffff', 0.56),
+  subsurfaceCore: scaleColor('#1A73E8', 0.04),
+  subsurfaceRim: mixColor('#8AB4F8', '#ffffff', 0.22)
+}
+
+const DEFAULT_LIGHTING_THEME: GlobeLightingTheme = {
+  shadow: scaleColor(mixColor('#1A73E8', '#8AB4F8', 0.22), 0.62),
+  day: mixColor('#8AB4F8', '#ffffff', 0.14)
+}
+
+const DEFAULT_POINTS_THEME: GlobePointsTheme = {
+  dotColorMul: '#ffffff',
+  dotFlowColor: mixColor('#ffffff', '#FBBC05', 0.22),
+  nightWarmA: mixColor('#FBBC05', '#ffffff', 0.35),
+  nightWarmB: mixColor('#ffffff', '#FBBC05', 0.25)
+}
+
+const DEFAULT_FLIGHTS_THEME: GlobeFlightsTheme = {
+  lineBaseColor: mixColor('#FBBC05', '#ffffff', 0.28),
+  lineHeadColor: '#ffffff',
+  lineTailColor: mixColor('#FBBC05', '#ffffff', 0.16),
+  lineAccentColor: '#ffffff',
+  planeCoreColor: mixColor('#ffffff', '#FBBC05', 0.22),
+  planeGlowColor: mixColor('#FBBC05', '#ffffff', 0.16),
+  planeTintColor: '#FBBC05',
+  planeAccentColor: '#ffffff',
+  heatColdColor: scaleColor('#1A73E8', 0.34),
+  heatMidColor: scaleColor('#8AB4F8', 1.02),
+  heatHotColor: mixColor('#FBBC05', '#ffffff', 0.32),
+  heatEdgeAccentColor: '#ffffff',
+  endpointOriginColor: mixColor('#ffffff', '#FBBC05', 0.08),
+  endpointDestColor: mixColor('#FBBC05', '#ffffff', 0.18),
+  endpointAccentColor: '#ffffff',
+  pinHoverColor: mixColor('#ffffff', '#8AB4F8', 0.08),
+  pinSelectedColor: mixColor('#ffffff', '#FBBC05', 0.24),
+  hubColorMul: '#ffffff'
+}
+
+const DEFAULT_HIGHLIGHT_THEME: GlobeHighlightTheme = {
+  hoverA: '#ffffff',
+  hoverB: '#FBBC05',
+  hoverCore: '#ffffff',
+  hoverPaletteMix: 0.42,
+  selectedA: '#4285F4',
+  selectedB: '#34A853',
+  selectedC: '#FBBC05',
+  selectedD: '#EA4335'
+}
+
+const UI_THEME_CSS_VARS: Record<keyof GlobeUiTheme, string> = {
+  panelBg: '--panel-bg',
+  panelBorder: '--panel-border',
+  panelText: '--panel-text',
+  panelShadow: '--panel-shadow',
+  panelSurface: '--panel-surface',
+  panelSurfaceBorder: '--panel-surface-border',
+  panelShellBg: '--panel-shell-bg',
+  panelShellBorder: '--panel-shell-border',
+  panelShellShadow: '--panel-shell-shadow',
+  panelDivider: '--panel-divider',
+  panelLiveText: '--panel-live-text',
+  panelLiveDot: '--panel-live-dot',
+  panelClose: '--panel-close',
+  panelFlagBorder: '--panel-flag-border',
+  panelFlagEmptyBg: '--panel-flag-empty-bg',
+  panelStatLabel: '--panel-stat-label',
+  panelStatValue: '--panel-stat-value',
+  panelStatSub: '--panel-stat-sub',
+  panelAircraftLabel: '--panel-aircraft-label',
+  panelAircraftValue: '--panel-aircraft-value',
+  panelFooterBg: '--panel-footer-bg',
+  panelTotalLabel: '--panel-total-label',
+  panelTotalValue: '--panel-total-value',
+  panelMoreBorder: '--panel-more-border',
+  panelMoreBg: '--panel-more-bg',
+  panelMoreText: '--panel-more-text',
+  panelMoreHoverBg: '--panel-more-hover-bg',
+  tooltipBg: '--tooltip-bg',
+  tooltipBorder: '--tooltip-border',
+  tooltipText: '--tooltip-text',
+  uiBg: '--ui-bg',
+  uiBorder: '--ui-border',
+  uiText: '--ui-text',
+  uiTrack: '--ui-track',
+  uiThumb: '--ui-thumb',
+  uiShadow: '--ui-shadow',
+  focusDimBg: '--focus-dim-bg',
+  railInfoBorderIdle: '--rail-info-border-idle',
+  railInfoBorderActive: '--rail-info-border-active'
+}
+
+const DEFAULT_UI_CSS_VARIABLES = (Object.keys(UI_THEME_CSS_VARS) as Array<keyof GlobeUiTheme>)
+  .map((key) => `${UI_THEME_CSS_VARS[key]}: ${DEFAULT_UI_THEME[key]};`)
+  .join('\n        ')
+
+function resolveGlobeTheme(theme?: GlobeTheme): ResolvedGlobeTheme {
+  return {
+    ui: { ...DEFAULT_UI_THEME, ...(theme?.ui ?? {}) },
+    scene: { ...DEFAULT_SCENE_THEME, ...(theme?.scene ?? {}) },
+    countries: { ...DEFAULT_COUNTRIES_THEME, ...(theme?.countries ?? {}) },
+    grids: { ...DEFAULT_GRID_THEME, ...(theme?.grids ?? {}) },
+    landWater: { ...DEFAULT_LAND_WATER_THEME, ...(theme?.landWater ?? {}) },
+    atmosphere: { ...DEFAULT_ATMOSPHERE_THEME, ...(theme?.atmosphere ?? {}) },
+    lighting: { ...DEFAULT_LIGHTING_THEME, ...(theme?.lighting ?? {}) },
+    points: { ...DEFAULT_POINTS_THEME, ...(theme?.points ?? {}) },
+    flights: { ...DEFAULT_FLIGHTS_THEME, ...(theme?.flights ?? {}) },
+    highlights: { ...DEFAULT_HIGHLIGHT_THEME, ...(theme?.highlights ?? {}) }
+  }
+}
+
+function applyUiThemeVariables(theme: GlobeUiTheme, targets: Array<HTMLElement | null>) {
+  const keys = Object.keys(UI_THEME_CSS_VARS) as Array<keyof GlobeUiTheme>
+  const uniqueTargets = new Set<HTMLElement>()
+  for (const target of targets) {
+    if (target) uniqueTargets.add(target)
+  }
+
+  for (const target of uniqueTargets) {
+    for (const key of keys) {
+      target.style.setProperty(UI_THEME_CSS_VARS[key], theme[key])
+    }
+  }
+}
+
+function setUniformColor(
+  uniforms: Record<string, { value: any }> | undefined,
+  uniformName: string,
+  color: THREE.ColorRepresentation
+) {
+  if (!uniforms) return
+  const entry = uniforms[uniformName]
+  if (!entry) return
+  if (entry.value instanceof THREE.Color) {
+    entry.value.set(color)
+    return
+  }
+  entry.value = new THREE.Color(color)
+}
 
 export type GlobeOptions = {
   mountTarget?: HTMLElement
@@ -40,6 +413,7 @@ export type GlobeOptions = {
   assetBaseUrl?: string
   injectDefaultUI?: boolean
   initialHeatmapEnabled?: boolean
+  theme?: GlobeTheme
 }
 
 export type GlobeInstance = {
@@ -59,6 +433,20 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     return assetBaseUrl ? `${assetBaseUrl}/${normalizedAssetPath}` : `/${normalizedAssetPath}`
   }
   ;(globalThis as any).__NAVPASS_GLOBE_ASSET_BASE_URL = assetBaseUrl
+  const theme = resolveGlobeTheme(options.theme)
+  applyUiThemeVariables(theme.ui, [document.documentElement, document.body, overlayTarget])
+  configureHoverHighlightColors({
+    colorA: theme.highlights.hoverA,
+    colorB: theme.highlights.hoverB,
+    coreColor: theme.highlights.hoverCore,
+    paletteMix: theme.highlights.hoverPaletteMix
+  })
+  configureCountryHighlightPalette({
+    colorA: theme.highlights.selectedA,
+    colorB: theme.highlights.selectedB,
+    colorC: theme.highlights.selectedC,
+    colorD: theme.highlights.selectedD
+  })
 
   function ensureDefaultUiScaffold() {
     if ((options.injectDefaultUI ?? true) === false) return
@@ -142,20 +530,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     style.id = styleId
     style.textContent = `
       :root {
-        --panel-bg: rgba(6, 18, 38, 0.74);
-        --panel-border: rgba(255, 255, 255, 0.2);
-        --panel-text: rgba(255, 255, 255, 0.94);
-        --panel-shadow: rgba(0, 0, 0, 0.45);
-        --panel-surface: rgba(255, 255, 255, 0.06);
-        --panel-surface-border: rgba(255, 255, 255, 0.16);
-        --tooltip-bg: rgba(6, 18, 38, 0.88);
-        --tooltip-border: rgba(255, 255, 255, 0.22);
-        --tooltip-text: rgba(255, 255, 255, 0.95);
-        --ui-bg: rgba(6, 18, 38, 0.74);
-        --ui-border: rgba(255, 255, 255, 0.18);
-        --ui-text: rgba(255, 255, 255, 0.9);
-        --ui-track: rgba(255, 255, 255, 0.24);
-        --ui-thumb: #ffffff;
+        ${DEFAULT_UI_CSS_VARIABLES}
       }
       #ui-toggle {
         position: fixed;
@@ -172,7 +547,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
         color: var(--ui-text);
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
         backdrop-filter: blur(10px);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+        box-shadow: 0 10px 30px var(--ui-shadow);
         pointer-events: auto;
       }
       #ui-toggle,
@@ -211,10 +586,10 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
         overflow: hidden;
         padding: 1px;
         margin: 0;
-        border: 1px solid rgba(255, 255, 255, 0.34);
-        background: #0d1c30;
+        border: 1px solid var(--panel-shell-border);
+        background: var(--panel-shell-bg);
         color: var(--panel-text);
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.42);
+        box-shadow: 0 25px 50px -12px var(--panel-shell-shadow);
         pointer-events: auto;
         opacity: 0;
         transform: translateY(10px);
@@ -228,34 +603,34 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
         z-index: 2;
         pointer-events: none;
         opacity: 0;
-        background: rgba(2, 6, 12, 0.3);
+        background: var(--focus-dim-bg);
         transition: opacity 760ms ease;
       }
       .panel-tooltip,
       .panel-tooltip * { margin: 0; }
-      .panel-tooltip { display: flex; flex-direction: column; width: 100%; background: #0d1c30; color: #fff; }
-      .panel-tooltip-header { position: relative; display: flex; min-height: 162px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); overflow: hidden; }
+      .panel-tooltip { display: flex; flex-direction: column; width: 100%; background: var(--panel-shell-bg); color: var(--panel-text); }
+      .panel-tooltip-header { position: relative; display: flex; min-height: 162px; border-bottom: 1px solid var(--panel-divider); overflow: hidden; }
       .panel-tooltip-headcopy { flex: 1; padding: 58px 20px 18px; }
       .panel-tooltip-title { font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1.05; letter-spacing: -0.7px; }
-      .panel-tooltip-live { margin-top: 8px; display: flex; align-items: center; gap: 8px; font: 13px/1.1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: rgba(255, 255, 255, 0.52); }
-      .panel-tooltip-live-dot { width: 8px; height: 8px; border-radius: 999px; background: #ecb200; }
-      .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: rgba(255, 255, 255, 0.82); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; }
-      .panel-tooltip-flagbox { width: 122px; border-left: 1px solid rgba(255, 255, 255, 0.1); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: 80px auto; opacity: 0.95; }
-      .panel-tooltip-flagbox--empty { background: rgba(255, 255, 255, 0.04); }
-      .panel-tooltip-dual { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+      .panel-tooltip-live { margin-top: 8px; display: flex; align-items: center; gap: 8px; font: 13px/1.1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: var(--panel-live-text); }
+      .panel-tooltip-live-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--panel-live-dot); }
+      .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: var(--panel-close); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; }
+      .panel-tooltip-flagbox { width: 122px; border-left: 1px solid var(--panel-flag-border); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: 80px auto; opacity: 0.95; }
+      .panel-tooltip-flagbox--empty { background: var(--panel-flag-empty-bg); }
+      .panel-tooltip-dual { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--panel-divider); }
       .panel-tooltip-stat { padding: 16px 18px 14px; }
-      .panel-tooltip-stat:first-child { border-right: 1px solid rgba(255, 255, 255, 0.12); }
-      .panel-tooltip-stat-label { font: 14px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
-      .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: #fff; }
-      .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.32); }
-      .panel-tooltip-aircraft { border-bottom: 1px solid rgba(255, 255, 255, 0.12); padding: 16px 20px; }
-      .panel-tooltip-aircraft-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
-      .panel-tooltip-aircraft-value { margin-top: 8px; font: 20px/1.34 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.92); }
-      .panel-tooltip-footer { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: rgba(255, 255, 255, 0.05); }
-      .panel-tooltip-total-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
-      .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: #fff; }
-      .panel-tooltip-more { height: 50px; min-width: 120px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 16px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 20px; cursor: pointer; }
-      .panel-tooltip-more:hover { background: rgba(255, 255, 255, 0.16); }
+      .panel-tooltip-stat:first-child { border-right: 1px solid var(--panel-divider); }
+      .panel-tooltip-stat-label { font: 14px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: var(--panel-stat-label); }
+      .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: var(--panel-stat-value); }
+      .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: var(--panel-stat-sub); }
+      .panel-tooltip-aircraft { border-bottom: 1px solid var(--panel-divider); padding: 16px 20px; }
+      .panel-tooltip-aircraft-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: var(--panel-aircraft-label); }
+      .panel-tooltip-aircraft-value { margin-top: 8px; font: 20px/1.34 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: var(--panel-aircraft-value); }
+      .panel-tooltip-footer { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: var(--panel-footer-bg); }
+      .panel-tooltip-total-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: var(--panel-total-label); }
+      .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: var(--panel-total-value); }
+      .panel-tooltip-more { height: 50px; min-width: 120px; border: 1px solid var(--panel-more-border); background: var(--panel-more-bg); color: var(--panel-more-text); font: 600 16px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 20px; cursor: pointer; }
+      .panel-tooltip-more:hover { background: var(--panel-more-hover-bg); }
       .panel-tooltip-more:active { transform: translateY(1px); }
       @media (max-width: 980px) {
         #ui-toggle { right: 12px; top: 52px; }
@@ -309,20 +684,7 @@ let atmosphere:
     }
   | null = null
 let storyHighlight: ReturnType<typeof createStoryHighlight> | null = null
-let flightRoutes:
-  | {
-      group: THREE.Group
-      lines: THREE.LineSegments
-      planes: THREE.Points
-      update: (deltaSeconds: number, timeSeconds: number, cameraDistance: number) => void
-      setFocusCountry: (iso3: string | null) => void
-      setHoverRoute: (routeId: number | null) => void
-      setSelectedRoute: (routeId: number | null) => void
-      getRouteInfo: (routeId: number) => any | null
-      getCountryFlightStats: (iso3: string, timeSeconds: number) => any
-      setHeatmapEnabled: (enabled: boolean) => void
-    }
-  | null = null
+let flightRoutes: FlightRoutesLayer | null = null
 let selectedFlightRouteId: number | null = null
 let isCountrySelected = false
 let selectedCountryIso3: string | null = null
@@ -540,7 +902,7 @@ const maxPitch = Math.PI / 2.2
  * Scene / Camera / Renderer
  */
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x07090d)
+scene.background = new THREE.Color(theme.scene.background)
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1000)
 camera.up.set(0, 1, 0)
@@ -605,8 +967,6 @@ if (heatmapToggle) {
   heatmapToggle.checked = initialHeatmapEnabled
 }
 type VisualPreset = {
-  sceneBg: number
-  innerSphere: number
   landAlpha: number
   coastAlpha: number
   borderCoreOpacity: number
@@ -630,8 +990,6 @@ type VisualPreset = {
 }
 
 const DRAMATIC_VISUAL_PRESET: VisualPreset = {
-  sceneBg: 0x07090d,
-  innerSphere: 0x07090d,
   // Keep country fill identical to globe body; only borders should distinguish countries.
   landAlpha: 0.0,
   coastAlpha: 0.0,
@@ -665,60 +1023,112 @@ let visualLightingDayMul = 1
 function applyVisualPreset() {
   const cfg = DRAMATIC_VISUAL_PRESET
 
-  scene.background = new THREE.Color(cfg.sceneBg)
+  scene.background = new THREE.Color(theme.scene.background)
 
   if (innerSphereMesh && innerSphereMesh.material instanceof THREE.MeshBasicMaterial) {
     // Keep the globe interior exactly equal to the space background.
-    innerSphereMesh.material.color.setHex(cfg.sceneBg)
+    innerSphereMesh.material.color.set(theme.scene.innerSphere)
     innerSphereMesh.visible = false
   }
   if (depthMaskMesh && depthMaskMesh.material instanceof THREE.MeshBasicMaterial) {
-    depthMaskMesh.material.color.setHex(cfg.sceneBg)
+    depthMaskMesh.material.color.set(theme.scene.depthMask)
   }
   if (lightingShell) {
     lightingShell.group.visible = false
+    setUniformColor(lightingShell.nightMaterial.uniforms as any, 'uShadowColor', theme.lighting.shadow)
+    setUniformColor(lightingShell.dayMaterial.uniforms as any, 'uDayColor', theme.lighting.day)
   }
 
   if (landWater) {
     const u = landWater.material.uniforms as any
     if (u.uLandAlpha) u.uLandAlpha.value = cfg.landAlpha
     if (u.uCoastAlpha) u.uCoastAlpha.value = cfg.coastAlpha
+    setUniformColor(u, 'uLandTint', theme.landWater.landTint)
+    setUniformColor(u, 'uCoastTint', theme.landWater.coastTint)
   }
 
   if (countriesLines) {
     countriesLines.setStyle({
       opacity: cfg.borderCoreOpacity,
-      color: 0xffffff,
+      color: theme.countries.border,
       lineWidth: cfg.borderLineWidth
     })
+  }
+
+  if (triGrid) {
+    for (const mat of triGrid.materials) {
+      setUniformColor(mat.uniforms as any, 'uColor', theme.grids.triColor)
+      setUniformColor(mat.uniforms as any, 'uShimmerColor', theme.grids.triShimmerColor)
+    }
+  }
+
+  if (latLonGrid) {
+    for (const mat of latLonGrid.materials) {
+      setUniformColor(mat.uniforms as any, 'uColor', theme.grids.latLonColor)
+      setUniformColor(mat.uniforms as any, 'uShimmerColor', theme.grids.latLonShimmerColor)
+    }
   }
 
   if (languagePoints) {
     const u = languagePoints.material.uniforms as any
     if (u.uAlphaMul) u.uAlphaMul.value = cfg.dotAlpha
     if (u.uSizeMul) u.uSizeMul.value = scaleThickness(cfg.dotSizeMul)
+    setUniformColor(u, 'uColorMul', theme.points.dotColorMul)
+    setUniformColor(u, 'uFlowColor', theme.points.dotFlowColor)
   }
 
   if (flightRoutes) {
-    const planeMat = flightRoutes.planes.material as THREE.ShaderMaterial
-    const lineMat = flightRoutes.lines.material as THREE.ShaderMaterial
-    const p = planeMat.uniforms as any
-    const l = lineMat.uniforms as any
+    const p = flightRoutes.materials.plane.uniforms as any
+    const l = flightRoutes.materials.line.uniforms as any
+    const h = flightRoutes.materials.heatmap.uniforms as any
+    const e = flightRoutes.materials.endpoints.uniforms as any
+    const pin = flightRoutes.materials.pin.uniforms as any
     if (p.uAlpha) p.uAlpha.value = cfg.planeAlpha
     if (p.uSizeMul) p.uSizeMul.value = scaleThickness(cfg.planeSizeMul)
     if (l.uBaseAlpha) l.uBaseAlpha.value = cfg.routeLineBaseAlpha
     if (l.uGlowAlpha) l.uGlowAlpha.value = cfg.routeLineGlowAlpha
+    setUniformColor(l, 'uBaseColor', theme.flights.lineBaseColor)
+    setUniformColor(l, 'uHeadColor', theme.flights.lineHeadColor)
+    setUniformColor(l, 'uTailColor', theme.flights.lineTailColor)
+    setUniformColor(l, 'uAccentColor', theme.flights.lineAccentColor)
+    setUniformColor(p, 'uCoreColor', theme.flights.planeCoreColor)
+    setUniformColor(p, 'uGlowColor', theme.flights.planeGlowColor)
+    setUniformColor(p, 'uTintColor', theme.flights.planeTintColor)
+    setUniformColor(p, 'uAccentColor', theme.flights.planeAccentColor)
+    setUniformColor(h, 'uColdColor', theme.flights.heatColdColor)
+    setUniformColor(h, 'uMidColor', theme.flights.heatMidColor)
+    setUniformColor(h, 'uHotColor', theme.flights.heatHotColor)
+    setUniformColor(h, 'uEdgeAccentColor', theme.flights.heatEdgeAccentColor)
+    setUniformColor(e, 'uOriginColor', theme.flights.endpointOriginColor)
+    setUniformColor(e, 'uDestColor', theme.flights.endpointDestColor)
+    setUniformColor(e, 'uAccentColor', theme.flights.endpointAccentColor)
+    setUniformColor(pin, 'uHoverColor', theme.flights.pinHoverColor)
+    setUniformColor(pin, 'uSelectedColor', theme.flights.pinSelectedColor)
+    if (flightRoutes.materials.hubs) {
+      setUniformColor(flightRoutes.materials.hubs.uniforms as any, 'uColorMul', theme.flights.hubColorMul)
+    }
   }
 
   if (nightLights) {
     const u = nightLights.material.uniforms as any
     if (u.uAlpha) u.uAlpha.value = cfg.nightLightsAlpha
+    setUniformColor(u, 'uWarmA', theme.points.nightWarmA)
+    setUniformColor(u, 'uWarmB', theme.points.nightWarmB)
   }
 
   if (atmosphere) {
-    ;(atmosphere.materials.inner.uniforms as any).uIntensity.value = cfg.atmoInner
-    ;(atmosphere.materials.outer.uniforms as any).uIntensity.value = cfg.atmoOuter
-    ;(atmosphere.materials.subsurface.uniforms as any).uIntensity.value = cfg.atmoSubsurface
+    const innerUniforms = atmosphere.materials.inner.uniforms as any
+    const outerUniforms = atmosphere.materials.outer.uniforms as any
+    const subsurfaceUniforms = atmosphere.materials.subsurface.uniforms as any
+    innerUniforms.uIntensity.value = cfg.atmoInner
+    outerUniforms.uIntensity.value = cfg.atmoOuter
+    subsurfaceUniforms.uIntensity.value = cfg.atmoSubsurface
+    setUniformColor(innerUniforms, 'uCoreColor', theme.atmosphere.innerCore)
+    setUniformColor(innerUniforms, 'uRimColor', theme.atmosphere.innerRim)
+    setUniformColor(outerUniforms, 'uCoreColor', theme.atmosphere.outerCore)
+    setUniformColor(outerUniforms, 'uRimColor', theme.atmosphere.outerRim)
+    setUniformColor(subsurfaceUniforms, 'uCoreColor', theme.atmosphere.subsurfaceCore)
+    setUniformColor(subsurfaceUniforms, 'uRimColor', theme.atmosphere.subsurfaceRim)
   }
 
   visualTriOpacityMul = cfg.triGridOpacityMul
@@ -924,8 +1334,8 @@ if (railInfo && storyPanel) {
   const setInfoVisualState = () => {
     const collapsed = storyPanel.classList.contains('is-collapsed')
     railInfo.style.borderColor = collapsed
-      ? 'rgba(255, 255, 255, 0.2)'
-      : 'rgba(255, 255, 255, 0.46)'
+      ? 'var(--rail-info-border-idle)'
+      : 'var(--rail-info-border-active)'
   }
 
   setInfoVisualState()
