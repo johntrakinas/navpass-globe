@@ -38,6 +38,8 @@ export type GlobeOptions = {
   mountTarget?: HTMLElement
   overlayTarget?: HTMLElement
   assetBaseUrl?: string
+  injectDefaultUI?: boolean
+  initialHeatmapEnabled?: boolean
 }
 
 export type GlobeInstance = {
@@ -56,6 +58,217 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     const normalizedAssetPath = assetPath.replace(/^\/+/, '')
     return assetBaseUrl ? `${assetBaseUrl}/${normalizedAssetPath}` : `/${normalizedAssetPath}`
   }
+  ;(globalThis as any).__NAVPASS_GLOBE_ASSET_BASE_URL = assetBaseUrl
+
+  function ensureDefaultUiScaffold() {
+    if ((options.injectDefaultUI ?? true) === false) return
+
+    let createdScaffold = false
+    let createdHeatmapToggle = false
+
+    let uiToggle = document.getElementById('ui-toggle') as HTMLDivElement | null
+    if (!uiToggle) {
+      uiToggle = document.createElement('div')
+      uiToggle.id = 'ui-toggle'
+      overlayTarget.appendChild(uiToggle)
+      createdHeatmapToggle = true
+    }
+
+    if (!document.getElementById('heatmap-toggle')) {
+      uiToggle.innerHTML = `
+        <div class="toggle-group">
+          <span class="toggle-label">Heatmap</span>
+          <label class="toggle-switch">
+            <input id="heatmap-toggle" type="checkbox" />
+            <span class="toggle-track"></span>
+            <span id="heatmap-thumb" class="toggle-thumb"></span>
+          </label>
+        </div>
+      `
+      createdHeatmapToggle = true
+    }
+
+    if (!document.getElementById('globe-ui')) {
+      const globeUi = document.createElement('div')
+      globeUi.id = 'globe-ui'
+      const story = document.createElement('div')
+      story.className = 'ui-story is-collapsed'
+      const storyRow = document.createElement('div')
+      storyRow.className = 'ui-story-row'
+      const storyCaption = document.createElement('div')
+      storyCaption.id = 'story-caption'
+      story.appendChild(storyRow)
+      story.appendChild(storyCaption)
+      globeUi.appendChild(story)
+      overlayTarget.appendChild(globeUi)
+      createdScaffold = true
+    }
+
+    if (!document.getElementById('country-panel')) {
+      const panel = document.createElement('div')
+      panel.id = 'country-panel'
+      overlayTarget.appendChild(panel)
+      createdScaffold = true
+    }
+
+    if (!document.getElementById('focus-dim')) {
+      const focusDim = document.createElement('div')
+      focusDim.id = 'focus-dim'
+      overlayTarget.appendChild(focusDim)
+      createdScaffold = true
+    }
+
+    const styleId = 'navpass-globe-default-ui'
+    if (document.getElementById(styleId)) return
+
+    const panelEl = document.getElementById('country-panel') as HTMLElement | null
+    const panelStyle = panelEl ? getComputedStyle(panelEl) : null
+    const panelLooksUnstyled = !panelStyle ||
+      panelStyle.position !== 'fixed' ||
+      panelStyle.right === 'auto' ||
+      panelStyle.bottom === 'auto'
+    if (panelEl && panelLooksUnstyled) {
+      panelEl.style.position = 'fixed'
+      panelEl.style.left = 'auto'
+      panelEl.style.top = 'auto'
+      panelEl.style.right = '24px'
+      panelEl.style.bottom = '54px'
+      panelEl.style.margin = '0'
+      panelEl.style.zIndex = '4'
+    }
+    if (!createdScaffold && !createdHeatmapToggle && !panelLooksUnstyled) return
+
+    const style = document.createElement('style')
+    style.id = styleId
+    style.textContent = `
+      :root {
+        --panel-bg: rgba(6, 18, 38, 0.74);
+        --panel-border: rgba(255, 255, 255, 0.2);
+        --panel-text: rgba(255, 255, 255, 0.94);
+        --panel-shadow: rgba(0, 0, 0, 0.45);
+        --panel-surface: rgba(255, 255, 255, 0.06);
+        --panel-surface-border: rgba(255, 255, 255, 0.16);
+        --tooltip-bg: rgba(6, 18, 38, 0.88);
+        --tooltip-border: rgba(255, 255, 255, 0.22);
+        --tooltip-text: rgba(255, 255, 255, 0.95);
+        --ui-bg: rgba(6, 18, 38, 0.74);
+        --ui-border: rgba(255, 255, 255, 0.18);
+        --ui-text: rgba(255, 255, 255, 0.9);
+        --ui-track: rgba(255, 255, 255, 0.24);
+        --ui-thumb: #ffffff;
+      }
+      #ui-toggle {
+        position: fixed;
+        right: 24px;
+        top: 58px;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: var(--ui-bg);
+        border: 1px solid var(--ui-border);
+        color: var(--ui-text);
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+        pointer-events: auto;
+      }
+      #ui-toggle,
+      #ui-toggle *,
+      #ui-toggle *::before,
+      #ui-toggle *::after { box-sizing: border-box; }
+      .toggle-group { display: flex; align-items: center; gap: 8px; }
+      .toggle-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+      .toggle-switch { position: relative; display: inline-flex; width: 42px; height: 22px; }
+      .toggle-switch input { opacity: 0; width: 0; height: 0; }
+      .toggle-track { position: absolute; inset: 0; background: var(--ui-track); border-radius: 999px; }
+      .toggle-thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--ui-thumb);
+        transition: transform 420ms ease;
+      }
+      #globe-ui { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+      #globe-ui .ui-story { display: none; }
+      #country-panel,
+      #country-panel *,
+      #country-panel *::before,
+      #country-panel *::after { box-sizing: border-box; }
+      #country-panel {
+        position: fixed !important;
+        left: auto !important;
+        top: auto !important;
+        right: 24px !important;
+        bottom: 54px !important;
+        width: min(438px, calc(100vw - 36px));
+        max-height: 86vh;
+        overflow: hidden;
+        padding: 1px;
+        margin: 0;
+        border: 1px solid rgba(255, 255, 255, 0.34);
+        background: #0d1c30;
+        color: var(--panel-text);
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.42);
+        pointer-events: auto;
+        opacity: 0;
+        transform: translateY(10px);
+        transition: opacity 460ms ease, transform 560ms ease;
+        z-index: 4;
+      }
+      #country-panel.is-visible { opacity: 1; transform: translateY(0); }
+      #focus-dim {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+        opacity: 0;
+        background: rgba(2, 6, 12, 0.3);
+        transition: opacity 760ms ease;
+      }
+      .panel-tooltip,
+      .panel-tooltip * { margin: 0; }
+      .panel-tooltip { display: flex; flex-direction: column; width: 100%; background: #0d1c30; color: #fff; }
+      .panel-tooltip-header { position: relative; display: flex; min-height: 162px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); overflow: hidden; }
+      .panel-tooltip-headcopy { flex: 1; padding: 58px 20px 18px; }
+      .panel-tooltip-title { font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1.05; letter-spacing: -0.7px; }
+      .panel-tooltip-live { margin-top: 8px; display: flex; align-items: center; gap: 8px; font: 13px/1.1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: rgba(255, 255, 255, 0.52); }
+      .panel-tooltip-live-dot { width: 8px; height: 8px; border-radius: 999px; background: #ecb200; }
+      .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: rgba(255, 255, 255, 0.82); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; }
+      .panel-tooltip-flagbox { width: 122px; border-left: 1px solid rgba(255, 255, 255, 0.1); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: 80px auto; opacity: 0.95; }
+      .panel-tooltip-flagbox--empty { background: rgba(255, 255, 255, 0.04); }
+      .panel-tooltip-dual { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+      .panel-tooltip-stat { padding: 16px 18px 14px; }
+      .panel-tooltip-stat:first-child { border-right: 1px solid rgba(255, 255, 255, 0.12); }
+      .panel-tooltip-stat-label { font: 14px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
+      .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: #fff; }
+      .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.32); }
+      .panel-tooltip-aircraft { border-bottom: 1px solid rgba(255, 255, 255, 0.12); padding: 16px 20px; }
+      .panel-tooltip-aircraft-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
+      .panel-tooltip-aircraft-value { margin-top: 8px; font: 20px/1.34 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.92); }
+      .panel-tooltip-footer { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: rgba(255, 255, 255, 0.05); }
+      .panel-tooltip-total-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
+      .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: #fff; }
+      .panel-tooltip-more { height: 50px; min-width: 120px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 16px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 20px; cursor: pointer; }
+      .panel-tooltip-more:hover { background: rgba(255, 255, 255, 0.16); }
+      .panel-tooltip-more:active { transform: translateY(1px); }
+      @media (max-width: 980px) {
+        #ui-toggle { right: 12px; top: 52px; }
+        #country-panel { right: 12px !important; bottom: 74px !important; width: calc(100vw - 24px); max-height: 70vh; }
+      }
+      @media (max-width: 700px) {
+        .panel-tooltip-title, .panel-tooltip-stat-value, .panel-tooltip-total-value { font-size: 34px; }
+        .panel-tooltip-aircraft-value { font-size: 16px; }
+      }
+    `
+    document.head.appendChild(style)
+  }
+  ensureDefaultUiScaffold()
 
   /* 
    * Config
@@ -130,12 +343,12 @@ flightRouteLabel.style.alignItems = 'flex-start'
 flightRouteLabel.style.gap = '10px'
 flightRouteLabel.style.padding = '10px 12px'
 flightRouteLabel.style.borderRadius = '14px'
-flightRouteLabel.style.background = 'var(--panel-bg)'
-flightRouteLabel.style.border = '1px solid var(--panel-border)'
+flightRouteLabel.style.background = 'var(--panel-bg, rgba(6, 18, 38, 0.74))'
+flightRouteLabel.style.border = '1px solid var(--panel-border, rgba(255, 255, 255, 0.2))'
 flightRouteLabel.style.backdropFilter = 'blur(12px)'
-flightRouteLabel.style.color = 'var(--panel-text)'
+flightRouteLabel.style.color = 'var(--panel-text, rgba(255, 255, 255, 0.94))'
 flightRouteLabel.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif'
-flightRouteLabel.style.boxShadow = '0 18px 55px var(--panel-shadow)'
+flightRouteLabel.style.boxShadow = '0 18px 55px var(--panel-shadow, rgba(0, 0, 0, 0.45))'
 flightRouteLabel.style.opacity = '0'
 flightRouteLabel.style.transform = 'translate(-50%, -100%) translateY(8px)'
 flightRouteLabel.style.transition = 'opacity 460ms ease, transform 560ms ease'
@@ -165,9 +378,9 @@ flightRouteClose.setAttribute('aria-label', 'Clear route')
 flightRouteClose.style.width = '26px'
 flightRouteClose.style.height = '26px'
 flightRouteClose.style.borderRadius = '999px'
-flightRouteClose.style.border = '1px solid var(--panel-surface-border)'
-flightRouteClose.style.background = 'var(--panel-surface)'
-flightRouteClose.style.color = 'var(--panel-text)'
+flightRouteClose.style.border = '1px solid var(--panel-surface-border, rgba(255, 255, 255, 0.16))'
+flightRouteClose.style.background = 'var(--panel-surface, rgba(255, 255, 255, 0.06))'
+flightRouteClose.style.color = 'var(--panel-text, rgba(255, 255, 255, 0.94))'
 flightRouteClose.style.cursor = 'pointer'
 flightRouteClose.style.display = 'grid'
 flightRouteClose.style.placeItems = 'center'
@@ -387,6 +600,10 @@ updatePostprocessSize()
 
 const heatmapToggle = document.getElementById('heatmap-toggle') as HTMLInputElement | null
 const heatmapThumb = document.getElementById('heatmap-thumb') as HTMLSpanElement | null
+const initialHeatmapEnabled = options.initialHeatmapEnabled ?? (heatmapToggle ? heatmapToggle.checked : true)
+if (heatmapToggle) {
+  heatmapToggle.checked = initialHeatmapEnabled
+}
 type VisualPreset = {
   sceneBg: number
   innerSphere: number
@@ -1841,7 +2058,7 @@ async function init() {
   flightRoutes = createFlightRoutes(denseAirports, GLOBE_RADIUS, countriesGeoJSON, MOCK_FLIGHT_ROUTE_COUNT)
   console.info(`[flights] mocked_routes=${MOCK_FLIGHT_ROUTE_COUNT} source_airports=${denseAirports.length}`)
   globeGroup.add(flightRoutes.group)
-  applyHeatmap(Boolean(heatmapToggle?.checked))
+  applyHeatmap(initialHeatmapEnabled)
 
   atmosphere = createAtmosphere(GLOBE_RADIUS, camera)
   globeGroup.add(atmosphere.group)

@@ -7,9 +7,9 @@ export function createTooltip(mountTarget: HTMLElement = document.body) {
   el.style.pointerEvents = 'none'
   el.style.padding = '6px 10px'
   el.style.borderRadius = '10px'
-  el.style.background = 'var(--tooltip-bg)'
-  el.style.border = '1px solid var(--tooltip-border)'
-  el.style.color = 'var(--tooltip-text)'
+  el.style.background = 'var(--tooltip-bg, rgba(6, 18, 38, 0.88))'
+  el.style.border = '1px solid var(--tooltip-border, rgba(255, 255, 255, 0.22))'
+  el.style.color = 'var(--tooltip-text, rgba(255, 255, 255, 0.95))'
   el.style.font = '12px system-ui, -apple-system, Segoe UI, Roboto, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
   el.style.letterSpacing = '0.2px'
   el.style.backdropFilter = 'blur(6px)'
@@ -48,9 +48,9 @@ export function createTooltip(mountTarget: HTMLElement = document.body) {
 
   function setTheme(isLight: boolean) {
     void isLight
-    el.style.background = 'var(--tooltip-bg)'
-    el.style.border = '1px solid var(--tooltip-border)'
-    el.style.color = 'var(--tooltip-text)'
+    el.style.background = 'var(--tooltip-bg, rgba(6, 18, 38, 0.88))'
+    el.style.border = '1px solid var(--tooltip-border, rgba(255, 255, 255, 0.22))'
+    el.style.color = 'var(--tooltip-text, rgba(255, 255, 255, 0.95))'
   }
 
   function destroy() {

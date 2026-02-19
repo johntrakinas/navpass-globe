@@ -1,6 +1,19 @@
-const panel = document.getElementById('country-panel') as HTMLDivElement
-const globeUi = document.getElementById('globe-ui') as HTMLDivElement
-const focusDim = document.getElementById('focus-dim') as HTMLDivElement
+function getPanel() {
+  return document.getElementById('country-panel') as HTMLDivElement | null
+}
+
+function getGlobeUi() {
+  return document.getElementById('globe-ui') as HTMLDivElement | null
+}
+
+function getFocusDim() {
+  return document.getElementById('focus-dim') as HTMLDivElement | null
+}
+
+function resolveFlagUrl(iso2: string) {
+  const base = String((globalThis as any).__NAVPASS_GLOBE_ASSET_BASE_URL ?? '').replace(/\/+$/, '')
+  return base ? `${base}/flags/${iso2.toLowerCase()}.svg` : `/flags/${iso2.toLowerCase()}.svg`
+}
 
 function escapeHtml(value: string) {
   return value
@@ -42,6 +55,8 @@ type CountryFlightStats = {
 }
 
 export function showCountryPanel(props: any, flights?: CountryFlightStats | null) {
+  const panel = getPanel()
+  const globeUi = getGlobeUi()
   if (!panel) return
 
   const name =
@@ -76,7 +91,7 @@ export function showCountryPanel(props: any, flights?: CountryFlightStats | null
 
   const flagUrl =
     iso2 && typeof iso2 === 'string' && iso2.length === 2 && iso2 !== '-99'
-      ? `/flags/${iso2.toLowerCase()}.svg`
+      ? resolveFlagUrl(iso2)
       : ''
 
   const flagBox = flagUrl
@@ -137,20 +152,25 @@ export function showCountryPanel(props: any, flights?: CountryFlightStats | null
 }
 
 export function hideCountryPanel() {
+  const panel = getPanel()
+  const globeUi = getGlobeUi()
   if (!panel) return
   panel.classList.remove('is-visible')
   globeUi?.classList.remove('expanded')
 }
 
 export function showFocusDim() {
+  const focusDim = getFocusDim()
   if (focusDim) focusDim.style.opacity = '1'
 }
 
 export function hideFocusDim() {
+  const focusDim = getFocusDim()
   if (focusDim) focusDim.style.opacity = '0'
 }
 
 export function setFocusDimOpacity(value: number) {
+  const focusDim = getFocusDim()
   if (!focusDim) return
   const clamped = Math.max(0, Math.min(1, value))
   focusDim.style.opacity = clamped.toFixed(3)
