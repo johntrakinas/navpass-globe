@@ -51,7 +51,15 @@ jobs:
 
       - name: Pull partner -> fast-forward/merge -> push origin
         run: |
-          git remote add partner https://github.com/navpass/navpass-website.git || true
+          # garante que não tem credenciais do GITHUB_TOKEN atrapalhando
+          git config --global --unset-all http.https://github.com/.extraheader || true
+
+          echo "Remotes before:"
+          git remote -v
+
+          # recria o remote do partner JÁ com token (fetch e push vão funcionar)
+          git remote remove partner || true
+          git remote add partner https://x-access-token:${{ secrets.MIRROR_PAT }}@github.com/navpass/navpass-website.git
 
           # Atualiza refs de forma determinística
           git fetch --prune origin  +refs/heads/main:refs/remotes/origin/main
@@ -73,19 +81,16 @@ jobs:
             exit 0
           fi
 
-          # parceiro atrás -> nada a fazer
           if [ "$THEIR" = "$BASE" ]; then
             echo "Partner is behind. No pull needed."
             exit 0
           fi
 
-          # parceiro na frente
           if [ "$OUR" = "$BASE" ]; then
             echo "Fast-forwarding our main to partner/main..."
             git merge --ff-only refs/remotes/partner/main
           else
             echo "Diverged. Attempting merge..."
-            # se conflitar, o job falha (você resolve manualmente)
             git merge --no-edit refs/remotes/partner/main
           fi
 
