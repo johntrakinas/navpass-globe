@@ -17,8 +17,8 @@ void main() {
   float d = length(uv);
   if (d > 0.46) discard;
 
-  float core = smoothstep(0.16, 0.0, d);
-  float glow = smoothstep(0.34, 0.10, d);
+  float core = 1.0 - smoothstep(0.0, 0.16, d);
+  float glow = 1.0 - smoothstep(0.10, 0.34, d);
 
   // Color drift (subtle): keeps it alive without rainbow vibes.
   float drift = 0.5 + 0.5 * sin(uTime * 0.08 + vSeed * 12.0);

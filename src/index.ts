@@ -43,7 +43,7 @@ const ENABLE_STORY_HIGHLIGHT = false
 const SYNTHETIC_AIRPORT_TARGET = 5200
 const AIRPORT_MIN_SPACING_DEG = 0.5
 const SHOW_GLOBE_POINTS = false
-const MOCK_FLIGHT_ROUTE_COUNT = 2800
+const MOCK_FLIGHT_ROUTE_COUNT = 700
 let countriesGeoJSON: any = null
 
 let triGrid: ReturnType<typeof createAdaptiveTriGrid> | null = null
@@ -396,7 +396,7 @@ const DRAMATIC_VISUAL_PRESET: VisualPreset = {
   landAlpha: 0.0,
   coastAlpha: 0.0,
   borderCoreOpacity: 0.24,
-  borderLineWidth: 3.0,
+  borderLineWidth: 1.8,
   triGridOpacityMul: 1.0,
   triGridShimmerMul: 0.0,
   latLonGridOpacityMul: 0.8,
@@ -406,8 +406,8 @@ const DRAMATIC_VISUAL_PRESET: VisualPreset = {
   atmoSubsurface: 0.0,
   dotAlpha: 1.08,
   dotSizeMul: 1.36,
-  planeAlpha: 1.16,
-  planeSizeMul: 1.34,
+  planeAlpha: 0.64,
+  planeSizeMul: 0.84,
   routeLineBaseAlpha: 0.058,
   routeLineGlowAlpha: 0.48,
   nightLightsAlpha: 0.42,
@@ -709,7 +709,7 @@ for (const topLink of document.querySelectorAll<HTMLAnchorElement>('#figma-shell
 let isDragging = false
 let lastX = 0
 let lastY = 0
-const ROTATE_SPEED = 0.00175
+const ROTATE_SPEED = 0.00245
 
 let velYaw = 0
 let velPitch = 0
@@ -718,20 +718,20 @@ let peakVelYaw = 0
 let peakVelPitch = 0
 let lastYawDragSign = 0
 
-const INERTIA = 0.91          // atrito (0.85..0.95) — menor = mais “pesado”
-const MAX_VEL = 0.38          // rad/s (limita velocidade pra não “pirar”)
-const MAX_DRAG_STEP_RAD = THREE.MathUtils.degToRad(0.82)
+const INERTIA = 0.94          // atrito (0.85..0.95) — maior = freada mais suave
+const MAX_VEL = 0.52          // rad/s (limita velocidade pra não “pirar”)
+const MAX_DRAG_STEP_RAD = THREE.MathUtils.degToRad(1.15)
 const RELEASE_SPIN_TRIGGER_DISTANCE = 170
-const RELEASE_SPIN_TRIGGER_SPEED = 0.16
-const RELEASE_SPIN_MIN = 0.085
-const RELEASE_SPIN_MAX = 0.22
-const RELEASE_SPIN_BOOST = 0.045
-const RELEASE_PITCH_DAMP = 0.34
+const RELEASE_SPIN_TRIGGER_SPEED = 0.14
+const RELEASE_SPIN_MIN = 0.10
+const RELEASE_SPIN_MAX = 0.30
+const RELEASE_SPIN_BOOST = 0.055
+const RELEASE_PITCH_DAMP = 0.42
 const CLICK_DRAG_THRESHOLD = 4 // px: acima disso consideramos que foi drag
-const AUTO_ROTATE_SPEED = THREE.MathUtils.degToRad(0.14)
-const AUTO_ROTATE_BREAK_CYCLE_SEC = 18.0
-const AUTO_ROTATE_BREAK_WINDOW_SEC = 6.6
-const AUTO_ROTATE_BREAK_MIN_FACTOR = 0.04
+const AUTO_ROTATE_SPEED = THREE.MathUtils.degToRad(0.30)
+const AUTO_ROTATE_BREAK_CYCLE_SEC = 20.0
+const AUTO_ROTATE_BREAK_WINDOW_SEC = 5.2
+const AUTO_ROTATE_BREAK_MIN_FACTOR = 0.42
 let dragDistance = 0
 let dragSuppressUntil = 0
 let activePointerId: number | null = null
@@ -750,8 +750,9 @@ function getIdleAutoRotateFactor(timeSeconds: number) {
   if (phaseSec > AUTO_ROTATE_BREAK_WINDOW_SEC) return 1
 
   const t = THREE.MathUtils.clamp(phaseSec / AUTO_ROTATE_BREAK_WINDOW_SEC, 0, 1)
-  // Smooth brake envelope: slow down, almost pause, then recover.
-  const brake = Math.pow(Math.sin(Math.PI * t), 0.58)
+  // Smooth brake envelope: gentle slow-down and recovery (no hard "stop" feel).
+  const wave = 0.5 - 0.5 * Math.cos(Math.PI * 2 * t)
+  const brake = Math.pow(wave, 1.35)
   return 1.0 - brake * (1.0 - AUTO_ROTATE_BREAK_MIN_FACTOR)
 }
 
@@ -884,7 +885,7 @@ function onPointerUp(e: PointerEvent) {
         velYaw = THREE.MathUtils.clamp(velYaw, -RELEASE_SPIN_MAX, RELEASE_SPIN_MAX)
       }
     } else {
-      velYaw *= 0.62
+      velYaw *= 0.78
     }
     velPitch = THREE.MathUtils.clamp(
       velPitch * RELEASE_PITCH_DAMP,
@@ -1281,9 +1282,14 @@ function getFlightHit(clientX: number, clientY: number, lineThreshold = 0.14) {
   if (lineHit && lineHit.index !== undefined && lineHit.index !== null) {
     if (!Number.isFinite(sphereDist) || lineHit.distance <= sphereDist + 1e-4) {
       const geo = (lineHit.object as any).geometry as THREE.BufferGeometry | undefined
-      const routeAttr = geo?.getAttribute('aRouteId') as THREE.BufferAttribute | undefined
+      const routeAttr = (geo?.getAttribute('aRouteId') ?? geo?.getAttribute('aAnim1')) as
+        | THREE.BufferAttribute
+        | undefined
       if (routeAttr) {
-        const routeId = Math.round(routeAttr.getX(lineHit.index))
+        const routeId =
+          routeAttr.itemSize >= 3
+            ? Math.round(routeAttr.getZ(lineHit.index))
+            : Math.round(routeAttr.getX(lineHit.index))
         if (Number.isFinite(routeId)) {
           return { hit: lineHit, routeId }
         }

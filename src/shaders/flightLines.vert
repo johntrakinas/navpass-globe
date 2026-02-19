@@ -1,11 +1,5 @@
-attribute float aT;
-attribute float aSpeed;
-attribute float aPhase;
-attribute float aSeed;
-attribute float aTraffic;
-attribute float aFocus;
-attribute float aRouteId;
-attribute float aDir;
+attribute vec4 aAnim0; // t, speed, phase, seed
+attribute vec4 aAnim1; // traffic, focus, routeId, dir
 attribute float aHub;
 
 varying float vT;
@@ -20,14 +14,14 @@ varying float vHub;
 varying float vFacing;
 
 void main() {
-  vT = aT;
-  vSpeed = aSpeed;
-  vPhase = aPhase;
-  vSeed = aSeed;
-  vTraffic = aTraffic;
-  vFocus = aFocus;
-  vRouteId = aRouteId;
-  vDir = aDir;
+  vT = aAnim0.x;
+  vSpeed = aAnim0.y;
+  vPhase = aAnim0.z;
+  vSeed = aAnim0.w;
+  vTraffic = aAnim1.x;
+  vFocus = aAnim1.y;
+  vRouteId = aAnim1.z;
+  vDir = aAnim1.w;
   vHub = aHub;
   
   vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;

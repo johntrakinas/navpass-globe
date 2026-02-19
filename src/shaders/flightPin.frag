@@ -18,8 +18,8 @@ void main() {
   float d = length(uv);
   if (d > 0.44) discard;
 
-  float core = smoothstep(0.17, 0.0, d);
-  float glow = smoothstep(0.33, 0.09, d);
+  float core = 1.0 - smoothstep(0.0, 0.17, d);
+  float glow = 1.0 - smoothstep(0.09, 0.33, d);
 
   float kind = step(0.5, vKind);
   vec3 col = mix(uHoverColor, uSelectedColor, kind);

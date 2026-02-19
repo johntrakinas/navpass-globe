@@ -5,6 +5,10 @@ import { scaleThickness } from './thicknessScale'
 let current: THREE.Object3D | null = null
 let currentMats: THREE.ShaderMaterial[] = []
 let pulsePhase = Math.random() * Math.PI * 2
+const SELECT_RADIUS_MULT = 1.022
+const SELECT_SCALE = 1.02
+const SELECT_BREATH_BASE = 0.0015
+const SELECT_BREATH_AMP = 0.006
 
 const VERT = /* glsl */ `
 attribute float aT;
@@ -95,7 +99,7 @@ export function highlightCountryFromFeature(
       const seedValues: number[] = []
 
       for (const [lng, lat] of ring) {
-        const v = latLongToVector3(lat, lng, radius * 1.008)
+        const v = latLongToVector3(lat, lng, radius * SELECT_RADIUS_MULT)
         pts.push(v)
       }
 
@@ -120,6 +124,8 @@ export function highlightCountryFromFeature(
     }
   }
 
+  // Keep selected-country lift aligned with hover visual height.
+  group.scale.setScalar(SELECT_SCALE)
   parent.add(group)
   current = group
 }
@@ -141,7 +147,8 @@ export function clearHighlight(parent: THREE.Object3D) {
 
 export function updateCountryHighlight(timeSeconds: number) {
   if (!currentMats.length) return
-  const pulse = 0.011 + 0.009 * Math.sin(timeSeconds * 1.8 + pulsePhase)
+  const breathUp = 0.5 + 0.5 * Math.sin(timeSeconds * 1.85 + pulsePhase * 0.55)
+  const pulse = SELECT_BREATH_BASE + SELECT_BREATH_AMP * breathUp
   const alpha = 0.82 + 0.18 * Math.sin(timeSeconds * 1.6 + pulsePhase)
 
   for (const mat of currentMats) {

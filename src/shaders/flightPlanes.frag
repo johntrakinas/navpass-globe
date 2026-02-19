@@ -31,19 +31,21 @@ void main() {
   if (d > 0.5) discard;
 
   // Oriented "comet" look (tiny contrail).
-  vec2 dir2 = normalize(vVel2);
+  vec2 dir2 = vVel2;
+  float dir2Len = length(dir2);
+  dir2 = dir2Len > 1e-5 ? (dir2 / dir2Len) : vec2(0.0, 1.0);
   vec2 perpDir = vec2(-dir2.y, dir2.x);
   float along = dot(uv, dir2);
   float perp = dot(uv, perpDir);
 
-  float core = smoothstep(0.22, 0.0, d);
-  float glow = smoothstep(0.5, 0.14, d);
+  float core = 1.0 - smoothstep(0.0, 0.22, d);
+  float glow = 1.0 - smoothstep(0.14, 0.5, d);
 
   // Tail only behind the motion direction.
   float behind = clamp((-along) / 0.48, 0.0, 1.0);
   float tailWidth = mix(0.18, 0.07, behind);
-  float tail = smoothstep(tailWidth, 0.0, abs(perp));
-  tail *= smoothstep(1.0, 0.0, behind);
+  float tail = 1.0 - smoothstep(0.0, tailWidth, abs(perp));
+  tail *= 1.0 - smoothstep(0.0, 1.0, behind);
   tail *= step(along, 0.03);
 
   // Subtle zoom fade so we don't spam the screen when zoomed out.
@@ -84,7 +86,7 @@ void main() {
   col = mix(col, vec3(1.0), selectedEmph * 0.18);
 
   float alpha =
-    (glow * 0.92 + tail * 0.8 + core * 0.75) *
+    (glow * 0.46 + tail * 0.34 + core * 0.52) *
     uAlpha *
     shimmer *
     zoomFade *

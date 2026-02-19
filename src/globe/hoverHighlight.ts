@@ -19,9 +19,11 @@ const glowColor = new THREE.Color()
 const coreColor = new THREE.Color()
 let hoverScale = 1
 let hoverScaleTarget = 1
-const HOVER_RADIUS_MULT = 1.016
-const HOVER_POP_START = 0.97
-const HOVER_POP_TARGET = 1.012
+const HOVER_RADIUS_MULT = 1.03
+const HOVER_POP_START = 0.95
+const HOVER_POP_TARGET = 1.02
+const HOVER_BREATH_AMP = 0.006
+const HOVER_BREATH_SPEED = 1.85
 
 const HOVER_VERT = /* glsl */ `
 uniform float uThickness;
@@ -117,8 +119,8 @@ export function setHoverHighlight(feature: any | null, parent: THREE.Object3D, r
   const geo = featureToLineGeometry(feature, radius)
   const geoCore = geo.clone()
 
-  hoverGlowMat = createHoverMaterial(scaleThickness(0.0058))
-  hoverCoreMat = createHoverMaterial(scaleThickness(0.0023))
+  hoverGlowMat = createHoverMaterial(scaleThickness(0.0042))
+  hoverCoreMat = createHoverMaterial(scaleThickness(0.0017))
 
   hoverGlowLine = new THREE.LineSegments(geo, hoverGlowMat)
   hoverCoreLine = new THREE.LineSegments(geoCore, hoverCoreMat)
@@ -160,30 +162,33 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
   // ✅ opacidade adaptativa ao zoom (longe = menos forte)
   // ajuste fino: quanto menor o número, mais cedo ele fica forte
   const zoomFactor = THREE.MathUtils.clamp((28 - cameraDistance) / 12, 0, 1)
-  const desiredMax = 0.32 + 0.58 * zoomFactor // 0.32..0.90 (perto mais visível)
+  const desiredMax = 0.24 + 0.46 * zoomFactor // 0.24..0.70 (perto mais visível)
 
-  const maxOp = Math.min(desiredMax, 0.86)
+  const maxOp = Math.min(desiredMax, 0.72)
   const tgt = Math.min(targetOpacity, maxOp)
 
   // ✅ fade suave (critico pro "Google feel")
-  const smoothing = 0.11 // maior = mais rápido (0.12..0.22)
+  const smoothing = 0.14 // maior = mais rápido (0.12..0.22)
   currentOpacity += (tgt - currentOpacity) * smoothing
-  const pulse = 0.8 + 0.2 * Math.sin(timeSeconds * 2.1 + pulsePhase)
-  const shimmer = 0.5 + 0.5 * Math.sin(timeSeconds * 2.6 + pulsePhase * 0.7)
+  const pulse = 0.9 + 0.1 * Math.sin(timeSeconds * 1.9 + pulsePhase)
+  const shimmer = 0.5 + 0.35 * Math.sin(timeSeconds * 2.2 + pulsePhase * 0.7)
   const palette = googlePaletteLerp((timeSeconds * 0.08 + pulsePhase * 0.12) % 1)
-  glowColor.copy(hoverColorA).lerp(hoverColorB, shimmer).lerp(palette, 0.55)
-  coreColor.copy(glowColor).lerp(GOOGLE_COLORS.white, 0.42)
+  glowColor.copy(hoverColorA).lerp(hoverColorB, shimmer).lerp(palette, 0.42)
+  coreColor.copy(glowColor).lerp(GOOGLE_COLORS.white, 0.30)
 
   ;(hoverGlowMat.uniforms.uColor.value as THREE.Color).copy(glowColor)
-  hoverGlowMat.uniforms.uOpacity.value = currentOpacity * pulse * hoverOpacityMul * 0.85
+  hoverGlowMat.uniforms.uOpacity.value = currentOpacity * pulse * hoverOpacityMul * 0.72
 
   ;(hoverCoreMat.uniforms.uColor.value as THREE.Color).copy(coreColor)
-  hoverCoreMat.uniforms.uOpacity.value = currentOpacity * (0.72 + 0.28 * pulse) * hoverOpacityMul * 0.98
+  hoverCoreMat.uniforms.uOpacity.value = currentOpacity * (0.82 + 0.18 * pulse) * hoverOpacityMul * 0.88
 
   // subtle "raise" animation (helps the border feel like it lifts off the globe)
-  const popSmoothing = 0.12
+  const popSmoothing = 0.18
   hoverScale += (hoverScaleTarget - hoverScale) * popSmoothing
-  hoverGroup.scale.setScalar(hoverScale)
+  // Breathing lift: always "up", never sinks below the current hover scale.
+  const breathUp = 0.5 + 0.5 * Math.sin(timeSeconds * HOVER_BREATH_SPEED + pulsePhase * 0.55)
+  const dynamicScale = hoverScale * (1.0 + HOVER_BREATH_AMP * breathUp)
+  hoverGroup.scale.setScalar(dynamicScale)
 
   // quando chega em ~0, remove de vez
   if (targetOpacity === 0 && currentOpacity < 0.01) {
@@ -198,5 +203,5 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
 export function setHoverTheme(isLight: boolean) {
   hoverColorA = isLight ? GOOGLE_COLORS.deepBlue.clone() : GOOGLE_COLORS.white.clone()
   hoverColorB = GOOGLE_COLORS.yellow.clone()
-  hoverOpacityMul = isLight ? 1.65 : 1.45
+  hoverOpacityMul = isLight ? 1.35 : 1.20
 }

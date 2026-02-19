@@ -405,8 +405,10 @@ export function createFlightRoutes(
 ) {
   const group = new THREE.Group()
   group.name = 'flightRoutes'
+  const SHOW_ROUTE_ENDPOINTS = false
   const SHOW_HOVER_ENDPOINTS = false
   const SHOW_ROUTE_PIN = false
+  const SHOW_ROUTE_PLANES = false
   const SHOW_ROUTE_HUBS = false
 
   const { valid, routes } = pickRouteIndices(airports, count)
@@ -638,14 +640,8 @@ export function createFlightRoutes(
   // ---------------------------
   const lineVertexCount = routeData.length * segmentsPerRoute * 2
   const linePositions = new Float32Array(lineVertexCount * 3)
-  const lineT = new Float32Array(lineVertexCount)
-  const lineSpeed = new Float32Array(lineVertexCount)
-  const linePhase = new Float32Array(lineVertexCount)
-  const lineSeed = new Float32Array(lineVertexCount)
-  const lineTraffic = new Float32Array(lineVertexCount)
-  const lineFocus = new Float32Array(lineVertexCount)
-  const lineRouteId = new Float32Array(lineVertexCount)
-  const lineDir = new Float32Array(lineVertexCount)
+  const lineAnim0 = new Float32Array(lineVertexCount * 4) // t, speed, phase, seed
+  const lineAnim1 = new Float32Array(lineVertexCount * 4) // traffic, focus, routeId, dir
   const lineHub = new Float32Array(lineVertexCount)
 
   const tmp0: number[] = [0, 0, 0]
@@ -669,28 +665,30 @@ export function createFlightRoutes(
       linePositions[vi0 * 3 + 0] = tmp0[0]
       linePositions[vi0 * 3 + 1] = tmp0[1]
       linePositions[vi0 * 3 + 2] = tmp0[2]
-      lineT[vi0] = t0
-      lineSpeed[vi0] = r.speed
-      linePhase[vi0] = r.phase
-      lineSeed[vi0] = r.seed
-      lineTraffic[vi0] = r.traffic
-      lineFocus[vi0] = 1
-      lineRouteId[vi0] = r.id
-      lineDir[vi0] = r.dir
+      const lo0 = vi0 * 4
+      lineAnim0[lo0 + 0] = t0
+      lineAnim0[lo0 + 1] = r.speed
+      lineAnim0[lo0 + 2] = r.phase
+      lineAnim0[lo0 + 3] = r.seed
+      lineAnim1[lo0 + 0] = r.traffic
+      lineAnim1[lo0 + 1] = 1
+      lineAnim1[lo0 + 2] = r.id
+      lineAnim1[lo0 + 3] = r.dir
       lineHub[vi0] = r.hub
 
       // vertex 1
       linePositions[vi1 * 3 + 0] = tmp1[0]
       linePositions[vi1 * 3 + 1] = tmp1[1]
       linePositions[vi1 * 3 + 2] = tmp1[2]
-      lineT[vi1] = t1
-      lineSpeed[vi1] = r.speed
-      linePhase[vi1] = r.phase
-      lineSeed[vi1] = r.seed
-      lineTraffic[vi1] = r.traffic
-      lineFocus[vi1] = 1
-      lineRouteId[vi1] = r.id
-      lineDir[vi1] = r.dir
+      const lo1 = vi1 * 4
+      lineAnim0[lo1 + 0] = t1
+      lineAnim0[lo1 + 1] = r.speed
+      lineAnim0[lo1 + 2] = r.phase
+      lineAnim0[lo1 + 3] = r.seed
+      lineAnim1[lo1 + 0] = r.traffic
+      lineAnim1[lo1 + 1] = 1
+      lineAnim1[lo1 + 2] = r.id
+      lineAnim1[lo1 + 3] = r.dir
       lineHub[vi1] = r.hub
 
       v += 2
@@ -699,14 +697,8 @@ export function createFlightRoutes(
 
   const lineGeo = new THREE.BufferGeometry()
   lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3))
-  lineGeo.setAttribute('aT', new THREE.BufferAttribute(lineT, 1))
-  lineGeo.setAttribute('aSpeed', new THREE.BufferAttribute(lineSpeed, 1))
-  lineGeo.setAttribute('aPhase', new THREE.BufferAttribute(linePhase, 1))
-  lineGeo.setAttribute('aSeed', new THREE.BufferAttribute(lineSeed, 1))
-  lineGeo.setAttribute('aTraffic', new THREE.BufferAttribute(lineTraffic, 1))
-  lineGeo.setAttribute('aFocus', new THREE.BufferAttribute(lineFocus, 1))
-  lineGeo.setAttribute('aRouteId', new THREE.BufferAttribute(lineRouteId, 1))
-  lineGeo.setAttribute('aDir', new THREE.BufferAttribute(lineDir, 1))
+  lineGeo.setAttribute('aAnim0', new THREE.BufferAttribute(lineAnim0, 4))
+  lineGeo.setAttribute('aAnim1', new THREE.BufferAttribute(lineAnim1, 4))
   lineGeo.setAttribute('aHub', new THREE.BufferAttribute(lineHub, 1))
   lineGeo.computeBoundingSphere()
 
@@ -745,7 +737,7 @@ export function createFlightRoutes(
   // Planes (batch in 1 draw call)
   // ---------------------------
   const planeGeo = new THREE.BufferGeometry()
-  const MAX_PLANES_PER_ROUTE = 7
+  const MAX_PLANES_PER_ROUTE = 4
   const planeCount = routeData.length * MAX_PLANES_PER_ROUTE
 
   // Dummy position for Points geometry.
@@ -755,17 +747,8 @@ export function createFlightRoutes(
   const planeP0 = new Float32Array(planeCount * 3)
   const planeP1 = new Float32Array(planeCount * 3)
   const planeP2 = new Float32Array(planeCount * 3)
-  const planeSpeed = new Float32Array(planeCount)
-  const planePhase = new Float32Array(planeCount)
-  const planeOffset = new Float32Array(planeCount)
-  const planeDir = new Float32Array(planeCount)
-  const planeSizes = new Float32Array(planeCount)
-  const planeSeeds = new Float32Array(planeCount)
-  const planeTraffic = new Float32Array(planeCount)
-  const planeEnable = new Float32Array(planeCount)
-  const planeFocus = new Float32Array(planeCount)
-  const planeRouteId = new Float32Array(planeCount)
-  const planeHub = new Float32Array(planeCount)
+  const planeAnimA = new Float32Array(planeCount * 4) // speed, phase, offset, dir
+  const planeAnimB = new Float32Array(planeCount * 4) // size, seed, traffic, enable
 
   function fract01(v: number) {
     return v - Math.floor(v)
@@ -794,27 +777,25 @@ export function createFlightRoutes(
       planeP2[idx * 3 + 1] = r.p2y
       planeP2[idx * 3 + 2] = r.p2z
 
-      planeSpeed[idx] = r.speed
-      planePhase[idx] = r.phase
-      planeDir[idx] = r.dir
-      planeRouteId[idx] = r.id
-      planeHub[idx] = r.hub
+      const po = idx * 4
+      planeAnimA[po + 0] = r.speed
+      planeAnimA[po + 1] = r.phase
+      planeAnimA[po + 3] = r.dir
 
       const enabled = j < r.trafficCount ? 1 : 0
-      planeEnable[idx] = enabled
-      planeFocus[idx] = 1
+      planeAnimB[po + 3] = enabled
 
       // Spread planes along the route; add a small deterministic jitter.
       const denom = Math.max(1, r.trafficCount)
       const baseOffset = j / denom
       const jitter = (fract01(r.seed * 17.0 + j * 3.1) - 0.5) * 0.06
-      planeOffset[idx] = fract01(baseOffset + jitter)
+      planeAnimA[po + 2] = fract01(baseOffset + jitter)
 
       // Subtle variety and traffic scaling.
       const sizeJitter = 0.94 - j * 0.06 + (fract01(r.seed * 11.0 + j * 1.7) - 0.5) * 0.08
-      planeSizes[idx] = r.size * sizeJitter
-      planeSeeds[idx] = fract01(r.seed + j * 0.23)
-      planeTraffic[idx] = r.traffic
+      planeAnimB[po + 0] = r.size * sizeJitter
+      planeAnimB[po + 1] = fract01(r.seed + j * 0.23)
+      planeAnimB[po + 2] = r.traffic
     }
   }
 
@@ -822,17 +803,8 @@ export function createFlightRoutes(
   planeGeo.setAttribute('aP0', new THREE.BufferAttribute(planeP0, 3))
   planeGeo.setAttribute('aP1', new THREE.BufferAttribute(planeP1, 3))
   planeGeo.setAttribute('aP2', new THREE.BufferAttribute(planeP2, 3))
-  planeGeo.setAttribute('aSpeed', new THREE.BufferAttribute(planeSpeed, 1))
-  planeGeo.setAttribute('aPhase', new THREE.BufferAttribute(planePhase, 1))
-  planeGeo.setAttribute('aOffset', new THREE.BufferAttribute(planeOffset, 1))
-  planeGeo.setAttribute('aDir', new THREE.BufferAttribute(planeDir, 1))
-  planeGeo.setAttribute('aSize', new THREE.BufferAttribute(planeSizes, 1))
-  planeGeo.setAttribute('aSeed', new THREE.BufferAttribute(planeSeeds, 1))
-  planeGeo.setAttribute('aTraffic', new THREE.BufferAttribute(planeTraffic, 1))
-  planeGeo.setAttribute('aEnable', new THREE.BufferAttribute(planeEnable, 1))
-  planeGeo.setAttribute('aFocus', new THREE.BufferAttribute(planeFocus, 1))
-  planeGeo.setAttribute('aRouteId', new THREE.BufferAttribute(planeRouteId, 1))
-  planeGeo.setAttribute('aHub', new THREE.BufferAttribute(planeHub, 1))
+  planeGeo.setAttribute('aAnimA', new THREE.BufferAttribute(planeAnimA, 4))
+  planeGeo.setAttribute('aAnimB', new THREE.BufferAttribute(planeAnimB, 4))
   planeGeo.computeBoundingSphere()
 
   const planeMat = new THREE.ShaderMaterial({
@@ -863,6 +835,7 @@ export function createFlightRoutes(
   const planes = new THREE.Points(planeGeo, planeMat)
   planes.renderOrder = 6
   planes.frustumCulled = false
+  planes.visible = SHOW_ROUTE_PLANES
   group.add(planes)
 
   // ---------------------------
@@ -901,6 +874,7 @@ export function createFlightRoutes(
   const endpoints = new THREE.Points(endpointsGeo, endpointsMat)
   endpoints.renderOrder = 7
   endpoints.frustumCulled = false
+  endpoints.visible = SHOW_ROUTE_ENDPOINTS
   group.add(endpoints)
 
   // ---------------------------
@@ -1015,25 +989,21 @@ export function createFlightRoutes(
   const verticesPerRoute = segmentsPerRoute * 2
   function applyFocusMask() {
     if (!focusIso3) {
-      lineFocus.fill(1)
-      planeFocus.fill(1)
+      for (let i = 0; i < lineVertexCount; i++) {
+        lineAnim1[i * 4 + 1] = 1
+      }
     } else {
       for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
         const r = routeData[rIndex]
         const hit = r.isoA3 === focusIso3 || r.isoB3 === focusIso3 ? 1 : 0
         const base = rIndex * verticesPerRoute
         for (let j = 0; j < verticesPerRoute; j++) {
-          lineFocus[base + j] = hit
-        }
-        const basePlane = rIndex * MAX_PLANES_PER_ROUTE
-        for (let k = 0; k < MAX_PLANES_PER_ROUTE; k++) {
-          planeFocus[basePlane + k] = hit
+          lineAnim1[(base + j) * 4 + 1] = hit
         }
       }
     }
 
-    ;(lineGeo.getAttribute('aFocus') as THREE.BufferAttribute).needsUpdate = true
-    ;(planeGeo.getAttribute('aFocus') as THREE.BufferAttribute).needsUpdate = true
+    ;(lineGeo.getAttribute('aAnim1') as THREE.BufferAttribute).needsUpdate = true
   }
 
   function setFocusCountry(iso3: string | null) {
@@ -1052,7 +1022,7 @@ export function createFlightRoutes(
     if (typeof routeId === 'number' && Number.isFinite(routeId)) {
       hoverRouteId = routeId
       hoverTarget = 1
-      if (SHOW_HOVER_ENDPOINTS) {
+      if (SHOW_ROUTE_ENDPOINTS && SHOW_HOVER_ENDPOINTS) {
         setEndpointPositions('hover', routeId)
       }
       if (SHOW_ROUTE_PIN) {
@@ -1067,7 +1037,9 @@ export function createFlightRoutes(
     if (typeof routeId === 'number' && Number.isFinite(routeId)) {
       selectedRouteId = routeId
       selectedTarget = 1
-      setEndpointPositions('selected', routeId)
+      if (SHOW_ROUTE_ENDPOINTS) {
+        setEndpointPositions('selected', routeId)
+      }
       if (SHOW_ROUTE_PIN) {
         setPinPosition('selected', routeId)
       }
@@ -1182,12 +1154,12 @@ export function createFlightRoutes(
 
     endpointsMat.uniforms.uTime.value = timeSeconds
     endpointsMat.uniforms.uCameraDistance.value = cameraDistance
-    endpointsMat.uniforms.uHoverMix.value = SHOW_HOVER_ENDPOINTS ? hoverMix : 0
-    endpointsMat.uniforms.uSelectedMix.value = selectedMix
+    endpointsMat.uniforms.uHoverMix.value = SHOW_ROUTE_ENDPOINTS && SHOW_HOVER_ENDPOINTS ? hoverMix : 0
+    endpointsMat.uniforms.uSelectedMix.value = SHOW_ROUTE_ENDPOINTS ? selectedMix : 0
     endpointsMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(
       1.02,
       1.42,
-      THREE.MathUtils.clamp(selectedMix, 0, 1)
+      SHOW_ROUTE_ENDPOINTS ? THREE.MathUtils.clamp(selectedMix, 0, 1) : 0
     )
 
     pinMat.uniforms.uTime.value = timeSeconds
@@ -1258,7 +1230,7 @@ export function createFlightRoutes(
       0.004,
       0.1
     )
-    planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.96, 1.22, zoom) * THREE.MathUtils.lerp(1.0, 1.26, Math.max(hoverMix, selectedMix))
+    planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.42, 0.72, zoom) * THREE.MathUtils.lerp(1.0, 1.18, Math.max(hoverMix, selectedMix))
   }
 
   return {

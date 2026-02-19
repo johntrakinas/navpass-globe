@@ -40,8 +40,8 @@ void main() {
   float behind = head - vT;
   if (behind < 0.0) behind += 1.0;
 
-  float tailMask = smoothstep(uTailLength, 0.0, behind);
-  float headMask = smoothstep(uHeadWidth, 0.0, behind);
+  float tailMask = 1.0 - smoothstep(0.0, uTailLength, behind);
+  float headMask = 1.0 - smoothstep(0.0, uHeadWidth, behind);
 
   float isHover = 1.0 - step(0.5, abs(vRouteId - uHoverRouteId));
   float isSel = 1.0 - step(0.5, abs(vRouteId - uSelectedRouteId));
@@ -90,7 +90,7 @@ void main() {
   color = mix(color, vec3(1.0), selectedEmph * 0.22);
 
   // LOD: when zoomed out, keep only a subset of routes (smoothly) to avoid clutter.
-  float keepMask = smoothstep(uRouteKeep, uRouteKeep - 0.12, vSeed);
+  float keepMask = 1.0 - smoothstep(uRouteKeep - 0.12, uRouteKeep, vSeed);
   keepMask = max(keepMask, emphasize);
   // Prefer keeping high-traffic routes when we thin things out.
   float trafficKeep = smoothstep(0.85, 1.12, vTraffic);

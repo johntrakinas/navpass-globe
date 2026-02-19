@@ -22,9 +22,9 @@ void main() {
   // Keep only a small footprint to avoid visible circular sprites.
   if (d > 0.46) discard;
 
-  float core = smoothstep(0.14, 0.0, d);
-  float soft = smoothstep(0.34, 0.09, d);
-  float pointMask = smoothstep(0.28, 0.03, d);
+  float core = 1.0 - smoothstep(0.0, 0.14, d);
+  float soft = 1.0 - smoothstep(0.09, 0.34, d);
+  float pointMask = 1.0 - smoothstep(0.03, 0.28, d);
 
   // Coordinated shimmer wave (global, not random per point).
   float shimmer = 0.96 + 0.04 * sin(uTime * 0.75 + vFlowCoord * 6.2831);
@@ -38,12 +38,12 @@ void main() {
   float phaseA = fract(vFlowCoord + uTime * uFlowSpeed);
   float dHeadA = abs(phaseA - 0.5);
   dHeadA = min(dHeadA, 1.0 - dHeadA);
-  float sweepA = smoothstep(uFlowWidth, 0.0, dHeadA);
+  float sweepA = 1.0 - smoothstep(0.0, uFlowWidth, dHeadA);
 
   float phaseB = fract(vFlowCoord * 0.64 - uTime * (uFlowSpeed * 0.62) + 0.18);
   float dHeadB = abs(phaseB - 0.5);
   dHeadB = min(dHeadB, 1.0 - dHeadB);
-  float sweepB = smoothstep(uFlowWidth * 1.15, 0.0, dHeadB);
+  float sweepB = 1.0 - smoothstep(0.0, uFlowWidth * 1.15, dHeadB);
 
   float syncPulse = 0.5 + 0.5 * sin(uTime * 0.92);
   float syncGate = smoothstep(0.34, 1.0, syncPulse);

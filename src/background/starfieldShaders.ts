@@ -35,7 +35,7 @@ export function createStarfieldShader({
     float d = length(uv);
     if (d > 0.5) discard;
 
-    float alpha = smoothstep(0.5, 0.05, d);
+    float alpha = 1.0 - smoothstep(0.05, 0.5, d);
     float twinkle = 0.7 + 0.3 * sin(uTime * 1.3 + vSeed * 6.2831);
     gl_FragColor = vec4(vColor * twinkle, alpha * uOpacity);
   }

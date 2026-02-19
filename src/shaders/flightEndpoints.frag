@@ -15,8 +15,8 @@ void main() {
   float d = length(uv);
   if (d > 0.46) discard;
 
-  float core = smoothstep(0.20, 0.0, d);
-  float glow = smoothstep(0.38, 0.11, d);
+  float core = 1.0 - smoothstep(0.0, 0.20, d);
+  float glow = 1.0 - smoothstep(0.11, 0.38, d);
 
   float shimmer = 0.94 + 0.06 * sin(uTime * 1.1 + vSeed * 6.2831);
   vec3 col = mix(uOriginColor, uDestColor, step(0.5, vRole));
