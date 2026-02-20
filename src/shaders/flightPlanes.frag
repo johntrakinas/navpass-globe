@@ -8,6 +8,7 @@ uniform vec3 uTintColor;
 uniform vec3 uAccentColor;
 uniform float uAlpha;
 uniform float uFocusMix;
+uniform float uRepresentationMix;
 uniform float uHoverRouteId;
 uniform float uHoverMix;
 uniform float uSelectedRouteId;
@@ -23,6 +24,7 @@ varying float vEmph;
 varying vec2 vVel2;
 varying float vHub;
 varying float vFacing;
+varying float vAltitude;
 
 void main() {
   if (vEnable < 0.5) discard;
@@ -85,6 +87,7 @@ void main() {
   float lightUp = clamp(hoverEmph * 0.52 + selectedEmph * 0.78, 0.0, 1.0);
   col = mix(col, uCoreColor, lightUp);
   col = mix(col, uAccentColor, selectedEmph * 0.18);
+  col = mix(col, uAccentColor, smoothstep(0.58, 1.0, vAltitude) * uRepresentationMix * 0.14);
 
   float alpha =
     (glow * 0.46 + tail * 0.34 + core * 0.52) *
@@ -104,6 +107,7 @@ void main() {
   float bundleContext = mix(1.0, mix(0.36, 1.0, hubKeep), bundleMix);
   bundleContext = mix(bundleContext, 1.0, emphasize);
   alpha *= bundleContext;
+  alpha *= mix(0.72, 1.36, uRepresentationMix);
 
   // Fade softly near the horizon so points don't "pop" at the limb.
   float limb = smoothstep(0.02, 0.18, vFacing);

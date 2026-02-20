@@ -14,6 +14,8 @@ uniform float uTailLength;
 uniform float uHeadWidth;
 uniform float uFocusMix;
 uniform float uRouteKeep;
+uniform float uAltitudeLodMix;
+uniform float uRepresentationMix;
 uniform float uHoverRouteId;
 uniform float uHoverMix;
 uniform float uSelectedRouteId;
@@ -28,6 +30,7 @@ varying float vFocus;
 varying float vRouteId;
 varying float vDir;
 varying float vHub;
+varying float vAltitude;
 varying float vFacing;
 
 void main() {
@@ -90,6 +93,14 @@ void main() {
   color = mix(color, uHeadColor, lightUp);
   color = mix(color, uAccentColor, selectedEmph * 0.22);
 
+  // Altitude-aware LOD:
+  // - zoomed out => keep high-altitude arcs first
+  // - zoomed in  => progressively reveal low-altitude/regional routes
+  float altitudeThreshold = mix(0.66, 0.03, zoom);
+  float altitudeKeep = smoothstep(altitudeThreshold - 0.14, altitudeThreshold + 0.14, vAltitude);
+  altitudeKeep = mix(1.0, altitudeKeep, uAltitudeLodMix);
+  altitudeKeep = max(altitudeKeep, emphasize);
+
   // LOD: when zoomed out, keep only a subset of routes (smoothly) to avoid clutter.
   float keepMask = 1.0 - smoothstep(uRouteKeep - 0.12, uRouteKeep, vSeed);
   keepMask = max(keepMask, emphasize);
@@ -101,6 +112,7 @@ void main() {
   float bundleMix = smoothstep(0.35, 0.95, zoomOut);
   float hubKeep = smoothstep(0.18, 0.88, vHub);
   keepMask = max(keepMask, hubKeep * bundleMix);
+  keepMask *= altitudeKeep;
 
   float alpha =
     (uBaseAlpha + tailMask * uGlowAlpha + headMask * uGlowAlpha * 0.65) *
@@ -117,6 +129,8 @@ void main() {
   float bundleContext = mix(1.0, mix(0.18, 1.0, hubKeep), bundleMix);
   bundleContext = mix(bundleContext, 1.0, emphasize);
   alpha *= bundleContext;
+  // Particle representation becomes primary at zoom-out; keep only a soft line context.
+  alpha *= mix(1.0, 0.26, uRepresentationMix);
 
   // Fade softly near the horizon so the depth mask occlusion feels natural.
   float limb = smoothstep(0.02, 0.18, vFacing);

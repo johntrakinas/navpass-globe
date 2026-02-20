@@ -1,6 +1,7 @@
 attribute vec4 aAnim0; // t, speed, phase, seed
 attribute vec4 aAnim1; // traffic, focus, routeId, dir
 attribute float aHub;
+attribute float aAltitude;
 
 varying float vT;
 varying float vSpeed;
@@ -11,6 +12,7 @@ varying float vFocus;
 varying float vRouteId;
 varying float vDir;
 varying float vHub;
+varying float vAltitude;
 varying float vFacing;
 
 void main() {
@@ -23,6 +25,7 @@ void main() {
   vRouteId = aAnim1.z;
   vDir = aAnim1.w;
   vHub = aHub;
+  vAltitude = aAltitude;
   
   vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
   vFacing = dot(normalize(worldPos), normalize(cameraPosition));

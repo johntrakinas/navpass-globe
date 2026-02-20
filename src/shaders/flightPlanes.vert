@@ -3,6 +3,7 @@ precision mediump float;
 attribute vec3 aP0;
 attribute vec3 aP1;
 attribute vec3 aP2;
+attribute float aAltitude;
 
 attribute vec4 aAnimA; // speed, phase, offset, dir
 attribute vec4 aAnimB; // size, seed, traffic, enable
@@ -11,6 +12,8 @@ uniform float uTime;
 uniform float uCameraDistance;
 uniform float uRouteKeep;
 uniform float uPlaneDensity;
+uniform float uAltitudeLodMix;
+uniform float uRepresentationMix;
 uniform float uHoverRouteId;
 uniform float uHoverMix;
 uniform float uSelectedRouteId;
@@ -27,6 +30,7 @@ varying float vEmph;
 varying vec2 vVel2;
 varying float vHub;
 varying float vFacing;
+varying float vAltitude;
 
 void main() {
   float aSpeed = aAnimA.x;
@@ -48,6 +52,7 @@ void main() {
   vDir = aDir;
   vHub = aTraffic;
   vEmph = 0.0;
+  vAltitude = aAltitude;
 
   // LOD: thin planes when zoomed out (keep mask based on seed).
   float keepMask = 1.0 - smoothstep(uRouteKeep - 0.12, uRouteKeep, aSeed);
@@ -61,10 +66,15 @@ void main() {
 
   // Zoom-out aggregation: keep hub-connected planes visible longer.
   float zoom = clamp((32.0 - uCameraDistance) / 16.0, 0.0, 1.0);
+  float altitudeThreshold = mix(0.66, 0.03, zoom);
+  float altitudeKeep = smoothstep(altitudeThreshold - 0.14, altitudeThreshold + 0.14, aAltitude);
+  altitudeKeep = mix(1.0, altitudeKeep, uAltitudeLodMix);
   float bundleMix = smoothstep(0.35, 0.95, 1.0 - zoom);
   float hubKeep = smoothstep(0.72, 1.12, aTraffic);
   keepMask = max(keepMask, hubKeep * bundleMix);
   densMask = max(densMask, hubKeep * bundleMix);
+  keepMask *= altitudeKeep;
+  densMask *= altitudeKeep;
 
   float t = fract(uTime * aSpeed + aPhase + aOffset);
   if (aDir < 0.0) {
@@ -91,6 +101,7 @@ void main() {
 
   float baseSize = aSize * aTraffic;
   float pointSize = baseSize * uSizeMul * (136.0 / dist);
+  pointSize *= mix(0.85, 1.34, uRepresentationMix);
   pointSize *= aEnable * keepMask * densMask;
 
   gl_PointSize = clamp(pointSize, 0.0, 20.0);

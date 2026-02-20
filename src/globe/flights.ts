@@ -43,6 +43,7 @@ type Route = {
   traffic: number
   trafficCount: number
   hub: number
+  altitude01: number
   distanceKm: number
   fromName: string
   toName: string
@@ -69,6 +70,8 @@ export type FlightRouteMaterials = {
   hubs: THREE.ShaderMaterial | null
 }
 
+export type FlightVisualizationMode = 'legacy' | 'reengineered'
+
 export type FlightRoutesLayer = {
   group: THREE.Group
   lines: THREE.LineSegments
@@ -81,6 +84,7 @@ export type FlightRoutesLayer = {
   getRouteInfo: (routeId: number) => any | null
   getCountryFlightStats: (iso3: string, timeSeconds: number) => CountryFlightStats
   setHeatmapEnabled: (enabled: boolean) => void
+  setVisualizationMode: (mode: FlightVisualizationMode) => void
 }
 
 type KernelTap = { dx: number; dy: number; w: number }
@@ -431,11 +435,14 @@ export function createFlightRoutes(
   const SHOW_ROUTE_ENDPOINTS = false
   const SHOW_HOVER_ENDPOINTS = false
   const SHOW_ROUTE_PIN = false
-  const SHOW_ROUTE_PLANES = false
+  const SHOW_ROUTE_PLANES = true
   const SHOW_ROUTE_HUBS = false
 
   const { valid, routes } = pickRouteIndices(airports, count)
-  const segmentsPerRoute = 64
+  const LINE_SEGMENTS_COARSE = 20
+  const LINE_SEGMENTS_FINE = 64
+  const LINE_LOD_FINE_IN = 0.58
+  const LINE_LOD_COARSE_OUT = 0.44
 
   const routeData: Route[] = []
 
@@ -502,6 +509,7 @@ export function createFlightRoutes(
     const traffic = THREE.MathUtils.clamp(0.68 + trafficBase * 0.72 + (seed - 0.5) * 0.14, 0.68, 1.34)
     const traffic01 = THREE.MathUtils.clamp((traffic - 0.68) / (1.34 - 0.68), 0, 0.9999)
     const trafficCount = 1 + Math.floor(traffic01 * 6) // 1..6
+    const altitude01 = THREE.MathUtils.clamp((arcBoost - 0.25) / (1.25 - 0.25), 0, 1)
     const distanceKm = haversineKm(Number(a.latitude), Number(a.longitude), Number(b.latitude), Number(b.longitude))
 
     // Hubness for zoom-out "corridors": routes connected to high-degree airports
@@ -530,6 +538,7 @@ export function createFlightRoutes(
       traffic,
       trafficCount,
       hub,
+      altitude01,
       distanceKm,
       fromName: String(a.name || 'Origin'),
       toName: String(b.name || 'Destination'),
@@ -662,69 +671,98 @@ export function createFlightRoutes(
   // ---------------------------
   // Lines (batch in 1 draw call)
   // ---------------------------
-  const lineVertexCount = routeData.length * segmentsPerRoute * 2
-  const linePositions = new Float32Array(lineVertexCount * 3)
-  const lineAnim0 = new Float32Array(lineVertexCount * 4) // t, speed, phase, seed
-  const lineAnim1 = new Float32Array(lineVertexCount * 4) // traffic, focus, routeId, dir
-  const lineHub = new Float32Array(lineVertexCount)
+  type LineLodGeometry = {
+    geometry: THREE.BufferGeometry
+    focusAttr: THREE.BufferAttribute
+    focusData: Float32Array
+    vertexCount: number
+    verticesPerRoute: number
+  }
 
-  const tmp0: number[] = [0, 0, 0]
-  const tmp1: number[] = [0, 0, 0]
+  function buildLineLodGeometry(segmentsPerRoute: number): LineLodGeometry {
+    const lineVertexCount = routeData.length * segmentsPerRoute * 2
+    const linePositions = new Float32Array(lineVertexCount * 3)
+    const lineAnim0 = new Float32Array(lineVertexCount * 4) // t, speed, phase, seed
+    const lineAnim1 = new Float32Array(lineVertexCount * 4) // traffic, focus, routeId, dir
+    const lineHub = new Float32Array(lineVertexCount)
+    const lineAltitude = new Float32Array(lineVertexCount)
 
-  let v = 0
-  for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
-    const r = routeData[rIndex]
+    const tmp0: number[] = [0, 0, 0]
+    const tmp1: number[] = [0, 0, 0]
 
-    for (let i = 0; i < segmentsPerRoute; i++) {
-      const t0 = i / segmentsPerRoute
-      const t1 = (i + 1) / segmentsPerRoute
+    let v = 0
+    for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
+      const r = routeData[rIndex]
 
-      bezierPointParam(tmp0, r, t0)
-      bezierPointParam(tmp1, r, t1)
+      for (let i = 0; i < segmentsPerRoute; i++) {
+        const t0 = i / segmentsPerRoute
+        const t1 = (i + 1) / segmentsPerRoute
 
-      const vi0 = v
-      const vi1 = v + 1
+        bezierPointParam(tmp0, r, t0)
+        bezierPointParam(tmp1, r, t1)
 
-      // vertex 0
-      linePositions[vi0 * 3 + 0] = tmp0[0]
-      linePositions[vi0 * 3 + 1] = tmp0[1]
-      linePositions[vi0 * 3 + 2] = tmp0[2]
-      const lo0 = vi0 * 4
-      lineAnim0[lo0 + 0] = t0
-      lineAnim0[lo0 + 1] = r.speed
-      lineAnim0[lo0 + 2] = r.phase
-      lineAnim0[lo0 + 3] = r.seed
-      lineAnim1[lo0 + 0] = r.traffic
-      lineAnim1[lo0 + 1] = 1
-      lineAnim1[lo0 + 2] = r.id
-      lineAnim1[lo0 + 3] = r.dir
-      lineHub[vi0] = r.hub
+        const vi0 = v
+        const vi1 = v + 1
 
-      // vertex 1
-      linePositions[vi1 * 3 + 0] = tmp1[0]
-      linePositions[vi1 * 3 + 1] = tmp1[1]
-      linePositions[vi1 * 3 + 2] = tmp1[2]
-      const lo1 = vi1 * 4
-      lineAnim0[lo1 + 0] = t1
-      lineAnim0[lo1 + 1] = r.speed
-      lineAnim0[lo1 + 2] = r.phase
-      lineAnim0[lo1 + 3] = r.seed
-      lineAnim1[lo1 + 0] = r.traffic
-      lineAnim1[lo1 + 1] = 1
-      lineAnim1[lo1 + 2] = r.id
-      lineAnim1[lo1 + 3] = r.dir
-      lineHub[vi1] = r.hub
+        // vertex 0
+        linePositions[vi0 * 3 + 0] = tmp0[0]
+        linePositions[vi0 * 3 + 1] = tmp0[1]
+        linePositions[vi0 * 3 + 2] = tmp0[2]
+        const lo0 = vi0 * 4
+        lineAnim0[lo0 + 0] = t0
+        lineAnim0[lo0 + 1] = r.speed
+        lineAnim0[lo0 + 2] = r.phase
+        lineAnim0[lo0 + 3] = r.seed
+        lineAnim1[lo0 + 0] = r.traffic
+        lineAnim1[lo0 + 1] = 1
+        lineAnim1[lo0 + 2] = r.id
+        lineAnim1[lo0 + 3] = r.dir
+        lineHub[vi0] = r.hub
+        lineAltitude[vi0] = r.altitude01
 
-      v += 2
+        // vertex 1
+        linePositions[vi1 * 3 + 0] = tmp1[0]
+        linePositions[vi1 * 3 + 1] = tmp1[1]
+        linePositions[vi1 * 3 + 2] = tmp1[2]
+        const lo1 = vi1 * 4
+        lineAnim0[lo1 + 0] = t1
+        lineAnim0[lo1 + 1] = r.speed
+        lineAnim0[lo1 + 2] = r.phase
+        lineAnim0[lo1 + 3] = r.seed
+        lineAnim1[lo1 + 0] = r.traffic
+        lineAnim1[lo1 + 1] = 1
+        lineAnim1[lo1 + 2] = r.id
+        lineAnim1[lo1 + 3] = r.dir
+        lineHub[vi1] = r.hub
+        lineAltitude[vi1] = r.altitude01
+
+        v += 2
+      }
+    }
+
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3))
+    geo.setAttribute('aAnim0', new THREE.BufferAttribute(lineAnim0, 4))
+    const anim1Attr = new THREE.BufferAttribute(lineAnim1, 4)
+    anim1Attr.setUsage(THREE.DynamicDrawUsage)
+    geo.setAttribute('aAnim1', anim1Attr)
+    geo.setAttribute('aHub', new THREE.BufferAttribute(lineHub, 1))
+    geo.setAttribute('aAltitude', new THREE.BufferAttribute(lineAltitude, 1))
+    geo.computeBoundingSphere()
+
+    return {
+      geometry: geo,
+      focusAttr: anim1Attr,
+      focusData: lineAnim1,
+      vertexCount: lineVertexCount,
+      verticesPerRoute: segmentsPerRoute * 2
     }
   }
 
-  const lineGeo = new THREE.BufferGeometry()
-  lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3))
-  lineGeo.setAttribute('aAnim0', new THREE.BufferAttribute(lineAnim0, 4))
-  lineGeo.setAttribute('aAnim1', new THREE.BufferAttribute(lineAnim1, 4))
-  lineGeo.setAttribute('aHub', new THREE.BufferAttribute(lineHub, 1))
-  lineGeo.computeBoundingSphere()
+  const lineCoarse = buildLineLodGeometry(LINE_SEGMENTS_COARSE)
+  const lineFine = buildLineLodGeometry(LINE_SEGMENTS_FINE)
+  const lineLods: LineLodGeometry[] = [lineCoarse, lineFine]
+  let activeLineLod: 'coarse' | 'fine' = 'coarse'
 
   const lineMat = new THREE.ShaderMaterial({
     vertexShader: flightLinesVert,
@@ -746,6 +784,8 @@ export function createFlightRoutes(
       uHeadWidth: { value: 0.028 },
       uFocusMix: { value: 0.0 },
       uRouteKeep: { value: 1.0 },
+      uAltitudeLodMix: { value: 1.0 },
+      uRepresentationMix: { value: 0.0 },
       uHoverRouteId: { value: -999 },
       uHoverMix: { value: 0.0 },
       uSelectedRouteId: { value: -999 },
@@ -753,10 +793,16 @@ export function createFlightRoutes(
     }
   })
 
-  const lines = new THREE.LineSegments(lineGeo, lineMat)
+  const lines = new THREE.LineSegments(lineCoarse.geometry, lineMat)
   lines.renderOrder = 5
   lines.frustumCulled = false
   group.add(lines)
+
+  function setActiveLineLod(next: 'coarse' | 'fine') {
+    if (activeLineLod === next) return
+    activeLineLod = next
+    lines.geometry = next === 'fine' ? lineFine.geometry : lineCoarse.geometry
+  }
 
   // ---------------------------
   // Planes (batch in 1 draw call)
@@ -774,6 +820,7 @@ export function createFlightRoutes(
   const planeP2 = new Float32Array(planeCount * 3)
   const planeAnimA = new Float32Array(planeCount * 4) // speed, phase, offset, dir
   const planeAnimB = new Float32Array(planeCount * 4) // size, seed, traffic, enable
+  const planeAltitude = new Float32Array(planeCount)
 
   function fract01(v: number) {
     return v - Math.floor(v)
@@ -821,6 +868,7 @@ export function createFlightRoutes(
       planeAnimB[po + 0] = r.size * sizeJitter
       planeAnimB[po + 1] = fract01(r.seed + j * 0.23)
       planeAnimB[po + 2] = r.traffic
+      planeAltitude[idx] = r.altitude01
     }
   }
 
@@ -830,6 +878,7 @@ export function createFlightRoutes(
   planeGeo.setAttribute('aP2', new THREE.BufferAttribute(planeP2, 3))
   planeGeo.setAttribute('aAnimA', new THREE.BufferAttribute(planeAnimA, 4))
   planeGeo.setAttribute('aAnimB', new THREE.BufferAttribute(planeAnimB, 4))
+  planeGeo.setAttribute('aAltitude', new THREE.BufferAttribute(planeAltitude, 1))
   planeGeo.computeBoundingSphere()
 
   const planeMat = new THREE.ShaderMaterial({
@@ -850,6 +899,8 @@ export function createFlightRoutes(
       uFocusMix: { value: 0.0 },
       uRouteKeep: { value: 1.0 },
       uPlaneDensity: { value: 1.0 },
+      uAltitudeLodMix: { value: 1.0 },
+      uRepresentationMix: { value: 0.0 },
       uHoverRouteId: { value: -999 },
       uHoverMix: { value: 0.0 },
       uSelectedRouteId: { value: -999 },
@@ -956,6 +1007,7 @@ export function createFlightRoutes(
 
   let heatMix = 0
   let heatTarget = 0
+  let visualizationMode: FlightVisualizationMode = 'reengineered'
 
   const routesByCountry = new Map<string, number[]>()
   for (let i = 0; i < routeData.length; i++) {
@@ -1013,24 +1065,27 @@ export function createFlightRoutes(
     ;(pinGeo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true
   }
 
-  const verticesPerRoute = segmentsPerRoute * 2
   function applyFocusMask() {
-    if (!focusIso3) {
-      for (let i = 0; i < lineVertexCount; i++) {
-        lineAnim1[i * 4 + 1] = 1
-      }
-    } else {
-      for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
-        const r = routeData[rIndex]
-        const hit = r.isoA3 === focusIso3 || r.isoB3 === focusIso3 ? 1 : 0
-        const base = rIndex * verticesPerRoute
-        for (let j = 0; j < verticesPerRoute; j++) {
-          lineAnim1[(base + j) * 4 + 1] = hit
+    for (let lodIndex = 0; lodIndex < lineLods.length; lodIndex++) {
+      const lod = lineLods[lodIndex]
+
+      if (!focusIso3) {
+        for (let i = 0; i < lod.vertexCount; i++) {
+          lod.focusData[i * 4 + 1] = 1
+        }
+      } else {
+        for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
+          const r = routeData[rIndex]
+          const hit = r.isoA3 === focusIso3 || r.isoB3 === focusIso3 ? 1 : 0
+          const base = rIndex * lod.verticesPerRoute
+          for (let j = 0; j < lod.verticesPerRoute; j++) {
+            lod.focusData[(base + j) * 4 + 1] = hit
+          }
         }
       }
-    }
 
-    ;(lineGeo.getAttribute('aAnim1') as THREE.BufferAttribute).needsUpdate = true
+      lod.focusAttr.needsUpdate = true
+    }
   }
 
   function setFocusCountry(iso3: string | null) {
@@ -1152,6 +1207,20 @@ export function createFlightRoutes(
     }
   }
 
+  function setVisualizationMode(mode: FlightVisualizationMode) {
+    const next: FlightVisualizationMode = mode === 'legacy' ? 'legacy' : 'reengineered'
+    if (visualizationMode === next) return
+    visualizationMode = next
+
+    if (visualizationMode === 'legacy') {
+      setActiveLineLod('fine')
+      planes.visible = false
+      return
+    }
+
+    planes.visible = SHOW_ROUTE_PLANES
+  }
+
   // Update positions + uniforms.
   function update(deltaSeconds: number, timeSeconds: number, cameraDistance: number) {
     // smooth focus crossfade
@@ -1221,13 +1290,41 @@ export function createFlightRoutes(
     heatMat.uniforms.uTime.value = timeSeconds
     heatMat.uniforms.uCameraDistance.value = cameraDistance
 
-    // LOD: keep it subtle at distance; richer near the globe.
+    // LOD + representation mode:
+    // - legacy: dense static-like line rendering (original behavior)
+    // - reengineered: altitude-aware LOD + particle-primary zoom-out
     const zoom = THREE.MathUtils.clamp((32 - cameraDistance) / 16, 0, 1)
-    const routeKeep = THREE.MathUtils.lerp(0.55, 1.0, zoom)
-    const planeDensity = THREE.MathUtils.lerp(0.72, 1.0, zoom)
+    const zoomOut = 1.0 - zoom
+    const isLegacyMode = visualizationMode === 'legacy'
+
+    let routeKeep = THREE.MathUtils.lerp(0.55, 1.0, zoom)
+    let planeDensity = THREE.MathUtils.lerp(0.72, 1.0, zoom)
+    let representationMix = 0.0
+    let altitudeLodMix = 0.0
+
+    if (isLegacyMode) {
+      setActiveLineLod('fine')
+    } else {
+      if (activeLineLod === 'coarse' && zoom > LINE_LOD_FINE_IN) {
+        setActiveLineLod('fine')
+      } else if (activeLineLod === 'fine' && zoom < LINE_LOD_COARSE_OUT) {
+        setActiveLineLod('coarse')
+      }
+
+      routeKeep = THREE.MathUtils.lerp(0.42, 1.0, zoom)
+      planeDensity = THREE.MathUtils.lerp(0.58, 1.0, zoom)
+      representationMix = THREE.MathUtils.smoothstep(zoomOut, 0.30, 0.92)
+      altitudeLodMix = 1.0
+    }
+
     lineMat.uniforms.uRouteKeep.value = routeKeep
+    lineMat.uniforms.uAltitudeLodMix.value = altitudeLodMix
+    lineMat.uniforms.uRepresentationMix.value = representationMix
     planeMat.uniforms.uRouteKeep.value = routeKeep
     planeMat.uniforms.uPlaneDensity.value = planeDensity
+    planeMat.uniforms.uAltitudeLodMix.value = altitudeLodMix
+    planeMat.uniforms.uRepresentationMix.value = representationMix
+    planes.visible = isLegacyMode ? false : SHOW_ROUTE_PLANES
 
     // Heatmap: stronger when zoomed out; slightly reduced during country focus or route selection.
     const kHeat = 1.0 - Math.exp(-deltaSeconds * 3.6)
@@ -1237,27 +1334,42 @@ export function createFlightRoutes(
       heatmap.visible = false
     }
 
-    const zoomOut = 1.0 - zoom
     const baseHeatOpacity = THREE.MathUtils.lerp(0.08, 0.24, zoomOut)
     const focusFade = THREE.MathUtils.lerp(1.0, 0.55, focusMix)
     const selectedFade = THREE.MathUtils.lerp(1.0, 0.72, selectedMix)
     heatMat.uniforms.uOpacity.value = baseHeatOpacity * focusFade * selectedFade * heatMix
 
-    lineMat.uniforms.uTailLength.value = THREE.MathUtils.clamp(
-      scaleThickness(THREE.MathUtils.lerp(0.16, 0.28, zoom)),
-      0.02,
-      0.5
-    )
     const hoverBoost = THREE.MathUtils.lerp(1.0, 1.42, hoverMix * (1.0 - selectedMix * 0.35))
     const selectedBoost = THREE.MathUtils.lerp(1.0, 1.88, selectedMix)
-    lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.30, 0.66, zoom) * hoverBoost * selectedBoost
-    lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.052, 0.096, zoom) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
-    lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
-      scaleThickness(THREE.MathUtils.lerp(0.022, 0.034, zoom) * THREE.MathUtils.lerp(1.0, 1.30, Math.max(hoverMix, selectedMix))),
-      0.004,
-      0.1
-    )
-    planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.42, 0.72, zoom) * THREE.MathUtils.lerp(1.0, 1.18, Math.max(hoverMix, selectedMix))
+    if (isLegacyMode) {
+      lineMat.uniforms.uTailLength.value = THREE.MathUtils.clamp(
+        scaleThickness(THREE.MathUtils.lerp(0.16, 0.28, zoom)),
+        0.02,
+        0.5
+      )
+      lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.30, 0.66, zoom) * hoverBoost * selectedBoost
+      lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.052, 0.096, zoom) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
+      lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
+        scaleThickness(THREE.MathUtils.lerp(0.022, 0.034, zoom) * THREE.MathUtils.lerp(1.0, 1.30, Math.max(hoverMix, selectedMix))),
+        0.004,
+        0.1
+      )
+      planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.42, 0.72, zoom) * THREE.MathUtils.lerp(1.0, 1.18, Math.max(hoverMix, selectedMix))
+    } else {
+      lineMat.uniforms.uTailLength.value = THREE.MathUtils.clamp(
+        scaleThickness(THREE.MathUtils.lerp(0.18, 0.36, zoomOut)),
+        0.02,
+        0.5
+      )
+      lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.42, 0.68, zoomOut) * hoverBoost * selectedBoost
+      lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.054, 0.088, zoomOut) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
+      lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
+        scaleThickness(THREE.MathUtils.lerp(0.024, 0.046, zoomOut) * THREE.MathUtils.lerp(1.0, 1.30, Math.max(hoverMix, selectedMix))),
+        0.004,
+        0.1
+      )
+      planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.24, 0.86, representationMix) * THREE.MathUtils.lerp(1.0, 1.18, Math.max(hoverMix, selectedMix))
+    }
   }
 
   return {
@@ -1269,6 +1381,7 @@ export function createFlightRoutes(
     getRouteInfo,
     getCountryFlightStats,
     setHeatmapEnabled,
+    setVisualizationMode,
     lines,
     planes,
     materials: {

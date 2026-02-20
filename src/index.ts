@@ -13,7 +13,7 @@ import { createAtmosphere } from './globe/atmosphere'
 import { createInnerSphere } from './globe/innerSphere'
 import { createLightingShell } from './globe/lighting'
 import { latLongToVector3 } from './globe/latLongtoVector3'
-import { createFlightRoutes, type FlightRoutesLayer } from './globe/flights'
+import { createFlightRoutes, type FlightRoutesLayer, type FlightVisualizationMode } from './globe/flights'
 import { getSunDirectionUTC } from './globe/solar'
 import { loadGeoJSON } from './loaders/loadGeoJSON'
 
@@ -413,6 +413,7 @@ export type GlobeOptions = {
   assetBaseUrl?: string
   injectDefaultUI?: boolean
   initialHeatmapEnabled?: boolean
+  initialFlightVisualizationMode?: FlightVisualizationMode
   theme?: GlobeTheme
 }
 
@@ -463,16 +464,36 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     }
 
     if (!document.getElementById('heatmap-toggle')) {
-      uiToggle.innerHTML = `
-        <div class="toggle-group">
-          <span class="toggle-label">Heatmap</span>
-          <label class="toggle-switch">
-            <input id="heatmap-toggle" type="checkbox" />
-            <span class="toggle-track"></span>
-            <span id="heatmap-thumb" class="toggle-thumb"></span>
-          </label>
-        </div>
-      `
+      uiToggle.insertAdjacentHTML(
+        'beforeend',
+        `
+          <div class="toggle-group">
+            <span class="toggle-label">Heatmap</span>
+            <label class="toggle-switch">
+              <input id="heatmap-toggle" type="checkbox" />
+              <span class="toggle-track"></span>
+              <span id="heatmap-thumb" class="toggle-thumb"></span>
+            </label>
+          </div>
+        `
+      )
+      createdHeatmapToggle = true
+    }
+
+    if (!document.getElementById('flight-visualization-toggle')) {
+      uiToggle.insertAdjacentHTML(
+        'beforeend',
+        `
+          <div class="toggle-group">
+            <span class="toggle-label">Flight V2</span>
+            <label class="toggle-switch">
+              <input id="flight-visualization-toggle" type="checkbox" />
+              <span class="toggle-track"></span>
+              <span id="flight-visualization-thumb" class="toggle-thumb"></span>
+            </label>
+          </div>
+        `
+      )
       createdHeatmapToggle = true
     }
 
@@ -962,9 +983,15 @@ updatePostprocessSize()
 
 const heatmapToggle = document.getElementById('heatmap-toggle') as HTMLInputElement | null
 const heatmapThumb = document.getElementById('heatmap-thumb') as HTMLSpanElement | null
+const flightVisualizationToggle = document.getElementById('flight-visualization-toggle') as HTMLInputElement | null
+const flightVisualizationThumb = document.getElementById('flight-visualization-thumb') as HTMLSpanElement | null
 const initialHeatmapEnabled = options.initialHeatmapEnabled ?? (heatmapToggle ? heatmapToggle.checked : true)
+const initialFlightVisualizationMode: FlightVisualizationMode = options.initialFlightVisualizationMode ?? 'reengineered'
 if (heatmapToggle) {
   heatmapToggle.checked = initialHeatmapEnabled
+}
+if (flightVisualizationToggle) {
+  flightVisualizationToggle.checked = initialFlightVisualizationMode === 'reengineered'
 }
 type VisualPreset = {
   landAlpha: number
@@ -1257,6 +1284,20 @@ function applyHeatmap(enabled: boolean) {
 if (heatmapToggle) {
   heatmapToggle.addEventListener('change', () => {
     applyHeatmap(heatmapToggle.checked)
+  })
+}
+
+function applyFlightVisualization(mode: FlightVisualizationMode) {
+  const checked = mode === 'reengineered'
+  if (flightVisualizationThumb) {
+    flightVisualizationThumb.style.transform = checked ? 'translateX(20px)' : 'translateX(0px)'
+  }
+  flightRoutes?.setVisualizationMode(mode)
+}
+
+if (flightVisualizationToggle) {
+  flightVisualizationToggle.addEventListener('change', () => {
+    applyFlightVisualization(flightVisualizationToggle.checked ? 'reengineered' : 'legacy')
   })
 }
 
@@ -2468,6 +2509,7 @@ async function init() {
   flightRoutes = createFlightRoutes(denseAirports, GLOBE_RADIUS, countriesGeoJSON, MOCK_FLIGHT_ROUTE_COUNT)
   console.info(`[flights] mocked_routes=${MOCK_FLIGHT_ROUTE_COUNT} source_airports=${denseAirports.length}`)
   globeGroup.add(flightRoutes.group)
+  applyFlightVisualization(initialFlightVisualizationMode)
   applyHeatmap(initialHeatmapEnabled)
 
   atmosphere = createAtmosphere(GLOBE_RADIUS, camera)
