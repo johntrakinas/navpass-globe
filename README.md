@@ -88,6 +88,7 @@ const app = globe({
 ```
 
 All theme keys are optional. The exported TypeScript types (`GlobeTheme`, `GlobeUiTheme`, etc.) describe every available color token.
+For complete token reference and per-key descriptions, see `COLOR_THEME.md`.
 
 `assetBaseUrl` must point to a folder containing:
 - `data/ne_110m_admin_0_countries.geojson`
@@ -97,8 +98,13 @@ All theme keys are optional. The exported TypeScript types (`GlobeTheme`, `Globe
 ## Install From GitHub Packages (Private)
 
 For a complete team onboarding guide, see `PACKAGE_SETUP.md`.
+For color theming reference, see `COLOR_THEME.md`.
 
-In the consumer project `.npmrc`:
+This package is published with two equivalent scopes:
+- `@bytenana/globe` from `ByteNana/navpass-globe`
+- `@navpass/globe` from `navpass/navpass-website`
+
+In the consumer project `.npmrc` (choose one scope):
 
 ```ini
 @bytenana:registry=https://npm.pkg.github.com
@@ -109,6 +115,17 @@ Then install:
 
 ```bash
 NODE_AUTH_TOKEN=ghp_xxx npm i @bytenana/globe
+```
+
+For Navpass scope:
+
+```ini
+@navpass:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+```
+
+```bash
+NODE_AUTH_TOKEN=ghp_xxx npm i @navpass/globe
 ```
 
 This project focuses on a dramatic, high-contrast visual language and stable, deliberate interaction:

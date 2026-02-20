@@ -24,13 +24,29 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://npm.pkg.github.com"
-          scope: "@bytenana"
 
       - name: Install
         run: npm ci
 
       - name: Build Library
         run: npm run build:lib
+
+      - name: Prepare package metadata for repository owner
+        run: |
+          OWNER="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          case "$OWNER" in
+            bytenana|navpass) ;;
+            *)
+              echo "Unsupported owner for package publishing: $OWNER"
+              exit 1
+              ;;
+          esac
+
+          PACKAGE_NAME="@${OWNER}/globe"
+          echo "Publishing package as ${PACKAGE_NAME}"
+          npm pkg set name="${PACKAGE_NAME}"
+          npm pkg set repository.type="git"
+          npm pkg set repository.url="git+https://github.com/${GITHUB_REPOSITORY}.git"
 
       - name: Publish
         run: npm publish
