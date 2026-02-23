@@ -1341,6 +1341,8 @@ export function createFlightRoutes(
 
     const hoverBoost = THREE.MathUtils.lerp(1.0, 1.42, hoverMix * (1.0 - selectedMix * 0.35))
     const selectedBoost = THREE.MathUtils.lerp(1.0, 1.88, selectedMix)
+    // Keep hover stroke close to country-border visual weight; only selection gets extra thickness.
+    const selectedWidthBoost = THREE.MathUtils.lerp(1.0, 1.22, selectedMix)
     if (isLegacyMode) {
       lineMat.uniforms.uTailLength.value = THREE.MathUtils.clamp(
         scaleThickness(THREE.MathUtils.lerp(0.16, 0.28, zoom)),
@@ -1350,7 +1352,7 @@ export function createFlightRoutes(
       lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.30, 0.66, zoom) * hoverBoost * selectedBoost
       lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.052, 0.096, zoom) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
       lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
-        scaleThickness(THREE.MathUtils.lerp(0.022, 0.034, zoom) * THREE.MathUtils.lerp(1.0, 1.30, Math.max(hoverMix, selectedMix))),
+        scaleThickness(THREE.MathUtils.lerp(0.022, 0.034, zoom) * selectedWidthBoost),
         0.004,
         0.1
       )
@@ -1364,7 +1366,7 @@ export function createFlightRoutes(
       lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.42, 0.68, zoomOut) * hoverBoost * selectedBoost
       lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.054, 0.088, zoomOut) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
       lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
-        scaleThickness(THREE.MathUtils.lerp(0.024, 0.046, zoomOut) * THREE.MathUtils.lerp(1.0, 1.30, Math.max(hoverMix, selectedMix))),
+        scaleThickness(THREE.MathUtils.lerp(0.024, 0.046, zoomOut) * selectedWidthBoost),
         0.004,
         0.1
       )

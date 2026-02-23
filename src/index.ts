@@ -38,7 +38,8 @@ import {
   clearHoverHighlight,
   updateHoverHighlight,
   fadeOutHover,
-  configureHoverHighlightColors
+  configureHoverHighlightColors,
+  setHoverBorderLineWidth
 } from './globe/hoverHighlight'
 import { VignetteGrainShader } from './postprocess/vignetteGrain'
 import { createStoryHighlight } from './globe/storyHighlight'
@@ -414,6 +415,8 @@ export type GlobeOptions = {
   injectDefaultUI?: boolean
   initialHeatmapEnabled?: boolean
   initialFlightVisualizationMode?: FlightVisualizationMode
+  minZoomDistance?: number
+  maxZoomDistance?: number
   theme?: GlobeTheme
 }
 
@@ -434,20 +437,25 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     return assetBaseUrl ? `${assetBaseUrl}/${normalizedAssetPath}` : `/${normalizedAssetPath}`
   }
   ;(globalThis as any).__NAVPASS_GLOBE_ASSET_BASE_URL = assetBaseUrl
-  const theme = resolveGlobeTheme(options.theme)
-  applyUiThemeVariables(theme.ui, [document.documentElement, document.body, overlayTarget])
-  configureHoverHighlightColors({
-    colorA: theme.highlights.hoverA,
-    colorB: theme.highlights.hoverB,
-    coreColor: theme.highlights.hoverCore,
-    paletteMix: theme.highlights.hoverPaletteMix
-  })
-  configureCountryHighlightPalette({
-    colorA: theme.highlights.selectedA,
-    colorB: theme.highlights.selectedB,
-    colorC: theme.highlights.selectedC,
-    colorD: theme.highlights.selectedD
-  })
+  let theme = resolveGlobeTheme(options.theme)
+
+  function applyThemeRuntimeTokens() {
+    applyUiThemeVariables(theme.ui, [document.documentElement, document.body, overlayTarget])
+    configureHoverHighlightColors({
+      colorA: theme.highlights.hoverA,
+      colorB: theme.highlights.hoverB,
+      coreColor: theme.highlights.hoverCore,
+      paletteMix: theme.highlights.hoverPaletteMix
+    })
+    configureCountryHighlightPalette({
+      colorA: theme.highlights.selectedA,
+      colorB: theme.highlights.selectedB,
+      colorC: theme.highlights.selectedC,
+      colorD: theme.highlights.selectedD
+    })
+  }
+
+  applyThemeRuntimeTokens()
 
   function ensureDefaultUiScaffold() {
     if ((options.injectDefaultUI ?? true) === false) return
@@ -1014,6 +1022,8 @@ type VisualPreset = {
   nightLightsAlpha: number
   shadowMul: number
   dayMul: number
+  starOpacityFar: number
+  starOpacityNear: number
 }
 
 const DRAMATIC_VISUAL_PRESET: VisualPreset = {
@@ -1037,7 +1047,9 @@ const DRAMATIC_VISUAL_PRESET: VisualPreset = {
   routeLineGlowAlpha: 0.48,
   nightLightsAlpha: 0.42,
   shadowMul: 0.0,
-  dayMul: 0.0
+  dayMul: 0.0,
+  starOpacityFar: 0.18,
+  starOpacityNear: 0.30
 }
 
 let visualTriOpacityMul = 1
@@ -1046,9 +1058,11 @@ let visualLatLonOpacityMul = 1
 let visualLatLonShimmerMul = 1
 let visualLightingShadowMul = 1
 let visualLightingDayMul = 1
+let visualStarOpacityFar = DRAMATIC_VISUAL_PRESET.starOpacityFar
+let visualStarOpacityNear = DRAMATIC_VISUAL_PRESET.starOpacityNear
 
 function applyVisualPreset() {
-  const cfg = DRAMATIC_VISUAL_PRESET
+  const cfg: VisualPreset = DRAMATIC_VISUAL_PRESET
 
   scene.background = new THREE.Color(theme.scene.background)
 
@@ -1073,6 +1087,8 @@ function applyVisualPreset() {
     setUniformColor(u, 'uLandTint', theme.landWater.landTint)
     setUniformColor(u, 'uCoastTint', theme.landWater.coastTint)
   }
+
+  setHoverBorderLineWidth(cfg.borderLineWidth)
 
   if (countriesLines) {
     countriesLines.setStyle({
@@ -1164,6 +1180,8 @@ function applyVisualPreset() {
   visualLatLonShimmerMul = cfg.latLonGridShimmerMul
   visualLightingShadowMul = cfg.shadowMul
   visualLightingDayMul = cfg.dayMul
+  visualStarOpacityFar = cfg.starOpacityFar
+  visualStarOpacityNear = cfg.starOpacityNear
 }
 
 /**
@@ -1310,14 +1328,34 @@ scene.add(globeGroup)
 /**
  * OrbitControls: zoom only
  */
+const DEFAULT_MIN_ZOOM_DISTANCE = 17
+const DEFAULT_MAX_ZOOM_DISTANCE = 32
+const requestedMinZoomDistance = Number(options.minZoomDistance)
+const requestedMaxZoomDistance = Number(options.maxZoomDistance)
+const minZoomDistance = THREE.MathUtils.clamp(
+  Number.isFinite(requestedMinZoomDistance) ? requestedMinZoomDistance : DEFAULT_MIN_ZOOM_DISTANCE,
+  12,
+  28
+)
+const maxZoomDistance = THREE.MathUtils.clamp(
+  Number.isFinite(requestedMaxZoomDistance) ? requestedMaxZoomDistance : DEFAULT_MAX_ZOOM_DISTANCE,
+  minZoomDistance + 2,
+  60
+)
+
+function getCameraZoom01(distance: number) {
+  const span = Math.max(1e-4, maxZoomDistance - minZoomDistance)
+  return THREE.MathUtils.clamp((maxZoomDistance - distance) / span, 0, 1)
+}
+
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = true
 controls.dampingFactor = 0.08
 controls.enableRotate = false
 controls.enablePan = false
 controls.enableZoom = true
-controls.minDistance = 14
-controls.maxDistance = 40
+controls.minDistance = minZoomDistance
+controls.maxDistance = maxZoomDistance
 controls.target.set(0, 0, 0)
 controls.update()
 
@@ -1419,6 +1457,8 @@ const RELEASE_SPIN_MAX = 0.30
 const RELEASE_SPIN_BOOST = 0.055
 const RELEASE_PITCH_DAMP = 0.42
 const CLICK_DRAG_THRESHOLD = 4 // px: acima disso consideramos que foi drag
+const FLIGHT_CLICK_THRESHOLD = 0.08
+const FLIGHT_HOVER_THRESHOLD = 0.09
 const AUTO_ROTATE_SPEED = THREE.MathUtils.degToRad(0.30)
 const AUTO_ROTATE_BREAK_CYCLE_SEC = 20.0
 const AUTO_ROTATE_BREAK_WINDOW_SEC = 5.2
@@ -1609,7 +1649,7 @@ function onPointerUp(e: PointerEvent) {
     return
   }
 
-  const flightHit = getFlightHit(e.clientX, e.clientY, 0.14)
+  const flightHit = getFlightHit(e.clientX, e.clientY, FLIGHT_CLICK_THRESHOLD)
   if (flightHit) {
     clearHoverRouteCouplingCountry()
     // Toggle selection on the same route.
@@ -1953,7 +1993,7 @@ function compactAirportName(name: string) {
     .trim()
 }
 
-function getFlightHit(clientX: number, clientY: number, lineThreshold = 0.14) {
+function getFlightHit(clientX: number, clientY: number, lineThreshold = FLIGHT_CLICK_THRESHOLD) {
   if (!flightRoutes) return null
 
   mouse.x = (clientX / window.innerWidth) * 2 - 1
@@ -1968,7 +2008,13 @@ function getFlightHit(clientX: number, clientY: number, lineThreshold = 0.14) {
   // Planes are GPU-animated (their real positions live in the vertex shader),
   // so raycasting against the Points geometry can be inaccurate.
   // For stable hover/click, we raycast only against the route lines.
-  ;(raycaster.params.Line as any).threshold = lineThreshold
+  const zoomOut = 1 - getCameraZoom01(camera.position.length())
+  const adaptiveThreshold = THREE.MathUtils.clamp(
+    THREE.MathUtils.lerp(lineThreshold * 0.82, lineThreshold * 1.38, zoomOut),
+    0.03,
+    0.2
+  )
+  ;(raycaster.params.Line as any).threshold = adaptiveThreshold
   const lineHit = raycaster.intersectObject(flightRoutes.lines, false)[0]
   if (lineHit && lineHit.index !== undefined && lineHit.index !== null) {
     if (!Number.isFinite(sphereDist) || lineHit.distance <= sphereDist + 1e-4) {
@@ -2128,6 +2174,15 @@ function pickCountryAt(clientX: number, clientY: number, options: { allowOceanCl
   selectCountryFeature(feature, worldPoint)
 }
 
+function clearHoverInteractionState() {
+  clearHoverRouteCouplingCountry()
+  flightRoutes?.setHoverRoute(null)
+  clearHoverHighlight(globeGroup)
+  tooltip.hide()
+  lastHoverKey = ''
+  renderer.domElement.style.cursor = 'default'
+}
+
 function onPointerHover(e: PointerEvent) {
   renderer.domElement.style.cursor = 'default'
   if (!countriesGeoJSON) return
@@ -2135,121 +2190,89 @@ function onPointerHover(e: PointerEvent) {
   // Don't hover through UI.
   const elUnderPointer = document.elementFromPoint(e.clientX, e.clientY)
   if (isEventOverUI(elUnderPointer)) {
-    clearHoverRouteCouplingCountry()
-    flightRoutes?.setHoverRoute(null)
-    clearHoverHighlight(globeGroup)
-    tooltip.hide()
-    lastHoverKey = ''
-    renderer.domElement.style.cursor = 'default'
+    clearHoverInteractionState()
     return
   }
 
   // durante drag, não faz hover (fica muito mais "Google")
   if (isDragging) {
-    clearHoverRouteCouplingCountry()
-    flightRoutes?.setHoverRoute(null)
-    clearHoverHighlight(globeGroup)
-    tooltip.hide()
-    lastHoverKey = ''
-    renderer.domElement.style.cursor = 'default'
+    clearHoverInteractionState()
     return
   }
 
   // After a drag, give a tiny cooldown before showing hover again.
   if (performance.now() < dragSuppressUntil) {
-    clearHoverRouteCouplingCountry()
-    flightRoutes?.setHoverRoute(null)
-    clearHoverHighlight(globeGroup)
-    tooltip.hide()
-    lastHoverKey = ''
-    renderer.domElement.style.cursor = 'default'
+    clearHoverInteractionState()
     return
   }
 
-  // Flight hover (prioritário): rota/avião por cima do país.
-  const flightHit = getFlightHit(e.clientX, e.clientY, 0.16)
+  const countryPick = getCountryPick(e.clientX, e.clientY)
+  const feature = countryPick?.feature ?? null
+
+  if (feature) {
+    flightRoutes?.setHoverRoute(null)
+
+    const iso3 = getISO3(feature.properties)
+    if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
+      clearHoverRouteCouplingCountry()
+      clearHoverHighlight(globeGroup)
+      tooltip.hide()
+      lastHoverKey = ''
+      renderer.domElement.style.cursor = 'default'
+      return
+    }
+
+    // evita recalcular highlight a cada pixel
+    const key = feature.properties?.ISO_A3 || feature.properties?.ADMIN || feature.properties?.NAME || 'country'
+    if (key !== lastHoverKey) {
+      lastHoverKey = key
+      setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
+    }
+    setHoverRouteCouplingCountry(iso3)
+
+    const name =
+      feature.properties?.ADMIN ||
+      feature.properties?.NAME ||
+      feature.properties?.NAME_EN ||
+      'Country'
+
+    renderer.domElement.style.cursor = 'pointer'
+
+    const iso2 = getISO2(feature.properties)
+    const flagUrl = isoToFlagUrl(iso2)
+    const meta = getFeatureMeta(feature)
+    if (iso2) {
+      const html = `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="font-size:12px;line-height:1.1;">${escapeHtml(name)}</div>
+            <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(meta)}</div>
+          </div>
+          <img src="${flagUrl}" alt="" style="height:28px;width:auto;border-radius:2px;display:block;" onerror="this.style.display='none'">
+        </div>
+      `
+      tooltip.showHTML(html, e.clientX, e.clientY)
+    } else {
+      tooltip.show(name, e.clientX, e.clientY)
+    }
+    return
+  }
+
+  clearHoverRouteCouplingCountry()
+  clearHoverHighlight(globeGroup)
+  lastHoverKey = ''
+
+  const flightHit = getFlightHit(e.clientX, e.clientY, FLIGHT_HOVER_THRESHOLD)
   if (flightHit) {
-    clearHoverRouteCouplingCountry()
-    clearHoverHighlight(globeGroup)
-    lastHoverKey = ''
     flightRoutes?.setHoverRoute(flightHit.routeId)
     renderer.domElement.style.cursor = 'pointer'
     showFlightTooltip(flightHit.routeId, e.clientX, e.clientY)
     return
-  } else {
-    flightRoutes?.setHoverRoute(null)
   }
 
-  mouse.x = (e.clientX / window.innerWidth) * 2 - 1
-  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1
-  raycaster.setFromCamera(mouse, camera)
-
-  const hit = raycaster.intersectObject(pickSphere, false)[0]
-  if (!hit) {
-    clearHoverRouteCouplingCountry()
-    clearHoverHighlight(globeGroup)
-    tooltip.hide()
-    lastHoverKey = ''
-    renderer.domElement.style.cursor = 'default'
-    return
-  }
-
-  const localPoint = globeGroup.worldToLocal(hit.point.clone())
-  const { lat, lon } = vector3ToLatLon(localPoint)
-  const feature = findCountryFeature(countriesGeoJSON, lat, lon)
-
-  if (!feature) {
-    clearHoverRouteCouplingCountry()
-    clearHoverHighlight(globeGroup)
-    tooltip.hide()
-    lastHoverKey = ''
-    renderer.domElement.style.cursor = 'default'
-    return
-  }
-
-  const iso3 = getISO3(feature.properties)
-  if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
-    clearHoverRouteCouplingCountry()
-    clearHoverHighlight(globeGroup)
-    tooltip.hide()
-    lastHoverKey = ''
-    renderer.domElement.style.cursor = 'default'
-    return
-  }
-
-  // evita recalcular highlight a cada pixel
-  const key = feature.properties?.ISO_A3 || feature.properties?.ADMIN || feature.properties?.NAME || 'country'
-  if (key !== lastHoverKey) {
-    lastHoverKey = key
-    setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
-  }
-  setHoverRouteCouplingCountry(iso3)
-
-  const name =
-    feature.properties?.ADMIN ||
-    feature.properties?.NAME ||
-    feature.properties?.NAME_EN ||
-    'Country'
-
-  renderer.domElement.style.cursor = 'pointer'
-
-  const iso2 = getISO2(feature.properties)
-  const flagUrl = isoToFlagUrl(iso2)
-  const meta = getFeatureMeta(feature)
-  if (iso2) {
-    const html = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div style="display:flex;flex-direction:column;gap:2px;">
-          <div style="font-size:12px;line-height:1.1;">${escapeHtml(name)}</div>
-          <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(meta)}</div>
-        </div>
-        <img src="${flagUrl}" alt="" style="height:28px;width:auto;border-radius:2px;display:block;" onerror="this.style.display='none'">
-      </div>
-    `
-    tooltip.showHTML(html, e.clientX, e.clientY)
-  } else {
-    tooltip.show(name, e.clientX, e.clientY)
-  }
+  flightRoutes?.setHoverRoute(null)
+  tooltip.hide()
+  renderer.domElement.style.cursor = 'default'
 }
 
 /**
@@ -2301,12 +2324,8 @@ function animate() {
     latLonGrid.update(cameraDistance)
   }
   {
-    const u = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.0, 1.0),
-      0,
-      1
-    )
-    const zoom01 = 1 - u
+    const zoom01 = getCameraZoom01(cameraDistance)
+    const u = 1 - zoom01
     const rolloff = THREE.MathUtils.lerp(1.25, 1.6, u)
     if (triGrid) {
       triGrid.materials.forEach(mat => {
@@ -2321,6 +2340,10 @@ function animate() {
         const baseShimmer = mat.userData.baseShimmerStrength ?? (mat.uniforms as any).uShimmerStrength?.value ?? 0
         if ((mat.uniforms as any).uShimmerStrength) {
           ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * visualTriShimmerMul * (0.35 + 0.65 * zoom01)
+        }
+        const baseGradient = mat.userData.baseGradientStrength ?? (mat.uniforms as any).uGradientStrength?.value ?? 0
+        if ((mat.uniforms as any).uGradientStrength) {
+          ;(mat.uniforms as any).uGradientStrength.value = baseGradient * THREE.MathUtils.lerp(0.68, 1.0, zoom01)
         }
       })
     }
@@ -2338,6 +2361,10 @@ function animate() {
         if ((mat.uniforms as any).uShimmerStrength) {
           ;(mat.uniforms as any).uShimmerStrength.value = baseShimmer * visualLatLonShimmerMul * (0.25 + 0.60 * zoom01)
         }
+        const baseGradient = mat.userData.baseGradientStrength ?? (mat.uniforms as any).uGradientStrength?.value ?? 0
+        if ((mat.uniforms as any).uGradientStrength) {
+          ;(mat.uniforms as any).uGradientStrength.value = baseGradient * THREE.MathUtils.lerp(0.56, 0.9, zoom01)
+        }
       })
     }
   }
@@ -2352,6 +2379,10 @@ function animate() {
     const mat = star.material as THREE.ShaderMaterial
     if (mat.uniforms?.uTime) {
       mat.uniforms.uTime.value = now
+    }
+    if (mat.uniforms?.uOpacity) {
+      const zoom01 = getCameraZoom01(cameraDistance)
+      mat.uniforms.uOpacity.value = THREE.MathUtils.lerp(visualStarOpacityFar, visualStarOpacityNear, zoom01)
     }
   }
 
@@ -2397,29 +2428,29 @@ function animate() {
 
   if (lightingShell) {
     const sun = _sunWorldDir
-    const strength = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.26, 0.16),
-      0.16,
-      0.26
-    )
-    const softness = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.26, 0.38),
-      0.26,
-      0.38
-    )
+    const zoom01 = getCameraZoom01(cameraDistance)
+    const strength = THREE.MathUtils.lerp(0.12, 0.22, zoom01)
+    const softness = THREE.MathUtils.lerp(0.34, 0.22, zoom01)
     lightingShell.nightMaterial.uniforms.uLightDir.value.copy(sun)
     lightingShell.nightMaterial.uniforms.uShadowStrength.value = strength * visualLightingShadowMul
     lightingShell.nightMaterial.uniforms.uTerminatorSoftness.value = softness
 
-    const baseDayStrength = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(cameraDistance, 14, 40, 0.082, 0.046),
-      0.046,
-      0.082
-    )
+    const baseDayStrength = THREE.MathUtils.lerp(0.058, 0.102, zoom01)
     const dayPulse = 0.93 + 0.07 * Math.sin(now * 0.35)
     const dayStrength = baseDayStrength * dayPulse
     lightingShell.dayMaterial.uniforms.uLightDir.value.copy(sun)
     lightingShell.dayMaterial.uniforms.uDayStrength.value = dayStrength * visualLightingDayMul
+    if ((lightingShell.dayMaterial.uniforms as any).uSunSpecStrength) {
+      ;(lightingShell.dayMaterial.uniforms as any).uSunSpecStrength.value =
+        THREE.MathUtils.lerp(0.14, 0.32, zoom01) * visualLightingDayMul
+    }
+    if ((lightingShell.dayMaterial.uniforms as any).uSunHaloStrength) {
+      ;(lightingShell.dayMaterial.uniforms as any).uSunHaloStrength.value =
+        THREE.MathUtils.lerp(0.024, 0.062, zoom01) * visualLightingDayMul
+    }
+    if ((lightingShell.dayMaterial.uniforms as any).uSunSpecPower) {
+      ;(lightingShell.dayMaterial.uniforms as any).uSunSpecPower.value = THREE.MathUtils.lerp(44, 68, zoom01)
+    }
   }
   if (atmosphere) {
     atmosphere.setLightDir(_sunWorldDir)
@@ -2435,7 +2466,7 @@ function animate() {
 
   // Subtle bloom zoom response (near = richer, far = cleaner).
   if (bloomPass) {
-    const zoom = THREE.MathUtils.clamp((32 - cameraDistance) / 16, 0, 1)
+    const zoom = getCameraZoom01(cameraDistance)
     bloomPass.strength = THREE.MathUtils.lerp(0.11, 0.18, zoom)
   }
 
@@ -2455,7 +2486,7 @@ async function init() {
   depthMaskMesh = createDepthMaskSphere(GLOBE_RADIUS)
   globeGroup.add(depthMaskMesh)
   // ⭐ starfield (não dentro do globeGroup!)
-  star = createStarfieldShader({ count: 7000, radius: 420, size: 0.9, opacity: 0.65 })
+  star = createStarfieldShader({ count: 5200, radius: 420, size: 0.82, opacity: 0.34 })
   scene.add(star.points)
 
   // layers

@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { latLongToVector3 } from './latLongtoVector3'
 import { GOOGLE_COLORS, googlePaletteLerp } from '../theme/googleColors'
 import { scaleThickness } from './thicknessScale'
+import { computeCountryStrokeScale } from './countryStrokeScale'
 
 export type HoverHighlightColorTheme = {
   colorA?: THREE.ColorRepresentation
@@ -28,11 +29,18 @@ const glowColor = new THREE.Color()
 const coreColor = new THREE.Color()
 let hoverScale = 1
 let hoverScaleTarget = 1
+let hoverBorderLineWidthHint = 1.08
+let activeFeatureStrokeScale = 1
 const HOVER_RADIUS_MULT = 1.03
 const HOVER_POP_START = 0.95
 const HOVER_POP_TARGET = 1.02
 const HOVER_BREATH_AMP = 0.006
 const HOVER_BREATH_SPEED = 1.85
+const HOVER_CORE_THICKNESS_PER_BORDER_WIDTH = 0.0017 / 1.8
+const HOVER_MIN_CORE_THICKNESS = 0.00072
+const HOVER_GLOW_TO_CORE_RATIO = 2.9
+const HOVER_GLOW_OPACITY_MUL = 1.34
+const HOVER_CORE_OPACITY_MUL = 1.06
 
 const HOVER_VERT = /* glsl */ `
 uniform float uThickness;
@@ -66,6 +74,21 @@ function createHoverMaterial(thickness: number) {
       uThickness: { value: thickness }
     }
   })
+}
+
+function computeHoverCoreThickness(strokeScale: number) {
+  const widthHint = THREE.MathUtils.clamp(hoverBorderLineWidthHint * strokeScale, 0.35, 4)
+  return Math.max(
+    scaleThickness(HOVER_MIN_CORE_THICKNESS),
+    scaleThickness(HOVER_CORE_THICKNESS_PER_BORDER_WIDTH * widthHint)
+  )
+}
+
+function applyHoverStrokeThickness(strokeScale: number) {
+  if (!hoverGlowMat || !hoverCoreMat) return
+  const coreThickness = computeHoverCoreThickness(strokeScale)
+  hoverCoreMat.uniforms.uThickness.value = coreThickness
+  hoverGlowMat.uniforms.uThickness.value = coreThickness * HOVER_GLOW_TO_CORE_RATIO
 }
 
 function disposeHover(parent: THREE.Object3D) {
@@ -122,14 +145,17 @@ export function setHoverHighlight(feature: any | null, parent: THREE.Object3D, r
   pulsePhase = Math.random() * Math.PI * 2
   hoverScale = 1
   hoverScaleTarget = 1
+  activeFeatureStrokeScale = 1
 
   if (!feature) return
 
+  activeFeatureStrokeScale = computeCountryStrokeScale(feature)
   const geo = featureToLineGeometry(feature, radius)
   const geoCore = geo.clone()
 
   hoverGlowMat = createHoverMaterial(scaleThickness(0.0042))
   hoverCoreMat = createHoverMaterial(scaleThickness(0.0017))
+  applyHoverStrokeThickness(activeFeatureStrokeScale)
 
   hoverGlowLine = new THREE.LineSegments(geo, hoverGlowMat)
   hoverCoreLine = new THREE.LineSegments(geoCore, hoverCoreMat)
@@ -189,10 +215,11 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
   coreColor.copy(glowColor).lerp(hoverCoreColor, 0.30)
 
   ;(hoverGlowMat.uniforms.uColor.value as THREE.Color).copy(glowColor)
-  hoverGlowMat.uniforms.uOpacity.value = currentOpacity * pulse * hoverOpacityMul * 0.72
+  hoverGlowMat.uniforms.uOpacity.value = currentOpacity * pulse * hoverOpacityMul * HOVER_GLOW_OPACITY_MUL
 
   ;(hoverCoreMat.uniforms.uColor.value as THREE.Color).copy(coreColor)
-  hoverCoreMat.uniforms.uOpacity.value = currentOpacity * (0.82 + 0.18 * pulse) * hoverOpacityMul * 0.88
+  hoverCoreMat.uniforms.uOpacity.value =
+    currentOpacity * (0.82 + 0.18 * pulse) * hoverOpacityMul * HOVER_CORE_OPACITY_MUL
 
   // subtle "raise" animation (helps the border feel like it lifts off the globe)
   const popSmoothing = 0.18
@@ -218,6 +245,12 @@ export function setHoverTheme(isLight: boolean) {
   hoverCoreColor = GOOGLE_COLORS.white.clone()
   hoverPaletteMix = isLight ? 0.28 : 0.42
   hoverOpacityMul = isLight ? 1.35 : 1.20
+}
+
+export function setHoverBorderLineWidth(lineWidthHint: number) {
+  if (!Number.isFinite(lineWidthHint)) return
+  hoverBorderLineWidthHint = THREE.MathUtils.clamp(lineWidthHint, 0.35, 4)
+  applyHoverStrokeThickness(activeFeatureStrokeScale)
 }
 
 export function configureHoverHighlightColors(theme: HoverHighlightColorTheme = {}) {

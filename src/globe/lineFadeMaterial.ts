@@ -33,6 +33,9 @@ uniform float uShimmerScale;
 uniform float uShimmerWidth;
 uniform vec3 uShimmerColor;
 uniform vec3 uShimmerDir;
+uniform vec3 uGradientColor;
+uniform vec3 uGradientDir;
+uniform float uGradientStrength;
 
 varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
@@ -44,6 +47,12 @@ void main() {
   float t = mix(ndv, 1.0 - ndv, step(0.5, uMode));
   float fade = smoothstep(uFadeMin, uFadeMax, t);
   fade = pow(fade, uRolloff);
+
+  vec3 gdir = normalize(uGradientDir);
+  float gradientStatic = 0.5 + 0.5 * dot(normalize(vWorldNormal), gdir);
+  float gradientDrift = 0.5 + 0.5 * sin(dot(vWorldPos, gdir) * 0.14 + uTime * 0.22);
+  float gradientMix = mix(gradientStatic, gradientDrift, 0.28);
+  gradientMix = smoothstep(0.08, 0.92, gradientMix);
 
   // Subtle Google-ish shimmering pass.
   // - A narrow band slides across the globe and occasionally brightens.
@@ -61,7 +70,8 @@ void main() {
     shimmer *= fade;
   }
 
-  vec3 color = mix(uColor, uShimmerColor, shimmer * uShimmerStrength);
+  vec3 gradientColor = mix(uColor, uGradientColor, gradientMix * uGradientStrength);
+  vec3 color = mix(gradientColor, uShimmerColor, shimmer * uShimmerStrength);
   float alpha = uOpacity * fade;
   alpha *= 1.0 + shimmer * uShimmerStrength * 0.55;
 
@@ -100,7 +110,10 @@ export function createLineFadeMaterial(
       uShimmerScale: { value: 0.95 },
       uShimmerWidth: { value: 0.16 },
       uShimmerColor: { value: new THREE.Color(0xffffff) },
-      uShimmerDir: { value: new THREE.Vector3(0.65, 0.18, 0.74).normalize() }
+      uShimmerDir: { value: new THREE.Vector3(0.65, 0.18, 0.74).normalize() },
+      uGradientColor: { value: new THREE.Color(0xffffff) },
+      uGradientDir: { value: new THREE.Vector3(0.42, 0.88, -0.22).normalize() },
+      uGradientStrength: { value: 0.0 }
     }
   })
   // Keep Three's `material.opacity` in sync with our custom uniform.
@@ -110,5 +123,6 @@ export function createLineFadeMaterial(
   material.userData.baseFadeMax = fadeMax
   material.userData.baseRolloff = rolloff
   material.userData.fadeMode = mode
+  material.userData.baseGradientStrength = 0
   return material
 }

@@ -1,7 +1,12 @@
 import * as THREE from 'three'
 import { scaleThickness } from './thicknessScale'
+import { computeCountryStrokeScale } from './countryStrokeScale'
 
 type LonLat = [number, number]
+type CountryRing = {
+  points: LonLat[]
+  strokeScale: number
+}
 
 const BORDER_MASK_WIDTH = 6144
 const BORDER_MASK_HEIGHT = 3072
@@ -61,9 +66,10 @@ function drawRingStroke(
 }
 
 function collectCountryRings(geojson: any) {
-  const rings: LonLat[][] = []
+  const rings: CountryRing[] = []
 
   for (const feature of geojson.features ?? []) {
+    const strokeScale = computeCountryStrokeScale(feature)
     const geom = feature?.geometry
     if (!geom) continue
     const polys: any[] =
@@ -87,7 +93,9 @@ function collectCountryRings(geojson: any) {
         if (Math.abs(first[0] - last[0]) < 1e-8 && Math.abs(first[1] - last[1]) < 1e-8) {
           out.pop()
         }
-        if (out.length >= 2) rings.push(out)
+        if (out.length >= 2) {
+          rings.push({ points: out, strokeScale })
+        }
       }
     }
   }
@@ -95,7 +103,7 @@ function collectCountryRings(geojson: any) {
   return rings
 }
 
-function createBorderTexture(rings: LonLat[][], initialLineWidth: number) {
+function createBorderTexture(rings: CountryRing[], initialLineWidth: number) {
   const canvas = document.createElement('canvas')
   canvas.width = BORDER_MASK_WIDTH
   canvas.height = BORDER_MASK_HEIGHT
@@ -120,14 +128,15 @@ function createBorderTexture(rings: LonLat[][], initialLineWidth: number) {
     context.clearRect(0, 0, BORDER_MASK_WIDTH, BORDER_MASK_HEIGHT)
     context.strokeStyle = '#ffffff'
     context.globalAlpha = 1
-    context.lineWidth = Math.max(0.6, scaleThickness(BASE_STROKE_PX * lineWidth))
+    const baseLineWidth = Math.max(0.52, scaleThickness(BASE_STROKE_PX * lineWidth))
     context.lineJoin = 'round'
     context.lineCap = 'round'
     context.imageSmoothingEnabled = true
 
     for (const ring of rings) {
+      context.lineWidth = Math.max(0.42, baseLineWidth * ring.strokeScale)
       for (const xOffset of xOffsets) {
-        drawRingStroke(context, ring, BORDER_MASK_WIDTH, BORDER_MASK_HEIGHT, xOffset)
+        drawRingStroke(context, ring.points, BORDER_MASK_WIDTH, BORDER_MASK_HEIGHT, xOffset)
       }
     }
 

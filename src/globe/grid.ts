@@ -3,8 +3,10 @@ import { latLongToVector3 } from './latLongtoVector3' // ajuste path se necessá
 import { createLineFadeMaterial } from './lineFadeMaterial'
 
 // Keep grid below bloom threshold so it reads as lines, not as a halo.
-const GRID_COLOR = new THREE.Color(0xb8c0ce)
-const GRID_LINE_WIDTH = 4.5
+const GRID_COLOR = new THREE.Color('#fff7e3')
+const GRID_WARM_COLOR = new THREE.Color('#FBBC05').lerp(new THREE.Color('#ffffff'), 0.10)
+const GRID_GRADIENT_DIR = new THREE.Vector3(0.33, 0.91, -0.24).normalize()
+const GRID_LINE_WIDTH = 7
 const SOUTH_POLE_RING_CUTOFF = -78
 
 function buildGridGeometry(radius: number, latStep: number, lonStep: number) {
@@ -41,27 +43,32 @@ function makeLayer(
   latStep: number,
   lonStep: number,
   opacityInner: number,
+  opacityMid: number,
   opacityOuter: number,
   camera: THREE.Camera
 ) {
   const group = new THREE.Group()
 
   // Keep grid shells tight to the globe to avoid an external "atmosphere ring".
-  const geoA = buildGridGeometry(radius * 1.02, latStep, lonStep)
+  const geoA = buildGridGeometry(radius * 1.0188, latStep, lonStep)
   // Limb-only: keep it close to the silhouette so it feels like a mesh "shell", not a flat grid.
-  const matA = createLineFadeMaterial(GRID_COLOR, opacityInner, 0.24, 0.84, 1.16, 'limb')
+  const matA = createLineFadeMaterial(GRID_COLOR, opacityInner, 0.16, 0.80, 1.08, 'limb')
   matA.blending = THREE.NormalBlending
   ;(matA as any).linewidth = GRID_LINE_WIDTH
   {
     const u: any = matA.uniforms
-    u.uShimmerStrength.value = 0.0
+    u.uShimmerStrength.value = 0.11
     u.uShimmerSpeed.value = 0.70
     u.uShimmerPulse.value = 0.16
     u.uShimmerScale.value = 0.82
     u.uShimmerWidth.value = 0.20
-    u.uShimmerColor.value = GRID_COLOR.clone()
+    u.uShimmerColor.value = GRID_WARM_COLOR.clone()
     u.uShimmerDir.value = new THREE.Vector3(0.68, 0.22, 0.70).normalize()
+    u.uGradientColor.value = GRID_WARM_COLOR.clone()
+    u.uGradientDir.value = GRID_GRADIENT_DIR.clone()
+    u.uGradientStrength.value = 0.30
     matA.userData.baseShimmerStrength = u.uShimmerStrength.value
+    matA.userData.baseGradientStrength = u.uGradientStrength.value
   }
   matA.userData.lodAlpha = 1
   const a = new THREE.LineSegments(geoA, matA)
@@ -73,21 +80,25 @@ function makeLayer(
     matA.uniforms.uOpacity.value = matA.opacity
   }
 
-  // Secondary shell kept very close and subtle, to avoid the detached outer band.
-  const geoB = buildGridGeometry(radius * 1.023, latStep, lonStep)
-  const matB = createLineFadeMaterial(GRID_COLOR, opacityOuter, 0.27, 0.86, 1.18, 'limb')
+  // Mid shell: visible hierarchy between internal and external grid lines.
+  const geoB = buildGridGeometry(radius * 1.0228, latStep, lonStep)
+  const matB = createLineFadeMaterial(GRID_COLOR, opacityMid, 0.30, 0.90, 1.22, 'limb')
   matB.blending = THREE.NormalBlending
   ;(matB as any).linewidth = GRID_LINE_WIDTH
   {
     const u: any = matB.uniforms
-    u.uShimmerStrength.value = 0.0
+    u.uShimmerStrength.value = 0.15
     u.uShimmerSpeed.value = 0.66
     u.uShimmerPulse.value = 0.14
     u.uShimmerScale.value = 0.78
     u.uShimmerWidth.value = 0.22
-    u.uShimmerColor.value = GRID_COLOR.clone()
+    u.uShimmerColor.value = GRID_WARM_COLOR.clone()
     u.uShimmerDir.value = new THREE.Vector3(0.68, 0.22, 0.70).normalize()
+    u.uGradientColor.value = GRID_WARM_COLOR.clone()
+    u.uGradientDir.value = GRID_GRADIENT_DIR.clone()
+    u.uGradientStrength.value = 0.46
     matB.userData.baseShimmerStrength = u.uShimmerStrength.value
+    matB.userData.baseGradientStrength = u.uGradientStrength.value
   }
   matB.userData.lodAlpha = 1
   const b = new THREE.LineSegments(geoB, matB)
@@ -98,17 +109,47 @@ function makeLayer(
     matB.uniforms.uOpacity.value = matB.opacity
   }
 
+  // Rim shell: thickens the outermost grid without flooding the globe center.
+  const geoC = buildGridGeometry(radius * 1.0266, latStep, lonStep)
+  const matC = createLineFadeMaterial(GRID_COLOR, opacityOuter, 0.46, 0.95, 1.36, 'limb')
+  matC.blending = THREE.NormalBlending
+  ;(matC as any).linewidth = GRID_LINE_WIDTH + 1.4
+  {
+    const u: any = matC.uniforms
+    u.uShimmerStrength.value = 0.22
+    u.uShimmerSpeed.value = 0.62
+    u.uShimmerPulse.value = 0.12
+    u.uShimmerScale.value = 0.74
+    u.uShimmerWidth.value = 0.24
+    u.uShimmerColor.value = GRID_WARM_COLOR.clone()
+    u.uShimmerDir.value = new THREE.Vector3(0.68, 0.22, 0.70).normalize()
+    u.uGradientColor.value = GRID_WARM_COLOR.clone()
+    u.uGradientDir.value = GRID_GRADIENT_DIR.clone()
+    u.uGradientStrength.value = 0.68
+    matC.userData.baseShimmerStrength = u.uShimmerStrength.value
+    matC.userData.baseGradientStrength = u.uGradientStrength.value
+  }
+  matC.userData.lodAlpha = 1
+  const c = new THREE.LineSegments(geoC, matC)
+  c.renderOrder = 15
+  c.frustumCulled = false
+  c.onBeforeRender = () => {
+    matC.uniforms.uCameraPos.value.copy((camera as any).position)
+    matC.uniforms.uOpacity.value = matC.opacity
+  }
+
   group.add(a)
   group.add(b)
+  group.add(c)
 
-  return { group, mats: [matA, matB] }
+  return { group, mats: [matA, matB, matC] }
 }
 
 export function createAdaptiveLatLonGrid(radius: number, camera: THREE.Camera) {
   // coarse (12°)
-  const coarse = makeLayer(radius, 12, 12, 0.072, 0.028, camera)
+  const coarse = makeLayer(radius, 12, 12, 0.038, 0.062, 0.076, camera)
   // fine (6°)
-  const fine = makeLayer(radius, 6, 6, 0.064, 0.024, camera)
+  const fine = makeLayer(radius, 6, 6, 0.034, 0.054, 0.066, camera)
 
   // começa com coarse visível e fine “apagado”
   let coarseAlpha = 1
