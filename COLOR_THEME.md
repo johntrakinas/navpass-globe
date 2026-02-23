@@ -1,11 +1,11 @@
-# Color Theming Reference (`@bytenana/globe` / `@navpass/globe`)
+# Color Theming Reference (Standalone)
 
-Color theming is available in both package scopes starting in version `0.1.2`.
+Use the `theme` option passed to `globe(...)` in `src/main.ts` (or any custom bootstrap) to override UI and 3D colors.
 
 ## Quick Start
 
 ```ts
-import globe from '@bytenana/globe'
+import globe from './index'
 
 const app = globe({
   mountTarget: document.getElementById('app')!,
@@ -28,11 +28,9 @@ const app = globe({
 await app.ready
 ```
 
-If using Navpass scope, replace the import with `@navpass/globe`.
-
 ## Theme Types
 
-The package exports these types:
+Runtime theme types are defined in `src/index.ts`:
 
 - `GlobeTheme`
 - `GlobeUiTheme`
@@ -46,11 +44,11 @@ The package exports these types:
 - `GlobeFlightsTheme`
 - `GlobeHighlightTheme`
 
-All keys are optional when used inside `GlobeTheme` (`Partial<...>` behavior).
+All keys are optional inside `GlobeTheme` (`Partial<...>` behavior).
 
 ## Value Formats
 
-- `theme.ui.*`: `string` CSS colors (`#hex`, `rgb()`, `rgba()`, `hsl()`, etc).
+- `theme.ui.*`: CSS color strings (`#hex`, `rgb()`, `rgba()`, `hsl()`, etc).
 - Other sections: `THREE.ColorRepresentation` (`'#rrggbb'`, `0xffffff`, `THREE.Color`, etc).
 - `theme.highlights.hoverPaletteMix`: `number` in range `0..1`.
 
@@ -175,6 +173,6 @@ All keys are optional when used inside `GlobeTheme` (`Partial<...>` behavior).
 
 ## Notes
 
-- If you omit a token, the package default is used.
+- If you omit a token, the runtime default is used.
 - You can override a single token without redefining the whole section.
 - Source of truth for defaults: `src/index.ts` (`DEFAULT_*_THEME` constants).
