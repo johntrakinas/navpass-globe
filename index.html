@@ -31,28 +31,6 @@
         display: grid;
         gap: 10px;
         pointer-events: auto;
-        align-items: start;
-      }
-
-      .rail-select {
-        width: 260px;
-        height: 30px;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(5, 16, 35, 0.82);
-        color: rgba(255, 255, 255, 0.9);
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        font-size: 11px;
-        padding: 0 8px;
-        cursor: pointer;
-        outline: none;
-        transition: border-color 280ms ease, background 280ms ease, color 280ms ease;
-      }
-
-      .rail-select:hover,
-      .rail-select:focus {
-        border-color: rgba(255, 255, 255, 0.46);
-        background: rgba(5, 16, 35, 0.95);
-        color: rgba(255, 255, 255, 0.98);
       }
 
       .rail-button {
@@ -80,11 +58,6 @@
   <body>
     <div id="app"></div>
     <aside id="left-rail" aria-label="Zoom controls">
-      <select id="rail-color-select" class="rail-select" aria-label="Color palette">
-        <option value="current">Current: BG #091320 | Lines #122640</option>
-        <option value="suggested_lines">Suggestion 1: BG #091320 | Lines #162f50</option>
-        <option value="suggested_main_lines">Suggestion 2: BG #0D1C30 | Lines #1A3960</option>
-      </select>
       <button id="rail-zoom-in" type="button" class="rail-button" aria-label="Zoom in">+</button>
       <button id="rail-zoom-out" type="button" class="rail-button" aria-label="Zoom out">-</button>
     </aside>

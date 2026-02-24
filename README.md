@@ -73,6 +73,10 @@ If your globe URL is under a subpath, use that full URL in `src`.
 - `flightMode=legacy|reengineered`
 - `minZoomDistance=17`
 - `maxZoomDistance=32`
+- `bgColor=#091320` (or `0x091320`) for background/globe
+- `gridEffectColor=#B8C0CE` (or `0xB8C0CE`) for grid effect color
+- `gridMainColor=#B8C0CE` (or `0xB8C0CE`) for main grid color
+- `countryLineColor=#122640` (or `0x122640`) for country border lines
 - `theme=<JSON url-encoded>`
 - `theme.<section>.<token>=<value>`
 
