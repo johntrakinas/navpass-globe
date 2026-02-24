@@ -26,7 +26,13 @@ import {
 } from './globe/countryHighlight'
 import { vector3ToLatLon } from './globe/math'
 import { findCountryFeature } from './globe/countryLookUp'
-import { showCountryPanel, hideCountryPanel, showFocusDim, hideFocusDim, setFocusDimOpacity } from './scene/camera'
+import {
+  ensureCountryPanelScaffold,
+  showCountryPanel,
+  hideCountryPanel,
+  showFocusDim,
+  hideFocusDim
+} from './scene/camera'
 import { createAdaptiveLatLonGrid } from './globe/grid'
 import { createAdaptiveTriGrid } from './globe/tridGrid'
 import { createNightLights } from './globe/nightLights'
@@ -43,51 +49,8 @@ import {
   setHoverBorderLineWidth
 } from './globe/hoverHighlight'
 import { VignetteGrainShader } from './postprocess/vignetteGrain'
-import { createStoryHighlight } from './globe/storyHighlight'
 import { scaleThickness } from './globe/thicknessScale'
 import { inflateAirportsDataset } from './globe/syntheticAirports'
-
-export type GlobeUiTheme = {
-  panelBg: string
-  panelBorder: string
-  panelText: string
-  panelShadow: string
-  panelSurface: string
-  panelSurfaceBorder: string
-  panelShellBg: string
-  panelShellBorder: string
-  panelShellShadow: string
-  panelDivider: string
-  panelLiveText: string
-  panelLiveDot: string
-  panelClose: string
-  panelFlagBorder: string
-  panelFlagEmptyBg: string
-  panelStatLabel: string
-  panelStatValue: string
-  panelStatSub: string
-  panelAircraftLabel: string
-  panelAircraftValue: string
-  panelFooterBg: string
-  panelTotalLabel: string
-  panelTotalValue: string
-  panelMoreBorder: string
-  panelMoreBg: string
-  panelMoreText: string
-  panelMoreHoverBg: string
-  tooltipBg: string
-  tooltipBorder: string
-  tooltipText: string
-  uiBg: string
-  uiBorder: string
-  uiText: string
-  uiTrack: string
-  uiThumb: string
-  uiShadow: string
-  focusDimBg: string
-  railInfoBorderIdle: string
-  railInfoBorderActive: string
-}
 
 export type GlobeSceneTheme = {
   background: THREE.ColorRepresentation
@@ -165,7 +128,6 @@ export type GlobeHighlightTheme = {
 }
 
 export type GlobeTheme = {
-  ui?: Partial<GlobeUiTheme>
   scene?: Partial<GlobeSceneTheme>
   countries?: Partial<GlobeCountriesTheme>
   grids?: Partial<GlobeGridTheme>
@@ -178,7 +140,6 @@ export type GlobeTheme = {
 }
 
 type ResolvedGlobeTheme = {
-  ui: GlobeUiTheme
   scene: GlobeSceneTheme
   countries: GlobeCountriesTheme
   grids: GlobeGridTheme
@@ -200,48 +161,6 @@ function mixColor(
 
 function scaleColor(color: THREE.ColorRepresentation, factor: number): THREE.ColorRepresentation {
   return new THREE.Color(color).multiplyScalar(factor).getHex()
-}
-
-const DEFAULT_UI_THEME: GlobeUiTheme = {
-  panelBg: 'rgba(6, 18, 38, 0.74)',
-  panelBorder: 'rgba(255, 255, 255, 0.2)',
-  panelText: 'rgba(255, 255, 255, 0.94)',
-  panelShadow: 'rgba(0, 0, 0, 0.45)',
-  panelSurface: 'rgba(255, 255, 255, 0.06)',
-  panelSurfaceBorder: 'rgba(255, 255, 255, 0.16)',
-  panelShellBg: '#0d1c30',
-  panelShellBorder: 'rgba(255, 255, 255, 0.34)',
-  panelShellShadow: 'rgba(0, 0, 0, 0.42)',
-  panelDivider: 'rgba(255, 255, 255, 0.12)',
-  panelLiveText: 'rgba(255, 255, 255, 0.52)',
-  panelLiveDot: '#ecb200',
-  panelClose: 'rgba(255, 255, 255, 0.82)',
-  panelFlagBorder: 'rgba(255, 255, 255, 0.1)',
-  panelFlagEmptyBg: 'rgba(255, 255, 255, 0.04)',
-  panelStatLabel: 'rgba(255, 255, 255, 0.48)',
-  panelStatValue: '#ffffff',
-  panelStatSub: 'rgba(255, 255, 255, 0.32)',
-  panelAircraftLabel: 'rgba(255, 255, 255, 0.48)',
-  panelAircraftValue: 'rgba(255, 255, 255, 0.92)',
-  panelFooterBg: 'rgba(255, 255, 255, 0.05)',
-  panelTotalLabel: 'rgba(255, 255, 255, 0.42)',
-  panelTotalValue: '#ffffff',
-  panelMoreBorder: 'rgba(255, 255, 255, 0.16)',
-  panelMoreBg: 'rgba(255, 255, 255, 0.08)',
-  panelMoreText: '#ffffff',
-  panelMoreHoverBg: 'rgba(255, 255, 255, 0.16)',
-  tooltipBg: 'rgba(6, 18, 38, 0.88)',
-  tooltipBorder: 'rgba(255, 255, 255, 0.22)',
-  tooltipText: 'rgba(255, 255, 255, 0.95)',
-  uiBg: 'rgba(6, 18, 38, 0.74)',
-  uiBorder: 'rgba(255, 255, 255, 0.18)',
-  uiText: 'rgba(255, 255, 255, 0.9)',
-  uiTrack: 'rgba(255, 255, 255, 0.24)',
-  uiThumb: '#ffffff',
-  uiShadow: 'rgba(0, 0, 0, 0.28)',
-  focusDimBg: 'rgba(2, 6, 12, 0.3)',
-  railInfoBorderIdle: 'rgba(255, 255, 255, 0.2)',
-  railInfoBorderActive: 'rgba(255, 255, 255, 0.46)'
 }
 
 const DEFAULT_SCENE_THEME: GlobeSceneTheme = {
@@ -319,55 +238,8 @@ const DEFAULT_HIGHLIGHT_THEME: GlobeHighlightTheme = {
   selectedD: '#FBBC05'
 }
 
-const UI_THEME_CSS_VARS: Record<keyof GlobeUiTheme, string> = {
-  panelBg: '--panel-bg',
-  panelBorder: '--panel-border',
-  panelText: '--panel-text',
-  panelShadow: '--panel-shadow',
-  panelSurface: '--panel-surface',
-  panelSurfaceBorder: '--panel-surface-border',
-  panelShellBg: '--panel-shell-bg',
-  panelShellBorder: '--panel-shell-border',
-  panelShellShadow: '--panel-shell-shadow',
-  panelDivider: '--panel-divider',
-  panelLiveText: '--panel-live-text',
-  panelLiveDot: '--panel-live-dot',
-  panelClose: '--panel-close',
-  panelFlagBorder: '--panel-flag-border',
-  panelFlagEmptyBg: '--panel-flag-empty-bg',
-  panelStatLabel: '--panel-stat-label',
-  panelStatValue: '--panel-stat-value',
-  panelStatSub: '--panel-stat-sub',
-  panelAircraftLabel: '--panel-aircraft-label',
-  panelAircraftValue: '--panel-aircraft-value',
-  panelFooterBg: '--panel-footer-bg',
-  panelTotalLabel: '--panel-total-label',
-  panelTotalValue: '--panel-total-value',
-  panelMoreBorder: '--panel-more-border',
-  panelMoreBg: '--panel-more-bg',
-  panelMoreText: '--panel-more-text',
-  panelMoreHoverBg: '--panel-more-hover-bg',
-  tooltipBg: '--tooltip-bg',
-  tooltipBorder: '--tooltip-border',
-  tooltipText: '--tooltip-text',
-  uiBg: '--ui-bg',
-  uiBorder: '--ui-border',
-  uiText: '--ui-text',
-  uiTrack: '--ui-track',
-  uiThumb: '--ui-thumb',
-  uiShadow: '--ui-shadow',
-  focusDimBg: '--focus-dim-bg',
-  railInfoBorderIdle: '--rail-info-border-idle',
-  railInfoBorderActive: '--rail-info-border-active'
-}
-
-const DEFAULT_UI_CSS_VARIABLES = (Object.keys(UI_THEME_CSS_VARS) as Array<keyof GlobeUiTheme>)
-  .map((key) => `${UI_THEME_CSS_VARS[key]}: ${DEFAULT_UI_THEME[key]};`)
-  .join('\n        ')
-
 function resolveGlobeTheme(theme?: GlobeTheme): ResolvedGlobeTheme {
   return {
-    ui: { ...DEFAULT_UI_THEME, ...(theme?.ui ?? {}) },
     scene: { ...DEFAULT_SCENE_THEME, ...(theme?.scene ?? {}) },
     countries: { ...DEFAULT_COUNTRIES_THEME, ...(theme?.countries ?? {}) },
     grids: { ...DEFAULT_GRID_THEME, ...(theme?.grids ?? {}) },
@@ -377,20 +249,6 @@ function resolveGlobeTheme(theme?: GlobeTheme): ResolvedGlobeTheme {
     points: { ...DEFAULT_POINTS_THEME, ...(theme?.points ?? {}) },
     flights: { ...DEFAULT_FLIGHTS_THEME, ...(theme?.flights ?? {}) },
     highlights: { ...DEFAULT_HIGHLIGHT_THEME, ...(theme?.highlights ?? {}) }
-  }
-}
-
-function applyUiThemeVariables(theme: GlobeUiTheme, targets: Array<HTMLElement | null>) {
-  const keys = Object.keys(UI_THEME_CSS_VARS) as Array<keyof GlobeUiTheme>
-  const uniqueTargets = new Set<HTMLElement>()
-  for (const target of targets) {
-    if (target) uniqueTargets.add(target)
-  }
-
-  for (const target of uniqueTargets) {
-    for (const key of keys) {
-      target.style.setProperty(UI_THEME_CSS_VARS[key], theme[key])
-    }
   }
 }
 
@@ -411,9 +269,7 @@ function setUniformColor(
 
 export type GlobeOptions = {
   mountTarget?: HTMLElement
-  overlayTarget?: HTMLElement
   assetBaseUrl?: string
-  injectDefaultUI?: boolean
   initialHeatmapEnabled?: boolean
   initialFlightVisualizationMode?: FlightVisualizationMode
   minZoomDistance?: number
@@ -431,7 +287,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   }
 
   const mountTarget = options.mountTarget ?? document.body
-  const overlayTarget = options.overlayTarget ?? document.body
+  ensureCountryPanelScaffold()
   const assetBaseUrl = (options.assetBaseUrl ?? '').replace(/\/+$/, '')
   const resolveAssetPath = (assetPath: string) => {
     const normalizedAssetPath = assetPath.replace(/^\/+/, '')
@@ -441,7 +297,6 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   let theme = resolveGlobeTheme(options.theme)
 
   function applyThemeRuntimeTokens() {
-    applyUiThemeVariables(theme.ui, [document.documentElement, document.body, overlayTarget])
     configureHoverHighlightColors({
       colorA: theme.highlights.hoverA,
       colorB: theme.highlights.hoverB,
@@ -458,186 +313,15 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
 
   applyThemeRuntimeTokens()
 
-  function ensureDefaultUiScaffold() {
-    if ((options.injectDefaultUI ?? true) === false) return
-
-    let createdScaffold = false
-    let createdZoomRail = false
-
-    if (!document.getElementById('left-rail')) {
-      const leftRail = document.createElement('aside')
-      leftRail.id = 'left-rail'
-      leftRail.innerHTML = `
-        <button id="rail-zoom-in" type="button" class="rail-button" aria-label="Zoom in">+</button>
-        <button id="rail-zoom-out" type="button" class="rail-button" aria-label="Zoom out">-</button>
-      `
-      overlayTarget.appendChild(leftRail)
-      createdZoomRail = true
-    }
-
-    document.getElementById('rail-info')?.remove()
-
-    let globeUi = document.getElementById('globe-ui') as HTMLDivElement | null
-    if (!globeUi) {
-      globeUi = document.createElement('div')
-      globeUi.id = 'globe-ui'
-      overlayTarget.appendChild(globeUi)
-      createdScaffold = true
-    }
-
-    if (!document.getElementById('country-panel')) {
-      const panel = document.createElement('div')
-      panel.id = 'country-panel'
-      ;(globeUi ?? overlayTarget).appendChild(panel)
-      createdScaffold = true
-    }
-
-    if (!document.getElementById('focus-dim')) {
-      const focusDim = document.createElement('div')
-      focusDim.id = 'focus-dim'
-      overlayTarget.appendChild(focusDim)
-      createdScaffold = true
-    }
-
-    const styleId = 'navpass-globe-default-ui'
-    if (document.getElementById(styleId)) return
-
-    const panelEl = document.getElementById('country-panel') as HTMLElement | null
-    const panelStyle = panelEl ? getComputedStyle(panelEl) : null
-    const panelLooksUnstyled = !panelStyle ||
-      panelStyle.position !== 'fixed' ||
-      panelStyle.right === 'auto' ||
-      panelStyle.bottom === 'auto'
-    if (panelEl && panelLooksUnstyled) {
-      panelEl.style.position = 'fixed'
-      panelEl.style.left = 'auto'
-      panelEl.style.top = 'auto'
-      panelEl.style.right = '24px'
-      panelEl.style.bottom = '54px'
-      panelEl.style.margin = '0'
-      panelEl.style.zIndex = '4'
-    }
-    if (!createdScaffold && !createdZoomRail && !panelLooksUnstyled) return
-
-    const style = document.createElement('style')
-    style.id = styleId
-    style.textContent = `
-      :root {
-        ${DEFAULT_UI_CSS_VARIABLES}
-      }
-      #left-rail {
-        position: fixed;
-        left: 28px;
-        bottom: 64px;
-        z-index: 5;
-        display: grid;
-        gap: 10px;
-        pointer-events: auto;
-      }
-      .rail-button {
-        width: 28px;
-        height: 28px;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(5, 16, 35, 0.38);
-        color: rgba(255, 255, 255, 0.8);
-        display: grid;
-        place-items: center;
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        font-size: 18px;
-        line-height: 1;
-        cursor: pointer;
-        transition: border-color 380ms ease, background 380ms ease, color 380ms ease;
-      }
-      .rail-button:hover {
-        border-color: rgba(255, 255, 255, 0.46);
-        background: rgba(5, 16, 35, 0.6);
-        color: rgba(255, 255, 255, 0.95);
-      }
-      #globe-ui { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
-      #country-panel,
-      #country-panel *,
-      #country-panel *::before,
-      #country-panel *::after { box-sizing: border-box; }
-      #country-panel {
-        position: fixed !important;
-        left: auto !important;
-        top: auto !important;
-        right: 24px !important;
-        bottom: 54px !important;
-        width: min(438px, calc(100vw - 36px));
-        max-height: 86vh;
-        overflow: hidden;
-        padding: 1px;
-        margin: 0;
-        border: 1px solid var(--panel-shell-border);
-        background: var(--panel-shell-bg);
-        color: var(--panel-text);
-        box-shadow: 0 25px 50px -12px var(--panel-shell-shadow);
-        pointer-events: auto;
-        opacity: 0;
-        transform: translateY(10px);
-        transition: opacity 460ms ease, transform 560ms ease;
-        z-index: 4;
-      }
-      #country-panel.is-visible { opacity: 1; transform: translateY(0); }
-      #focus-dim {
-        position: fixed;
-        inset: 0;
-        z-index: 2;
-        pointer-events: none;
-        opacity: 0;
-        background: var(--focus-dim-bg);
-        transition: opacity 760ms ease;
-      }
-      .panel-tooltip,
-      .panel-tooltip * { margin: 0; }
-      .panel-tooltip { display: flex; flex-direction: column; width: 100%; background: var(--panel-shell-bg); color: var(--panel-text); }
-      .panel-tooltip-header { position: relative; display: flex; min-height: 162px; border-bottom: 1px solid var(--panel-divider); overflow: hidden; }
-      .panel-tooltip-headcopy { flex: 1; padding: 58px 20px 18px; }
-      .panel-tooltip-title { font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1.05; letter-spacing: -0.7px; }
-      .panel-tooltip-live { margin-top: 8px; display: flex; align-items: center; gap: 8px; font: 13px/1.1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: var(--panel-live-text); }
-      .panel-tooltip-live-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--panel-live-dot); }
-      .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: var(--panel-close); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; }
-      .panel-tooltip-flagbox { width: 122px; border-left: 1px solid var(--panel-flag-border); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: 80px auto; opacity: 0.95; }
-      .panel-tooltip-flagbox--empty { background: var(--panel-flag-empty-bg); }
-      .panel-tooltip-dual { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--panel-divider); }
-      .panel-tooltip-stat { padding: 16px 18px 14px; }
-      .panel-tooltip-stat:first-child { border-right: 1px solid var(--panel-divider); }
-      .panel-tooltip-stat-label { font: 14px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: var(--panel-stat-label); }
-      .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: var(--panel-stat-value); }
-      .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: var(--panel-stat-sub); }
-      .panel-tooltip-aircraft { border-bottom: 1px solid var(--panel-divider); padding: 16px 20px; }
-      .panel-tooltip-aircraft-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: var(--panel-aircraft-label); }
-      .panel-tooltip-aircraft-value { margin-top: 8px; font: 20px/1.34 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: var(--panel-aircraft-value); }
-      .panel-tooltip-footer { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: var(--panel-footer-bg); }
-      .panel-tooltip-total-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: var(--panel-total-label); }
-      .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: var(--panel-total-value); }
-      .panel-tooltip-more { height: 50px; min-width: 120px; border: 1px solid var(--panel-more-border); background: var(--panel-more-bg); color: var(--panel-more-text); font: 600 16px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 20px; cursor: pointer; }
-      .panel-tooltip-more:hover { background: var(--panel-more-hover-bg); }
-      .panel-tooltip-more:active { transform: translateY(1px); }
-      @media (max-width: 980px) {
-        #country-panel { right: 12px !important; bottom: 74px !important; width: calc(100vw - 24px); max-height: 70vh; }
-      }
-      @media (max-width: 700px) {
-        #left-rail { left: 12px; bottom: 68px; }
-        .panel-tooltip-title, .panel-tooltip-stat-value, .panel-tooltip-total-value { font-size: 34px; }
-        .panel-tooltip-aircraft-value { font-size: 16px; }
-      }
-    `
-    document.head.appendChild(style)
-  }
-  ensureDefaultUiScaffold()
-
   /* 
    * Config
    */
   const GLOBE_RADIUS = 10
   const COUNTRIES_GEOJSON_PATH = resolveAssetPath('data/ne_110m_admin_0_countries.geojson')
-  const ENABLE_STORY_HIGHLIGHT = false
   const SYNTHETIC_AIRPORT_TARGET = 5200
   const AIRPORT_MIN_SPACING_DEG = 0.5
   const SHOW_GLOBE_POINTS = false
-  const MOCK_FLIGHT_ROUTE_COUNT = 950
+  const FLIGHT_ROUTE_TARGET = 300
   let countriesGeoJSON: any = null
 
 let triGrid: ReturnType<typeof createAdaptiveTriGrid> | null = null
@@ -666,181 +350,16 @@ let atmosphere:
       }
     }
   | null = null
-let storyHighlight: ReturnType<typeof createStoryHighlight> | null = null
 let flightRoutes: FlightRoutesLayer | null = null
 let selectedFlightRouteId: number | null = null
 let isCountrySelected = false
 let selectedCountryIso3: string | null = null
 let innerSphereMesh: THREE.Mesh | null = null
 let depthMaskMesh: THREE.Mesh | null = null
-
-const tooltip = createTooltip(overlayTarget)
 let lastHoverKey = ''
+const tooltip = createTooltip(document.body)
 
-// Pinned flight label (minimal, Google-style): persists when a route is selected.
-const flightRouteLabel = document.createElement('div')
-flightRouteLabel.id = 'flight-route-label'
-flightRouteLabel.style.position = 'fixed'
-flightRouteLabel.style.left = '0px'
-flightRouteLabel.style.top = '0px'
-flightRouteLabel.style.display = 'flex'
-flightRouteLabel.style.alignItems = 'flex-start'
-flightRouteLabel.style.gap = '10px'
-flightRouteLabel.style.padding = '10px 12px'
-flightRouteLabel.style.borderRadius = '14px'
-flightRouteLabel.style.background = 'var(--panel-bg, rgba(6, 18, 38, 0.74))'
-flightRouteLabel.style.border = '1px solid var(--panel-border, rgba(255, 255, 255, 0.2))'
-flightRouteLabel.style.backdropFilter = 'blur(12px)'
-flightRouteLabel.style.color = 'var(--panel-text, rgba(255, 255, 255, 0.94))'
-flightRouteLabel.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif'
-flightRouteLabel.style.boxShadow = '0 18px 55px var(--panel-shadow, rgba(0, 0, 0, 0.45))'
-flightRouteLabel.style.opacity = '0'
-flightRouteLabel.style.transform = 'translate(-50%, -100%) translateY(8px)'
-flightRouteLabel.style.transition = 'opacity 460ms ease, transform 560ms ease'
-flightRouteLabel.style.pointerEvents = 'none'
-flightRouteLabel.style.zIndex = '5'
-
-const flightRouteText = document.createElement('div')
-flightRouteText.style.display = 'flex'
-flightRouteText.style.flexDirection = 'column'
-flightRouteText.style.gap = '2px'
-
-const flightRouteTitle = document.createElement('div')
-flightRouteTitle.style.fontSize = '12px'
-flightRouteTitle.style.lineHeight = '1.1'
-flightRouteTitle.style.letterSpacing = '0.2px'
-
-const flightRouteMeta = document.createElement('div')
-flightRouteMeta.style.fontSize = '10px'
-flightRouteMeta.style.opacity = '0.7'
-flightRouteMeta.style.letterSpacing = '0.6px'
-flightRouteMeta.style.textTransform = 'uppercase'
-
-const flightRouteClose = document.createElement('button')
-flightRouteClose.type = 'button'
-flightRouteClose.textContent = '×'
-flightRouteClose.setAttribute('aria-label', 'Clear route')
-flightRouteClose.style.width = '26px'
-flightRouteClose.style.height = '26px'
-flightRouteClose.style.borderRadius = '999px'
-flightRouteClose.style.border = '1px solid var(--panel-surface-border, rgba(255, 255, 255, 0.16))'
-flightRouteClose.style.background = 'var(--panel-surface, rgba(255, 255, 255, 0.06))'
-flightRouteClose.style.color = 'var(--panel-text, rgba(255, 255, 255, 0.94))'
-flightRouteClose.style.cursor = 'pointer'
-flightRouteClose.style.display = 'grid'
-flightRouteClose.style.placeItems = 'center'
-flightRouteClose.style.padding = '0'
-flightRouteClose.style.lineHeight = '1'
-
-flightRouteClose.addEventListener('click', (ev) => {
-  ev.stopPropagation()
-  selectedFlightRouteId = null
-  flightRoutes?.setSelectedRoute(null)
-  setPinnedFlightRoute(null)
-  if (!isCountrySelected) {
-    focusDimBase = 0
-    focusDimFlash = 0
-    hideFocusDim()
-  }
-})
-
-flightRouteText.appendChild(flightRouteTitle)
-flightRouteText.appendChild(flightRouteMeta)
-flightRouteLabel.appendChild(flightRouteText)
-flightRouteLabel.appendChild(flightRouteClose)
-overlayTarget.appendChild(flightRouteLabel)
-
-let flightRouteLabelBaseAlpha = 0
-const _routeLabelMidLocal = new THREE.Vector3()
-const _routeLabelMidWorld = new THREE.Vector3()
-const _routeLabelNdc = new THREE.Vector3()
-const _routeLabelCamDir = new THREE.Vector3()
-const _routeLabelWorldDir = new THREE.Vector3()
-
-function smoothstep(edge0: number, edge1: number, x: number) {
-  const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1)
-  return t * t * (3 - 2 * t)
-}
-
-function updatePinnedFlightRouteLabelPosition() {
-  if (!flightRoutes || selectedFlightRouteId === null || flightRouteLabelBaseAlpha <= 0.001) {
-    flightRouteLabel.style.opacity = '0'
-    flightRouteLabel.style.pointerEvents = 'none'
-    return
-  }
-
-  const info = flightRoutes.getRouteInfo(selectedFlightRouteId)
-  if (!info) {
-    flightRouteLabel.style.opacity = '0'
-    flightRouteLabel.style.pointerEvents = 'none'
-    return
-  }
-
-  // Midpoint is in the globe's local space.
-  _routeLabelMidLocal.set(Number(info.midX), Number(info.midY), Number(info.midZ))
-  globeGroup.updateMatrixWorld(true)
-  _routeLabelMidWorld.copy(_routeLabelMidLocal)
-  globeGroup.localToWorld(_routeLabelMidWorld)
-
-  // Hide/fade when the pin is near/behind the horizon.
-  const facing = _routeLabelWorldDir.copy(_routeLabelMidWorld).normalize().dot(_routeLabelCamDir.copy(camera.position).normalize())
-  const limb = Math.pow(smoothstep(0.05, 0.18, facing), 1.35)
-  const alpha = flightRouteLabelBaseAlpha * limb
-  flightRouteLabel.style.opacity = alpha.toFixed(3)
-  flightRouteLabel.style.pointerEvents = alpha > 0.12 ? 'auto' : 'none'
-
-  // Screen-space position.
-  _routeLabelNdc.copy(_routeLabelMidWorld).project(camera)
-  const x = (_routeLabelNdc.x * 0.5 + 0.5) * window.innerWidth
-  const y = (-_routeLabelNdc.y * 0.5 + 0.5) * window.innerHeight
-
-  // Place label slightly above the pin.
-  let left = x
-  let top = y - 12
-
-  // Clamp inside viewport so it never gets cut off.
-  const rect = flightRouteLabel.getBoundingClientRect()
-  const pad = 10
-  const halfW = rect.width * 0.5
-  left = THREE.MathUtils.clamp(left, pad + halfW, window.innerWidth - pad - halfW)
-  top = THREE.MathUtils.clamp(top, pad + rect.height, window.innerHeight - pad)
-
-  flightRouteLabel.style.left = `${left.toFixed(1)}px`
-  flightRouteLabel.style.top = `${top.toFixed(1)}px`
-}
-
-function setPinnedFlightRoute(routeId: number | null) {
-  if (routeId === null || !flightRoutes) {
-    flightRouteLabelBaseAlpha = 0
-    flightRouteLabel.style.transform = 'translate(-50%, -100%) translateY(8px)'
-    flightRouteLabel.style.pointerEvents = 'none'
-    return
-  }
-
-  const info = flightRoutes.getRouteInfo(routeId)
-  if (!info) {
-    flightRouteLabelBaseAlpha = 0
-    flightRouteLabel.style.transform = 'translate(-50%, -100%) translateY(8px)'
-    flightRouteLabel.style.pointerEvents = 'none'
-    return
-  }
-
-  const isForward = Number(info.dir) >= 0
-  const from = compactAirportName(isForward ? info.fromName : info.toName)
-  const to = compactAirportName(isForward ? info.toName : info.fromName)
-
-  flightRouteTitle.textContent = `${from} → ${to}`
-  const distanceKm = Number(info.distanceKm)
-  const kmText = Number.isFinite(distanceKm) ? `${Math.round(distanceKm).toLocaleString('en-US')} km` : '— km'
-  const trafficCount = Number(info.trafficCount)
-  const trafficClamped = Number.isFinite(trafficCount) ? Math.max(1, Math.min(4, Math.round(trafficCount))) : NaN
-  const trafficText = Number.isFinite(trafficClamped) ? `Traffic ${trafficClamped}/4` : 'Traffic —/4'
-  flightRouteMeta.textContent = `${kmText} • ${trafficText}`
-  flightRouteLabelBaseAlpha = 1
-  flightRouteLabel.style.transform = 'translate(-50%, -100%) translateY(0px)'
-  flightRouteLabel.style.pointerEvents = 'auto'
-  updatePinnedFlightRouteLabelPosition()
-}
+function setPinnedFlightRoute(_routeId: number | null) {}
 
 const _qYaw = new THREE.Quaternion()
 const _qPitch = new THREE.Quaternion()
@@ -943,18 +462,8 @@ function updatePostprocessSize() {
 }
 updatePostprocessSize()
 
-const heatmapToggle = document.getElementById('heatmap-toggle') as HTMLInputElement | null
-const heatmapThumb = document.getElementById('heatmap-thumb') as HTMLSpanElement | null
-const flightVisualizationToggle = document.getElementById('flight-visualization-toggle') as HTMLInputElement | null
-const flightVisualizationThumb = document.getElementById('flight-visualization-thumb') as HTMLSpanElement | null
-const initialHeatmapEnabled = options.initialHeatmapEnabled ?? (heatmapToggle ? heatmapToggle.checked : false)
+const initialHeatmapEnabled = options.initialHeatmapEnabled ?? false
 const initialFlightVisualizationMode: FlightVisualizationMode = options.initialFlightVisualizationMode ?? 'legacy'
-if (heatmapToggle) {
-  heatmapToggle.checked = initialHeatmapEnabled
-}
-if (flightVisualizationToggle) {
-  flightVisualizationToggle.checked = initialFlightVisualizationMode === 'reengineered'
-}
 type VisualPreset = {
   landAlpha: number
   coastAlpha: number
@@ -1035,9 +544,11 @@ function applyVisualPreset() {
   }
 
   if (landWater) {
+    // Borders-only mode: keep country surfaces fully unfilled.
+    landWater.mesh.visible = false
     const u = landWater.material.uniforms as any
-    if (u.uLandAlpha) u.uLandAlpha.value = cfg.landAlpha
-    if (u.uCoastAlpha) u.uCoastAlpha.value = cfg.coastAlpha
+    if (u.uLandAlpha) u.uLandAlpha.value = 0
+    if (u.uCoastAlpha) u.uCoastAlpha.value = 0
     setUniformColor(u, 'uLandTint', theme.landWater.landTint)
     setUniformColor(u, 'uCoastTint', theme.landWater.coastTint)
   }
@@ -1139,139 +650,12 @@ function applyVisualPreset() {
   visualStarOpacityNear = cfg.starOpacityNear
 }
 
-/**
- * Story mode (presets)
- */
-type StoryPresetId = 'global' | 'americas' | 'europe' | 'africa' | 'asia'
-
-const storyCaptionEl = document.getElementById('story-caption') as HTMLDivElement | null
-const storyButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>('#globe-ui [data-story]')
-)
-const heroTitleEl = document.getElementById('hero-title') as HTMLHeadingElement | null
-const heroSubtitleEl = document.getElementById('hero-subtitle') as HTMLParagraphElement | null
-const heroCopyEl = document.getElementById('hero-copy') as HTMLDivElement | null
-const storyPanel = document.querySelector('#globe-ui .ui-story') as HTMLDivElement | null
-const railZoomIn = document.getElementById('rail-zoom-in') as HTMLButtonElement | null
-const railZoomOut = document.getElementById('rail-zoom-out') as HTMLButtonElement | null
-const railInfo = document.getElementById('rail-info') as HTMLButtonElement | null
-const defaultHeroTitleHTML = heroTitleEl?.innerHTML ?? ''
-const defaultHeroSubtitle = heroSubtitleEl?.textContent ?? ''
-const SHOW_HERO_HEADLINE = false
-
-if (!SHOW_HERO_HEADLINE && heroCopyEl) {
-  heroCopyEl.style.display = 'none'
-}
-
-function setDefaultHeroCopy() {
-  document.body.classList.remove('country-selected')
-  if (heroTitleEl) {
-    heroTitleEl.innerHTML = defaultHeroTitleHTML
-  }
-  if (heroSubtitleEl) {
-    heroSubtitleEl.textContent = defaultHeroSubtitle
-  }
-}
-
-function setCountryHeroCopy(countryName: string) {
-  const safeName = escapeHtml(countryName)
-  document.body.classList.add('country-selected')
-  if (heroTitleEl) {
-    heroTitleEl.innerHTML = `${safeName} <span class="accent">economic growth</span> starts from <span class="accent">above</span>.`
-  }
-  if (heroSubtitleEl) {
-    heroSubtitleEl.textContent = ''
-  }
-}
-
-const STORY_PRESETS: Record<
-  StoryPresetId,
-  | {
-      caption: string
-      zoom: number
-      centerLat: number
-      centerLon: number
-      spotRadiusDeg: number
-      ringRadiusDeg: number
-    }
-  | {
-      caption: string
-      zoom: number
-      centerLat: null
-      centerLon: null
-      spotRadiusDeg: null
-      ringRadiusDeg: null
-    }
-> = {
-  global: {
-    caption: 'Global overview',
-    zoom: 25,
-    centerLat: null,
-    centerLon: null,
-    spotRadiusDeg: null,
-    ringRadiusDeg: null
-  },
-  americas: {
-    caption: 'Americas — transatlantic + intercontinental corridors',
-    zoom: 21,
-    centerLat: 14,
-    centerLon: -82,
-    spotRadiusDeg: 56,
-    ringRadiusDeg: 46
-  },
-  europe: {
-    caption: 'Europe — dense regional network',
-    zoom: 20,
-    centerLat: 51,
-    centerLon: 10,
-    spotRadiusDeg: 34,
-    ringRadiusDeg: 28
-  },
-  africa: {
-    caption: 'Africa — growing hubs + long-haul gateways',
-    zoom: 21,
-    centerLat: 6,
-    centerLon: 20,
-    spotRadiusDeg: 52,
-    ringRadiusDeg: 42
-  },
-  asia: {
-    caption: 'Asia — high-density east/southeast networks',
-    zoom: 20,
-    centerLat: 28,
-    centerLon: 100,
-    spotRadiusDeg: 62,
-    ringRadiusDeg: 52
-  }
-}
-
-let activeStoryPreset: StoryPresetId = 'global'
-
 function applyHeatmap(enabled: boolean) {
-  if (heatmapThumb) {
-    heatmapThumb.style.transform = enabled ? 'translateX(20px)' : 'translateX(0px)'
-  }
   flightRoutes?.setHeatmapEnabled(enabled)
 }
 
-if (heatmapToggle) {
-  heatmapToggle.addEventListener('change', () => {
-    applyHeatmap(heatmapToggle.checked)
-  })
-}
-
 function applyFlightVisualization(mode: FlightVisualizationMode) {
-  const checked = mode === 'reengineered'
-  if (flightVisualizationThumb) {
-    flightVisualizationThumb.style.transform = checked ? 'translateX(20px)' : 'translateX(0px)'
-  }
   flightRoutes?.setVisualizationMode(mode)
-}
-
-if (flightVisualizationToggle) {
-  flightVisualizationToggle.addEventListener('change', () => {
-    applyFlightVisualization(flightVisualizationToggle.checked ? 'reengineered' : 'legacy')
-  })
 }
 
 /**
@@ -1341,6 +725,9 @@ controls.addEventListener('start', () => {
   zoomAnim = null
 })
 
+const railZoomIn = document.getElementById('rail-zoom-in') as HTMLButtonElement | null
+const railZoomOut = document.getElementById('rail-zoom-out') as HTMLButtonElement | null
+
 function zoomByStep(delta: number) {
   const currentDistance = camera.position.length()
   const targetDistance = THREE.MathUtils.clamp(
@@ -1361,29 +748,6 @@ if (railZoomIn) {
 if (railZoomOut) {
   railZoomOut.addEventListener('click', () => {
     zoomByStep(2.4)
-  })
-}
-
-if (railInfo && storyPanel) {
-  const setInfoVisualState = () => {
-    const collapsed = storyPanel.classList.contains('is-collapsed')
-    railInfo.style.borderColor = collapsed
-      ? 'var(--rail-info-border-idle)'
-      : 'var(--rail-info-border-active)'
-  }
-
-  setInfoVisualState()
-
-  railInfo.addEventListener('click', () => {
-    const nextCollapsed = !storyPanel.classList.contains('is-collapsed')
-    storyPanel.classList.toggle('is-collapsed', nextCollapsed)
-    setInfoVisualState()
-  })
-}
-
-for (const topLink of document.querySelectorAll<HTMLAnchorElement>('#figma-shell a[href=\"#\"]')) {
-  topLink.addEventListener('click', (ev) => {
-    ev.preventDefault()
   })
 }
 
@@ -1419,8 +783,6 @@ let dragDistance = 0
 let dragSuppressUntil = 0
 let activePointerId: number | null = null
 let dragStartTime = 0
-let focusDimBase = 0
-let focusDimFlash = 0
 let hasUserInteracted = false
 let hoveredCountryRouteFocusIso3: string | null = null
 
@@ -1444,13 +806,11 @@ function resetDragState() {
 function isEventOverUI(target: EventTarget | null) {
   if (!(target instanceof Element)) return false
   return Boolean(
+    target.closest('#left-rail') ||
     target.closest('#globe-ui') ||
-    target.closest('#ui-toggle') ||
-    target.closest('#figma-shell') ||
-    target.closest('#flight-route-label')
+    target.closest('#country-panel')
   )
 }
-
 
 function onPointerDown(e: PointerEvent) {
   if (e.button !== 0) return
@@ -1525,7 +885,8 @@ function onPointerMove(e: PointerEvent) {
     lastYawDragSign = Math.sign(yawDelta)
   }
 
-  tooltip.hide() // (se você já estava fazendo)
+  tooltip.hide()
+
 }
 
 function onPointerUp(e: PointerEvent) {
@@ -1571,7 +932,6 @@ function onPointerUp(e: PointerEvent) {
     return
   }
 
-  // Click (on globe) — handle here (more reliable than window "click").
   const el = document.elementFromPoint(e.clientX, e.clientY)
   if (isEventOverUI(el)) return
 
@@ -1599,17 +959,12 @@ function onPointerUp(e: PointerEvent) {
       flightRoutes?.setSelectedRoute(null)
       setPinnedFlightRoute(null)
       tooltip.hide()
-      if (!isCountrySelected) {
-        focusDimBase = 0
-        focusDimFlash = 0
-        hideFocusDim()
-      }
     } else {
       selectedFlightRouteId = flightHit.routeId
       flightRoutes?.setSelectedRoute(flightHit.routeId)
       flightRoutes?.setHoverRoute(null)
-      showFlightTooltip(flightHit.routeId, e.clientX, e.clientY)
       setPinnedFlightRoute(flightHit.routeId)
+      showFlightTooltip(flightHit.routeId, e.clientX, e.clientY)
 
       // Focus the globe to the arc midpoint (Google-style "route focus").
       const info = flightRoutes?.getRouteInfo(flightHit.routeId)
@@ -1625,15 +980,6 @@ function onPointerUp(e: PointerEvent) {
         const distanceKm = Number(info.distanceKm)
         zoomToSubtle(computeRouteZoomTarget(distanceKm), 980, 0.55)
       }
-
-      // Light focus dim flash to help the route "pop" without overpowering the globe.
-      showFocusDim()
-      if (!isCountrySelected) {
-        const distanceKm = Number(info?.distanceKm)
-        const t = THREE.MathUtils.clamp((distanceKm - 600) / 10000, 0, 1)
-        focusDimBase = THREE.MathUtils.lerp(0.16, 0.22, t)
-      }
-      focusDimFlash = Math.max(focusDimFlash, 0.22 + focusDimBase * 0.55)
     }
     return
   }
@@ -1754,35 +1100,11 @@ function focusGlobeToPoint(worldPoint: THREE.Vector3, durationMs = 1200) {
   }
 }
 
-
-const defaultGlobeQuat = globeGroup.quaternion.clone()
-function resetGlobeRotation(durationMs = 900) {
-  globeAnim = {
-    t0: performance.now(),
-    dur: durationMs,
-    from: globeGroup.quaternion.clone(),
-    to: defaultGlobeQuat.clone()
-  }
-  pitchAccum = 0
-  yawAccum = 0
-}
-
-function setStoryUIActive(presetId: StoryPresetId) {
-  activeStoryPreset = presetId
-  for (const btn of storyButtons) {
-    const id = btn.dataset.story
-    btn.classList.toggle('is-active', id === presetId)
-  }
-  const cfg = STORY_PRESETS[presetId]
-  if (storyCaptionEl) {
-    storyCaptionEl.textContent = cfg.caption
-  }
-}
-
 function clearSelectionUIState() {
   // Clear country selection / route selection, but keep the scene intact.
   clearHoverRouteCouplingCountry()
-  setDefaultHeroCopy()
+  hideCountryPanel()
+  hideFocusDim()
   tooltip.hide()
   lastHoverKey = ''
   clearHoverHighlight(globeGroup)
@@ -1797,54 +1119,21 @@ function clearSelectionUIState() {
   selectedCountryIso3 = null
   flightRoutes?.setFocusCountry(null)
   clearHighlight(globeGroup)
-  hideCountryPanel()
-
-  focusDimBase = 0
-  focusDimFlash = 0
-  hideFocusDim()
 }
 
-function setStoryPreset(presetId: StoryPresetId) {
-  markUserInteracted()
-  setStoryUIActive(presetId)
-
-  // Story mode is a "global navigation" feature: selecting a preset exits any
-  // country/route focus so the highlight reads clearly.
-  clearSelectionUIState()
-
-  // Stop inertia so the transition feels deliberate.
-  velYaw = 0
-  velPitch = 0
-  zoomAnim = null
-
-  if (presetId === 'global') {
-    storyHighlight?.setPreset(null)
-    resetGlobeRotation(980)
-    zoomTo(STORY_PRESETS.global.zoom, 980)
-    return
+function getISO3(props: any) {
+  const candidates = [
+    props?.ISO_A3,
+    props?.ADM0_A3,
+    props?.BRK_A3,
+    props?.SU_A3
+  ]
+  for (const value of candidates) {
+    if (typeof value === 'string' && value && value !== '-99') {
+      return value
+    }
   }
-
-  const cfg = STORY_PRESETS[presetId]
-  if (cfg.centerLat === null || cfg.centerLon === null) return
-
-  // Focus to region center (yaw + pitch only; no roll).
-  globeGroup.updateMatrixWorld(true)
-  const focusWorld = globeGroup.localToWorld(
-    latLongToVector3(cfg.centerLat, cfg.centerLon, GLOBE_RADIUS * 1.01)
-  )
-  focusGlobeToPoint(focusWorld, 1100)
-  zoomTo(cfg.zoom, 1050)
-  storyHighlight?.setPreset({
-    centerLat: cfg.centerLat,
-    centerLon: cfg.centerLon,
-    spotRadiusDeg: cfg.spotRadiusDeg ?? 40,
-    ringRadiusDeg: cfg.ringRadiusDeg ?? 30
-  })
-
-  // Light dim flash so the region "pops" without turning the screen into a modal.
-  showFocusDim()
-  focusDimBase = 0.14
-  focusDimFlash = Math.max(focusDimFlash, 0.18)
+  return ''
 }
 
 function getFeatureLabel(feature: any) {
@@ -1853,7 +1142,7 @@ function getFeatureLabel(feature: any) {
     feature.properties?.NAME_EN ||
     feature.properties?.ADMIN ||
     feature.properties?.NAME ||
-    'Unknown'
+    'Country'
   )
 }
 
@@ -1888,19 +1177,40 @@ function getISO2(props: any) {
   return ''
 }
 
-function getISO3(props: any) {
-  const candidates = [
-    props?.ISO_A3,
-    props?.ADM0_A3,
-    props?.BRK_A3,
-    props?.SU_A3
-  ]
-  for (const value of candidates) {
-    if (typeof value === 'string' && value && value !== '-99') {
-      return value
-    }
-  }
-  return ''
+function isoToFlagUrl(iso2: string) {
+  if (!iso2) return ''
+  return resolveAssetPath(`flags/${iso2.toLowerCase()}.svg`)
+}
+
+function compactAirportName(name: string) {
+  return String(name || '')
+    .replace(/\bInternational\b/gi, 'Intl')
+    .replace(/\bAirport\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function showFlightTooltip(routeId: number, x: number, y: number) {
+  if (!flightRoutes) return
+  const info = flightRoutes.getRouteInfo(routeId)
+  if (!info) return
+
+  const isForward = Number(info.dir) >= 0
+  const from = compactAirportName(isForward ? info.fromName : info.toName)
+  const to = compactAirportName(isForward ? info.toName : info.fromName)
+  const distanceKm = Number(info.distanceKm)
+  const kmText = Number.isFinite(distanceKm) ? `${Math.round(distanceKm).toLocaleString('en-US')} km` : '— km'
+  const trafficCount = Number(info.trafficCount)
+  const trafficClamped = Number.isFinite(trafficCount) ? Math.max(1, Math.min(3, Math.round(trafficCount))) : NaN
+  const trafficText = Number.isFinite(trafficClamped) ? `Traffic ${trafficClamped}/3` : 'Traffic —/3'
+
+  const html = `
+    <div style="display:flex;flex-direction:column;gap:2px;">
+      <div style="font-size:12px;line-height:1.1;">${escapeHtml(from)} → ${escapeHtml(to)}</div>
+      <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(kmText)} • ${escapeHtml(trafficText)}</div>
+    </div>
+  `
+  tooltip.showHTML(html, x, y)
 }
 
 function setHoverRouteCouplingCountry(iso3: string | null) {
@@ -1919,19 +1229,6 @@ function clearHoverRouteCouplingCountry() {
   if (!isCountrySelected && selectedFlightRouteId === null) {
     flightRoutes.setFocusCountry(null)
   }
-}
-
-function isoToFlagUrl(iso2: string) {
-  if (!iso2) return ''
-  return resolveAssetPath(`flags/${iso2.toLowerCase()}.svg`)
-}
-
-function compactAirportName(name: string) {
-  return String(name || '')
-    .replace(/\bInternational\b/gi, 'Intl')
-    .replace(/\bAirport\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim()
 }
 
 function getFlightHit(clientX: number, clientY: number, lineThreshold = FLIGHT_CLICK_THRESHOLD) {
@@ -1996,29 +1293,6 @@ function getCountryPick(clientX: number, clientY: number) {
   return { feature, worldPoint }
 }
 
-function showFlightTooltip(routeId: number, x: number, y: number) {
-  if (!flightRoutes) return
-  const info = flightRoutes.getRouteInfo(routeId)
-  if (!info) return
-
-  const isForward = Number(info.dir) >= 0
-  const from = compactAirportName(isForward ? info.fromName : info.toName)
-  const to = compactAirportName(isForward ? info.toName : info.fromName)
-  const distanceKm = Number(info.distanceKm)
-  const kmText = Number.isFinite(distanceKm) ? `${Math.round(distanceKm).toLocaleString('en-US')} km` : '— km'
-  const trafficCount = Number(info.trafficCount)
-  const trafficClamped = Number.isFinite(trafficCount) ? Math.max(1, Math.min(4, Math.round(trafficCount))) : NaN
-  const trafficText = Number.isFinite(trafficClamped) ? `Traffic ${trafficClamped}/4` : 'Traffic —/4'
-
-  const html = `
-    <div style="display:flex;flex-direction:column;gap:2px;">
-      <div style="font-size:12px;line-height:1.1;">${escapeHtml(from)} → ${escapeHtml(to)}</div>
-      <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(kmText)} • ${escapeHtml(trafficText)}</div>
-    </div>
-  `
-  tooltip.showHTML(html, x, y)
-}
-
 function getFeatureFocusPoint(feature: any) {
   const props = feature.properties || {}
   let lat = Number(props.LABEL_Y)
@@ -2046,27 +1320,21 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
     return
   }
-  // Country focus should not coexist with story preset ring/spotlight.
-  storyHighlight?.setPreset(null)
   clearHoverRouteCouplingCountry()
-  setCountryHeroCopy(getFeatureLabel(feature))
   fadeOutHover(globeGroup)
   tooltip.hide()
   highlightCountryFromFeature(feature, globeGroup, GLOBE_RADIUS)
   isCountrySelected = true
   selectedCountryIso3 = iso3 || null
   const flightsStats = flightRoutes ? flightRoutes.getCountryFlightStats(iso3, performance.now() * 0.001) : null
-  showCountryPanel(feature.properties, flightsStats)
+  showCountryPanel(feature.properties, flightsStats, 'selected')
+  showFocusDim()
   selectedFlightRouteId = null
   flightRoutes?.setSelectedRoute(null)
   flightRoutes?.setHoverRoute(null)
   setPinnedFlightRoute(null)
   flightRoutes?.setFocusCountry(iso3)
-  showFocusDim()
   const spanDeg = estimateCountrySpanDeg(feature)
-  const sizeT = THREE.MathUtils.clamp((spanDeg - 7) / 55, 0, 1)
-  focusDimBase = THREE.MathUtils.lerp(0.38, 0.28, sizeT)
-  focusDimFlash = THREE.MathUtils.lerp(0.46, 0.34, sizeT)
   velYaw = 0
   velPitch = 0
   const focusPoint = worldPoint ?? getFeatureFocusPoint(feature)
@@ -2086,10 +1354,6 @@ let star: ReturnType<typeof createStarfieldShader> | null = null
  */
 function pickCountryAt(clientX: number, clientY: number, options: { allowOceanClear?: boolean } = {}) {
   if (!countriesGeoJSON) return
-
-  // Ignore interactions on top of UI elements.
-  const el = document.elementFromPoint(clientX, clientY)
-  if (isEventOverUI(el)) return
 
   const allowOceanClear = options.allowOceanClear ?? true
   const pick = getCountryPick(clientX, clientY)
@@ -2128,8 +1392,11 @@ function onPointerHover(e: PointerEvent) {
   renderer.domElement.style.cursor = 'default'
   if (!countriesGeoJSON) return
 
-  // Don't hover through UI.
   const elUnderPointer = document.elementFromPoint(e.clientX, e.clientY)
+  if (elUnderPointer instanceof Element && elUnderPointer.closest('#country-panel')) {
+    renderer.domElement.style.cursor = 'default'
+    return
+  }
   if (isEventOverUI(elUnderPointer)) {
     clearHoverInteractionState()
     return
@@ -2147,73 +1414,65 @@ function onPointerHover(e: PointerEvent) {
     return
   }
 
-  const countryPick = getCountryPick(e.clientX, e.clientY)
-  const feature = countryPick?.feature ?? null
-
-  if (feature) {
-    flightRoutes?.setHoverRoute(null)
-
-    const iso3 = getISO3(feature.properties)
-    if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
-      clearHoverRouteCouplingCountry()
-      clearHoverHighlight(globeGroup)
-      tooltip.hide()
-      lastHoverKey = ''
-      renderer.domElement.style.cursor = 'default'
-      return
-    }
-
-    // evita recalcular highlight a cada pixel
-    const key = feature.properties?.ISO_A3 || feature.properties?.ADMIN || feature.properties?.NAME || 'country'
-    if (key !== lastHoverKey) {
-      lastHoverKey = key
-      setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
-    }
-    setHoverRouteCouplingCountry(iso3)
-
-    const name =
-      feature.properties?.ADMIN ||
-      feature.properties?.NAME ||
-      feature.properties?.NAME_EN ||
-      'Country'
-
-    renderer.domElement.style.cursor = 'pointer'
-
-    const iso2 = getISO2(feature.properties)
-    const flagUrl = isoToFlagUrl(iso2)
-    const meta = getFeatureMeta(feature)
-    if (iso2) {
-      const html = `
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="display:flex;flex-direction:column;gap:2px;">
-            <div style="font-size:12px;line-height:1.1;">${escapeHtml(name)}</div>
-            <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(meta)}</div>
-          </div>
-          <img src="${flagUrl}" alt="" style="height:28px;width:auto;border-radius:2px;display:block;" onerror="this.style.display='none'">
-        </div>
-      `
-      tooltip.showHTML(html, e.clientX, e.clientY)
-    } else {
-      tooltip.show(name, e.clientX, e.clientY)
-    }
-    return
-  }
-
-  clearHoverRouteCouplingCountry()
-  clearHoverHighlight(globeGroup)
-  lastHoverKey = ''
-
+  // Flight hover primeiro: rota/avião acima do país.
   const flightHit = getFlightHit(e.clientX, e.clientY, FLIGHT_HOVER_THRESHOLD)
   if (flightHit) {
+    clearHoverRouteCouplingCountry()
+    clearHoverHighlight(globeGroup)
+    lastHoverKey = ''
     flightRoutes?.setHoverRoute(flightHit.routeId)
     renderer.domElement.style.cursor = 'pointer'
     showFlightTooltip(flightHit.routeId, e.clientX, e.clientY)
     return
   }
 
+  const countryPick = getCountryPick(e.clientX, e.clientY)
+  const feature = countryPick?.feature ?? null
+  if (!feature) {
+    clearHoverInteractionState()
+    return
+  }
+
   flightRoutes?.setHoverRoute(null)
-  tooltip.hide()
-  renderer.domElement.style.cursor = 'default'
+  const iso3 = getISO3(feature.properties)
+  if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
+    clearHoverRouteCouplingCountry()
+    clearHoverHighlight(globeGroup)
+    tooltip.hide()
+    lastHoverKey = ''
+    renderer.domElement.style.cursor = 'default'
+    return
+  }
+
+  // evita recalcular highlight a cada pixel
+  const key = feature.properties?.ISO_A3 || feature.properties?.ADMIN || feature.properties?.NAME || 'country'
+  if (key !== lastHoverKey) {
+    lastHoverKey = key
+    setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
+  }
+  setHoverRouteCouplingCountry(iso3)
+
+  renderer.domElement.style.cursor = 'pointer'
+  const name = getFeatureLabel(feature)
+  const iso2 = getISO2(feature.properties)
+  const flagUrl = isoToFlagUrl(iso2)
+  const meta = getFeatureMeta(feature)
+
+  if (iso2) {
+    const html = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <div style="font-size:12px;line-height:1.1;">${escapeHtml(name)}</div>
+          <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(meta)}</div>
+        </div>
+        <img src="${flagUrl}" alt="" style="height:28px;width:auto;border-radius:2px;display:block;" onerror="this.style.display='none'">
+      </div>
+    `
+    tooltip.showHTML(html, e.clientX, e.clientY)
+    return
+  }
+
+  tooltip.show(name, e.clientX, e.clientY)
 }
 
 /**
@@ -2240,13 +1499,6 @@ function animate() {
   const cameraDistance = camera.position.length()
   updateHoverHighlight(globeGroup, now, cameraDistance)
   updateCountryHighlight(now)
-  storyHighlight?.update(now, cameraDistance)
-
-  if (focusDimBase > 0 || focusDimFlash > 0) {
-    focusDimFlash *= 0.96
-    if (focusDimFlash < 0.01) focusDimFlash = 0
-    setFocusDimOpacity(Math.min(0.65, focusDimBase + focusDimFlash))
-  }
 
   if (globeAnim) {
     const tt = (performance.now() - globeAnim.t0) / globeAnim.dur
@@ -2411,7 +1663,6 @@ function animate() {
   }
 
   controls.update()
-  updatePinnedFlightRouteLabelPosition()
   if (composer) {
     composer.render(deltaSeconds)
   } else {
@@ -2434,12 +1685,6 @@ async function init() {
   globeGroup.add(innerSphereMesh)
   lightingShell = createLightingShell(GLOBE_RADIUS)
   globeGroup.add(lightingShell.group)
-
-  // Story mode highlight layer (region spotlight + ring).
-  if (ENABLE_STORY_HIGHLIGHT) {
-    storyHighlight = createStoryHighlight(GLOBE_RADIUS)
-    globeGroup.add(storyHighlight.group)
-  }
 
   const geojson = await loadGeoJSON(COUNTRIES_GEOJSON_PATH)
   countriesGeoJSON = geojson
@@ -2477,8 +1722,8 @@ async function init() {
     nightLights = null
   }
 
-  flightRoutes = createFlightRoutes(denseAirports, GLOBE_RADIUS, countriesGeoJSON, MOCK_FLIGHT_ROUTE_COUNT)
-  console.info(`[flights] mocked_routes=${MOCK_FLIGHT_ROUTE_COUNT} source_airports=${denseAirports.length}`)
+  flightRoutes = createFlightRoutes(denseAirports, GLOBE_RADIUS, countriesGeoJSON, FLIGHT_ROUTE_TARGET)
+  console.info(`[flights] route_target=${FLIGHT_ROUTE_TARGET} source_airports=${denseAirports.length}`)
   globeGroup.add(flightRoutes.group)
   applyFlightVisualization(initialFlightVisualizationMode)
   applyHeatmap(initialHeatmapEnabled)
@@ -2518,17 +1763,6 @@ async function init() {
   })
 
   window.addEventListener('pointermove', onPointerHover)
-
-  // Story mode pills (Global / Americas / Europe).
-  for (const btn of storyButtons) {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.story
-      if (id === 'global' || id === 'americas' || id === 'europe' || id === 'africa' || id === 'asia') {
-        setStoryPreset(id)
-      }
-    })
-  }
-  setStoryUIActive(activeStoryPreset)
 
   animate()
 }

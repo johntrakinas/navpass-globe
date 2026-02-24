@@ -70,7 +70,6 @@ If your globe URL is under a subpath, use that full URL in `src`.
 
 - `assetBaseUrl=/some/path`
 - `heatmap=true|false`
-- `injectDefaultUI=true|false`
 - `flightMode=legacy|reengineered`
 - `minZoomDistance=17`
 - `maxZoomDistance=32`
@@ -92,7 +91,7 @@ https://your-globe-domain.example/?theme=%7B%22scene%22%3A%7B%22background%22%3A
 Theme via flat params:
 
 ```text
-https://your-globe-domain.example/?theme.scene.background=%2307090d&theme.ui.panelBg=rgba(6,18,38,0.74)
+https://your-globe-domain.example/?theme.scene.background=%2307090d&theme.countries.border=0x122640
 ```
 
 ## Parent Window Events

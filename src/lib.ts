@@ -3,7 +3,6 @@ export type {
   GlobeInstance,
   GlobeOptions,
   GlobeTheme,
-  GlobeUiTheme,
   GlobeSceneTheme,
   GlobeCountriesTheme,
   GlobeGridTheme,

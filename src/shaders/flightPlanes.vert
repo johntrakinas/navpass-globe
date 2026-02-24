@@ -84,6 +84,21 @@ void main() {
   float omt = 1.0 - t;
   vec3 p = aP0 * (omt * omt) + aP1 * (2.0 * omt * t) + aP2 * (t * t);
 
+  // Safety clamp: never place a plane inside the globe.
+  float minShell = min(length(aP0), length(aP2)) * 0.995;
+  float pLen = length(p);
+  if (pLen < 1e-6) {
+    vec3 fallbackDir = aP0 + aP2;
+    float fLen = length(fallbackDir);
+    if (fLen < 1e-6) {
+      fallbackDir = aP0;
+      fLen = max(length(fallbackDir), 1e-6);
+    }
+    p = (fallbackDir / fLen) * minShell;
+  } else if (pLen < minShell) {
+    p *= minShell / pLen;
+  }
+
   // Screen-space velocity direction (for a small "comet" trail in the fragment shader).
   vec3 dpdt = 2.0 * (1.0 - t) * (aP1 - aP0) + 2.0 * t * (aP2 - aP1);
   dpdt *= aDir; // actual motion direction (handles reversed routes)

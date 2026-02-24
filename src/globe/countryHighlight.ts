@@ -14,9 +14,9 @@ let current: THREE.Object3D | null = null
 let currentMats: THREE.ShaderMaterial[] = []
 let pulsePhase = Math.random() * Math.PI * 2
 const SELECT_RADIUS_MULT = 1.004
-const SELECT_SCALE = 1.0
-const SELECT_BREATH_BASE = 0.0004
-const SELECT_BREATH_AMP = 0.0014
+const SELECT_SCALE = 1.02
+const SELECT_BREATH_BASE = 0.0015
+const SELECT_BREATH_AMP = 0.006
 let selectedBorderLineWidthHint = 1.8
 let activeFeatureStrokeScale = 1
 const SELECT_CORE_THICKNESS_PER_BORDER_WIDTH = 0.0005 / 1.8
@@ -132,8 +132,8 @@ export function highlightCountryFromFeature(
   const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates]
 
   // Two-pass render to fake thicker country outline in WebGL line rendering.
-  const glowMat = createHighlightMaterial(0.26, scaleThickness(0.0009))
-  const coreMat = createHighlightMaterial(0.84, scaleThickness(0.0005))
+  const glowMat = createHighlightMaterial(0.64, scaleThickness(0.0009))
+  const coreMat = createHighlightMaterial(1.0, scaleThickness(0.0005))
   applySelectedStrokeThickness(glowMat, coreMat)
   currentMats = [glowMat, coreMat]
   pulsePhase = Math.random() * Math.PI * 2

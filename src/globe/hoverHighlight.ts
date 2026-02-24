@@ -29,18 +29,18 @@ const glowColor = new THREE.Color()
 const coreColor = new THREE.Color()
 let hoverScale = 1
 let hoverScaleTarget = 1
-let hoverBorderLineWidthHint = 1.08
+let hoverBorderLineWidthHint = 1.0
 let activeFeatureStrokeScale = 1
 const HOVER_RADIUS_MULT = 1.004
-const HOVER_POP_START = 1.0
-const HOVER_POP_TARGET = 1.0
-const HOVER_BREATH_AMP = 0.0
+const HOVER_POP_START = 0.95
+const HOVER_POP_TARGET = 1.02
+const HOVER_BREATH_AMP = 0.006
 const HOVER_BREATH_SPEED = 1.85
-const HOVER_CORE_THICKNESS_PER_BORDER_WIDTH = 0.0007 / 1.8
-const HOVER_MIN_CORE_THICKNESS = 0.00048
-const HOVER_GLOW_TO_CORE_RATIO = 1.08
-const HOVER_GLOW_OPACITY_MUL = 0.52
-const HOVER_CORE_OPACITY_MUL = 0.92
+const HOVER_CORE_THICKNESS_PER_BORDER_WIDTH = 0.0005 / 1.8
+const HOVER_MIN_CORE_THICKNESS = 0.00042
+const HOVER_GLOW_TO_CORE_RATIO = 1.0
+const HOVER_GLOW_OPACITY_MUL = 1.34
+const HOVER_CORE_OPACITY_MUL = 1.06
 
 const HOVER_VERT = /* glsl */ `
 uniform float uThickness;
@@ -197,7 +197,7 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
   // ✅ opacidade adaptativa ao zoom (longe = menos forte)
   // ajuste fino: quanto menor o número, mais cedo ele fica forte
   const zoomFactor = THREE.MathUtils.clamp((28 - cameraDistance) / 12, 0, 1)
-  const desiredMax = 0.14 + 0.24 * zoomFactor // 0.14..0.38 (close to base line weight)
+  const desiredMax = 0.24 + 0.46 * zoomFactor // 0.24..0.70 (pre-reduction intensity)
 
   const maxOp = Math.min(desiredMax, 0.72)
   const tgt = Math.min(targetOpacity, maxOp)

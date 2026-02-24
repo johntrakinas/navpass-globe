@@ -1,6 +1,8 @@
 import globe, { type GlobeOptions, type GlobeTheme } from './index'
 import type { FlightVisualizationMode } from './globe/flights'
 
+type ColorPresetId = 'current' | 'suggested_lines' | 'suggested_main_lines'
+
 function parseBooleanParam(params: URLSearchParams, key: string): boolean | undefined {
   const value = params.get(key)
   if (value === null) return undefined
@@ -28,6 +30,47 @@ function normalizeAssetBaseUrl(value: string | null | undefined): string {
   if (!value) return ''
   const normalized = value.trim().replace(/\/+$/, '')
   return normalized === '/' ? '' : normalized
+}
+
+function parseColorPresetParam(value: string | null): ColorPresetId {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) return 'current'
+  if (normalized === 'suggested_lines' || normalized === 'suggested-lines' || normalized === 'lines-162f50') {
+    return 'suggested_lines'
+  }
+  if (
+    normalized === 'suggested_main_lines' ||
+    normalized === 'suggested-main-lines' ||
+    normalized === 'main-0d1c30-lines-1a3960'
+  ) {
+    return 'suggested_main_lines'
+  }
+  return 'current'
+}
+
+function getColorPresetTheme(preset: ColorPresetId): Partial<GlobeTheme> | undefined {
+  if (preset === 'suggested_lines') {
+    return {
+      countries: {
+        border: '#162f50'
+      }
+    }
+  }
+
+  if (preset === 'suggested_main_lines') {
+    return {
+      scene: {
+        background: '#0D1C30',
+        depthMask: '#0D1C30',
+        innerSphere: '#0D1C30'
+      },
+      countries: {
+        border: '#1A3960'
+      }
+    }
+  }
+
+  return undefined
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -93,7 +136,6 @@ function mergeThemes(
   return {
     ...(base ?? {}),
     ...(override ?? {}),
-    ui: { ...(base?.ui ?? {}), ...(override?.ui ?? {}) },
     scene: { ...(base?.scene ?? {}), ...(override?.scene ?? {}) },
     countries: { ...(base?.countries ?? {}), ...(override?.countries ?? {}) },
     grids: { ...(base?.grids ?? {}), ...(override?.grids ?? {}) },
@@ -121,22 +163,40 @@ function notifyParent(event: 'boot' | 'ready' | 'error', payload?: Record<string
 const params = new URLSearchParams(window.location.search)
 const mountTarget = document.getElementById('app') ?? document.body
 const defaultAssetBaseUrl = import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL
+const colorPreset = parseColorPresetParam(params.get('colorPreset'))
+const colorPresetTheme = getColorPresetTheme(colorPreset)
+const themeFromParams = mergeThemes(parseThemeJsonParam(params.get('theme')), parseThemeFlatParams(params))
 
 const options: GlobeOptions = {
   mountTarget,
-  overlayTarget: document.body,
   assetBaseUrl: normalizeAssetBaseUrl(params.get('assetBaseUrl') ?? defaultAssetBaseUrl),
-  injectDefaultUI: parseBooleanParam(params, 'injectDefaultUI'),
   initialHeatmapEnabled: parseBooleanParam(params, 'heatmap'),
   initialFlightVisualizationMode: parseFlightModeParam(params.get('flightMode')),
   minZoomDistance: parseNumberParam(params, 'minZoomDistance'),
   maxZoomDistance: parseNumberParam(params, 'maxZoomDistance'),
-  theme: mergeThemes(parseThemeJsonParam(params.get('theme')), parseThemeFlatParams(params))
+  theme: mergeThemes(colorPresetTheme, themeFromParams)
 }
 
 notifyParent('boot')
 
 const app = globe(options)
+
+const colorSelect = document.getElementById('rail-color-select') as HTMLSelectElement | null
+if (colorSelect) {
+  colorSelect.value = colorPreset
+  colorSelect.addEventListener('change', () => {
+    const nextPreset = parseColorPresetParam(colorSelect.value)
+    const nextParams = new URLSearchParams(window.location.search)
+    if (nextPreset === 'current') {
+      nextParams.delete('colorPreset')
+    } else {
+      nextParams.set('colorPreset', nextPreset)
+    }
+    const query = nextParams.toString()
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
+    window.location.assign(nextUrl)
+  })
+}
 
 void app.ready
   .then(() => notifyParent('ready'))

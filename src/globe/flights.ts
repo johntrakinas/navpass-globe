@@ -409,6 +409,38 @@ function bezierPointParam(out: number[], r: Route, t: number) {
   out[0] = r.p0x * k0 + r.p1x * k1 + r.p2x * k2
   out[1] = r.p0y * k0 + r.p1y * k1 + r.p2y * k2
   out[2] = r.p0z * k0 + r.p1z * k1 + r.p2z * k2
+
+  // Safety clamp: keep route samples outside the globe shell.
+  const minShell =
+    Math.min(
+      Math.hypot(r.p0x, r.p0y, r.p0z),
+      Math.hypot(r.p2x, r.p2y, r.p2z)
+    ) * 0.995
+  const len = Math.hypot(out[0], out[1], out[2])
+  if (len < 1e-6) {
+    const fx = r.p0x + r.p2x
+    const fy = r.p0y + r.p2y
+    const fz = r.p0z + r.p2z
+    const fl = Math.hypot(fx, fy, fz)
+    if (fl > 1e-6) {
+      out[0] = (fx / fl) * minShell
+      out[1] = (fy / fl) * minShell
+      out[2] = (fz / fl) * minShell
+    } else {
+      const p0l = Math.hypot(r.p0x, r.p0y, r.p0z)
+      const sx = p0l > 1e-6 ? r.p0x / p0l : 0
+      const sy = p0l > 1e-6 ? r.p0y / p0l : 1
+      const sz = p0l > 1e-6 ? r.p0z / p0l : 0
+      out[0] = sx * minShell
+      out[1] = sy * minShell
+      out[2] = sz * minShell
+    }
+  } else if (len < minShell) {
+    const s = minShell / len
+    out[0] *= s
+    out[1] *= s
+    out[2] *= s
+  }
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -432,6 +464,8 @@ export function createFlightRoutes(
 ): FlightRoutesLayer {
   const group = new THREE.Group()
   group.name = 'flightRoutes'
+  const TRAFFIC_LEVELS = 3
+  const PLANE_DENSITY_SCALE = 0.74
   const SHOW_ROUTE_ENDPOINTS = false
   const SHOW_HOVER_ENDPOINTS = false
   const SHOW_ROUTE_PIN = false
@@ -488,19 +522,32 @@ export function createFlightRoutes(
 
     const p0 = latLongToVector3(Number(a.latitude), Number(a.longitude), radius * 1.01)
     const p2 = latLongToVector3(Number(b.latitude), Number(b.longitude), radius * 1.01)
+    const p0Dir = p0.clone().normalize()
+    const p2Dir = p2.clone().normalize()
+
+    const phase = Math.random()
+    const seed = Math.random()
 
     const chord = p0.distanceTo(p2)
     const arcBoost = THREE.MathUtils.clamp(chord / (radius * 1.35), 0.25, 1.25)
-    const mid = p0
-      .clone()
-      .add(p2)
-      .normalize()
-      .multiplyScalar(radius * (1.10 + arcBoost * 0.20))
+    const midDir = p0Dir.clone().add(p2Dir)
+    if (midDir.lengthSq() < 1e-6) {
+      // Near-antipodal endpoints: choose a stable perpendicular arc direction.
+      const axis = new THREE.Vector3(0, 1, 0).cross(p0Dir)
+      if (axis.lengthSq() < 1e-6) {
+        axis.set(1, 0, 0).cross(p0Dir)
+      }
+      axis.normalize()
+      const sign = seed < 0.5 ? 1 : -1
+      midDir.copy(p0Dir).applyAxisAngle(axis, sign * Math.PI * 0.5).normalize()
+    } else {
+      midDir.normalize()
+    }
+    const antipodalBoost = THREE.MathUtils.smoothstep(arcBoost, 0.95, 1.25)
+    const mid = midDir.multiplyScalar(radius * (1.10 + arcBoost * 0.20 + antipodalBoost * 0.16))
 
     // Cycles per second for shader animation.
     const speed = 0.022 + arcBoost * 0.037
-    const phase = Math.random()
-    const seed = Math.random()
     const size = 3.1 + arcBoost * 1.25
     const dir = seed < 0.5 ? 1 : -1
 
@@ -508,7 +555,7 @@ export function createFlightRoutes(
     const trafficBase = THREE.MathUtils.clamp((arcBoost - 0.25) / 1.0, 0, 1)
     const traffic = THREE.MathUtils.clamp(0.68 + trafficBase * 0.72 + (seed - 0.5) * 0.14, 0.68, 1.34)
     const traffic01 = THREE.MathUtils.clamp((traffic - 0.68) / (1.34 - 0.68), 0, 0.9999)
-    const trafficCount = 1 + Math.floor(traffic01 * 6) // 1..6
+    const trafficCount = 1 + Math.floor(traffic01 * TRAFFIC_LEVELS) // 1..3
     const altitude01 = THREE.MathUtils.clamp((arcBoost - 0.25) / (1.25 - 0.25), 0, 1)
     const distanceKm = haversineKm(Number(a.latitude), Number(a.longitude), Number(b.latitude), Number(b.longitude))
 
@@ -808,7 +855,7 @@ export function createFlightRoutes(
   // Planes (batch in 1 draw call)
   // ---------------------------
   const planeGeo = new THREE.BufferGeometry()
-  const MAX_PLANES_PER_ROUTE = 4
+  const MAX_PLANES_PER_ROUTE = TRAFFIC_LEVELS
   const planeCount = routeData.length * MAX_PLANES_PER_ROUTE
 
   // Dummy position for Points geometry.
@@ -1317,6 +1364,8 @@ export function createFlightRoutes(
       altitudeLodMix = 1.0
     }
 
+    planeDensity = THREE.MathUtils.clamp(planeDensity * PLANE_DENSITY_SCALE, 0.28, 1.0)
+
     lineMat.uniforms.uRouteKeep.value = routeKeep
     lineMat.uniforms.uAltitudeLodMix.value = altitudeLodMix
     lineMat.uniforms.uRepresentationMix.value = representationMix
@@ -1339,7 +1388,7 @@ export function createFlightRoutes(
     const selectedFade = THREE.MathUtils.lerp(1.0, 0.72, selectedMix)
     heatMat.uniforms.uOpacity.value = baseHeatOpacity * focusFade * selectedFade * heatMix
 
-    const hoverBoost = THREE.MathUtils.lerp(1.0, 1.42, hoverMix * (1.0 - selectedMix * 0.35))
+    const hoverBoost = THREE.MathUtils.lerp(1.0, 1.08, hoverMix * (1.0 - selectedMix * 0.35))
     const selectedBoost = THREE.MathUtils.lerp(1.0, 1.88, selectedMix)
     // Keep hover stroke close to country-border visual weight; only selection gets extra thickness.
     const selectedWidthBoost = THREE.MathUtils.lerp(1.0, 1.22, selectedMix)
