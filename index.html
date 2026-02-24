@@ -7,7 +7,7 @@
     <title>NAVPASS Globe</title>
     <style>
       :root {
-        --bg-navy: #051023;
+        --bg-navy: #091320;
         --line-soft: rgba(255, 255, 255, 0.16);
         --line-faint: rgba(255, 255, 255, 0.08);
         --text-strong: rgba(255, 255, 255, 0.95);
@@ -825,65 +825,13 @@
     <div id="app"></div>
 
     <div id="figma-shell" aria-hidden="true">
-      <header id="top-nav">
-        <a class="top-logo" href="#" aria-label="NAVPASS home">
-          <img src="/navpass-logo-white.svg" alt="NAVPASS" />
-        </a>
-        <nav class="top-links">
-          <a class="top-link is-active" href="#">ABOUT US</a>
-          <a class="top-link" href="#">OPERATORS</a>
-        </nav>
-      </header>
-
-      <section id="hero-copy">
-        <h1 id="hero-title">
-          Your country&rsquo;s <span class="accent">economic</span>
-          <span class="accent">growth</span> begins <span class="accent">above</span>.
-        </h1>
-        <p id="hero-subtitle">Discover your skies.</p>
-      </section>
-
       <aside id="left-rail">
         <button id="rail-zoom-in" type="button" class="rail-button" aria-label="Zoom in">+</button>
         <button id="rail-zoom-out" type="button" class="rail-button" aria-label="Zoom out">-</button>
-        <button id="rail-info" type="button" class="rail-button info" aria-label="Information">i</button>
       </aside>
-
-      <footer id="bottom-meta">
-        <div class="meta-links">
-          <span>&copy; 2026 All rights reserved NAVPASS</span>
-          <a class="meta-link" href="#">Terms</a>
-          <a class="meta-link" href="#">Privacy</a>
-          <a class="meta-link" href="#">About Us</a>
-          <a class="meta-link" href="#">Operators</a>
-        </div>
-        <a class="meta-social" href="#" aria-label="LinkedIn">in</a>
-      </footer>
-    </div>
-
-    <div id="ui-toggle">
-      <div class="toggle-group">
-        <span class="toggle-label">Heatmap</span>
-        <label class="toggle-switch">
-          <input id="heatmap-toggle" type="checkbox" />
-          <span class="toggle-track"></span>
-          <span id="heatmap-thumb" class="toggle-thumb"></span>
-        </label>
-      </div>
     </div>
 
     <div id="globe-ui">
-      <div class="ui-story is-collapsed">
-        <div class="ui-story-row">
-          <button type="button" class="ui-pill is-active" data-story="global">G</button>
-          <button type="button" class="ui-pill" data-story="americas">Am</button>
-          <button type="button" class="ui-pill" data-story="europe">Eu</button>
-          <button type="button" class="ui-pill" data-story="africa">Af</button>
-          <button type="button" class="ui-pill" data-story="asia">As</button>
-        </div>
-        <div id="story-caption">Global overview</div>
-      </div>
-
       <div id="country-panel"></div>
     </div>
 

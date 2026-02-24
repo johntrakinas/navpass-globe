@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { latLongToVector3 } from './latLongtoVector3'
 import { scaleThickness } from './thicknessScale'
+import { computeCountryStrokeScale } from './countryStrokeScale'
 
 export type CountryHighlightPaletteTheme = {
   colorA?: THREE.ColorRepresentation
@@ -12,15 +13,20 @@ export type CountryHighlightPaletteTheme = {
 let current: THREE.Object3D | null = null
 let currentMats: THREE.ShaderMaterial[] = []
 let pulsePhase = Math.random() * Math.PI * 2
-const SELECT_RADIUS_MULT = 1.022
-const SELECT_SCALE = 1.02
-const SELECT_BREATH_BASE = 0.0015
-const SELECT_BREATH_AMP = 0.006
+const SELECT_RADIUS_MULT = 1.004
+const SELECT_SCALE = 1.0
+const SELECT_BREATH_BASE = 0.0004
+const SELECT_BREATH_AMP = 0.0014
+let selectedBorderLineWidthHint = 1.8
+let activeFeatureStrokeScale = 1
+const SELECT_CORE_THICKNESS_PER_BORDER_WIDTH = 0.0005 / 1.8
+const SELECT_MIN_CORE_THICKNESS = 0.00042
+const SELECT_GLOW_TO_CORE_RATIO = 1.08
 const selectedPalette = {
-  a: new THREE.Color('#4285F4'),
-  b: new THREE.Color('#34A853'),
-  c: new THREE.Color('#FBBC05'),
-  d: new THREE.Color('#EA4335')
+  a: new THREE.Color('#ffffff'),
+  b: new THREE.Color('#FBBC05'),
+  c: new THREE.Color('#ffffff'),
+  d: new THREE.Color('#FBBC05')
 }
 
 const VERT = /* glsl */ `
@@ -97,6 +103,20 @@ function createHighlightMaterial(opacity: number, thickness: number) {
   return mat
 }
 
+function computeSelectedCoreThickness(strokeScale: number) {
+  const widthHint = THREE.MathUtils.clamp(selectedBorderLineWidthHint * strokeScale, 0.35, 4)
+  return Math.max(
+    scaleThickness(SELECT_MIN_CORE_THICKNESS),
+    scaleThickness(SELECT_CORE_THICKNESS_PER_BORDER_WIDTH * widthHint)
+  )
+}
+
+function applySelectedStrokeThickness(glowMat: THREE.ShaderMaterial, coreMat: THREE.ShaderMaterial) {
+  const coreThickness = computeSelectedCoreThickness(activeFeatureStrokeScale)
+  glowMat.uniforms.uThickness.value = coreThickness * SELECT_GLOW_TO_CORE_RATIO
+  coreMat.uniforms.uThickness.value = coreThickness
+}
+
 export function highlightCountryFromFeature(
   feature: any,
   parent: THREE.Object3D,
@@ -106,13 +126,15 @@ export function highlightCountryFromFeature(
     clearHighlight(parent)
   }
 
+  activeFeatureStrokeScale = computeCountryStrokeScale(feature)
   const group = new THREE.Group()
   const geom = feature.geometry
   const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates]
 
   // Two-pass render to fake thicker country outline in WebGL line rendering.
-  const glowMat = createHighlightMaterial(0.64, scaleThickness(0.0056))
-  const coreMat = createHighlightMaterial(1.0, scaleThickness(0.0015))
+  const glowMat = createHighlightMaterial(0.26, scaleThickness(0.0009))
+  const coreMat = createHighlightMaterial(0.84, scaleThickness(0.0005))
+  applySelectedStrokeThickness(glowMat, coreMat)
   currentMats = [glowMat, coreMat]
   pulsePhase = Math.random() * Math.PI * 2
 
@@ -167,6 +189,7 @@ export function clearHighlight(parent: THREE.Object3D) {
   }
   currentMats = []
   current = null
+  activeFeatureStrokeScale = 1
 }
 
 export function updateCountryHighlight(timeSeconds: number) {
@@ -192,5 +215,13 @@ export function configureCountryHighlightPalette(theme: CountryHighlightPaletteT
 
   for (const mat of currentMats) {
     applySelectedPalette(mat)
+  }
+}
+
+export function setSelectedBorderLineWidth(lineWidthHint: number) {
+  if (!Number.isFinite(lineWidthHint)) return
+  selectedBorderLineWidthHint = THREE.MathUtils.clamp(lineWidthHint, 0.35, 4)
+  if (currentMats.length >= 2) {
+    applySelectedStrokeThickness(currentMats[0], currentMats[1])
   }
 }

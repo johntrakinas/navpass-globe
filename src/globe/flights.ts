@@ -778,10 +778,10 @@ export function createFlightRoutes(
       uTailColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.16) },
       uBaseColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.28) },
       uAccentColor: { value: GOOGLE_COLORS.white.clone() },
-      uBaseAlpha: { value: 0.074 },
-      uGlowAlpha: { value: 0.56 },
-      uTailLength: { value: 0.22 },
-      uHeadWidth: { value: 0.028 },
+      uBaseAlpha: { value: 0.092 },
+      uGlowAlpha: { value: 0.70 },
+      uTailLength: { value: 0.26 },
+      uHeadWidth: { value: 0.034 },
       uFocusMix: { value: 0.0 },
       uRouteKeep: { value: 1.0 },
       uAltitudeLodMix: { value: 1.0 },
@@ -1297,7 +1297,7 @@ export function createFlightRoutes(
     const zoomOut = 1.0 - zoom
     const isLegacyMode = visualizationMode === 'legacy'
 
-    let routeKeep = THREE.MathUtils.lerp(0.55, 1.0, zoom)
+    let routeKeep = THREE.MathUtils.lerp(0.78, 1.0, zoom)
     let planeDensity = THREE.MathUtils.lerp(0.72, 1.0, zoom)
     let representationMix = 0.0
     let altitudeLodMix = 0.0
@@ -1311,7 +1311,7 @@ export function createFlightRoutes(
         setActiveLineLod('coarse')
       }
 
-      routeKeep = THREE.MathUtils.lerp(0.42, 1.0, zoom)
+      routeKeep = THREE.MathUtils.lerp(0.60, 1.0, zoom)
       planeDensity = THREE.MathUtils.lerp(0.58, 1.0, zoom)
       representationMix = THREE.MathUtils.smoothstep(zoomOut, 0.30, 0.92)
       altitudeLodMix = 1.0
@@ -1345,14 +1345,14 @@ export function createFlightRoutes(
     const selectedWidthBoost = THREE.MathUtils.lerp(1.0, 1.22, selectedMix)
     if (isLegacyMode) {
       lineMat.uniforms.uTailLength.value = THREE.MathUtils.clamp(
-        scaleThickness(THREE.MathUtils.lerp(0.16, 0.28, zoom)),
+        scaleThickness(THREE.MathUtils.lerp(0.20, 0.34, zoom)),
         0.02,
         0.5
       )
-      lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.30, 0.66, zoom) * hoverBoost * selectedBoost
-      lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.052, 0.096, zoom) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
+      lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.46, 0.82, zoom) * hoverBoost * selectedBoost
+      lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.084, 0.14, zoom) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
       lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
-        scaleThickness(THREE.MathUtils.lerp(0.022, 0.034, zoom) * selectedWidthBoost),
+        scaleThickness(THREE.MathUtils.lerp(0.028, 0.042, zoom) * selectedWidthBoost),
         0.004,
         0.1
       )

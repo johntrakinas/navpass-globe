@@ -21,7 +21,8 @@ import {
   highlightCountryFromFeature,
   clearHighlight,
   updateCountryHighlight,
-  configureCountryHighlightPalette
+  configureCountryHighlightPalette,
+  setSelectedBorderLineWidth
 } from './globe/countryHighlight'
 import { vector3ToLatLon } from './globe/math'
 import { findCountryFeature } from './globe/countryLookUp'
@@ -244,13 +245,13 @@ const DEFAULT_UI_THEME: GlobeUiTheme = {
 }
 
 const DEFAULT_SCENE_THEME: GlobeSceneTheme = {
-  background: 0x07090d,
-  depthMask: 0x07090d,
-  innerSphere: 0x07090d
+  background: 0x091320,
+  depthMask: 0x091320,
+  innerSphere: 0x091320
 }
 
 const DEFAULT_COUNTRIES_THEME: GlobeCountriesTheme = {
-  border: 0xffffff
+  border: 0x122640
 }
 
 const DEFAULT_GRID_THEME: GlobeGridTheme = {
@@ -311,11 +312,11 @@ const DEFAULT_HIGHLIGHT_THEME: GlobeHighlightTheme = {
   hoverA: '#ffffff',
   hoverB: '#FBBC05',
   hoverCore: '#ffffff',
-  hoverPaletteMix: 0.42,
-  selectedA: '#4285F4',
-  selectedB: '#34A853',
-  selectedC: '#FBBC05',
-  selectedD: '#EA4335'
+  hoverPaletteMix: 0.0,
+  selectedA: '#ffffff',
+  selectedB: '#FBBC05',
+  selectedC: '#ffffff',
+  selectedD: '#FBBC05'
 }
 
 const UI_THEME_CSS_VARS: Record<keyof GlobeUiTheme, string> = {
@@ -461,62 +462,25 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     if ((options.injectDefaultUI ?? true) === false) return
 
     let createdScaffold = false
-    let createdHeatmapToggle = false
+    let createdZoomRail = false
 
-    let uiToggle = document.getElementById('ui-toggle') as HTMLDivElement | null
-    if (!uiToggle) {
-      uiToggle = document.createElement('div')
-      uiToggle.id = 'ui-toggle'
-      overlayTarget.appendChild(uiToggle)
-      createdHeatmapToggle = true
+    if (!document.getElementById('left-rail')) {
+      const leftRail = document.createElement('aside')
+      leftRail.id = 'left-rail'
+      leftRail.innerHTML = `
+        <button id="rail-zoom-in" type="button" class="rail-button" aria-label="Zoom in">+</button>
+        <button id="rail-zoom-out" type="button" class="rail-button" aria-label="Zoom out">-</button>
+      `
+      overlayTarget.appendChild(leftRail)
+      createdZoomRail = true
     }
 
-    if (!document.getElementById('heatmap-toggle')) {
-      uiToggle.insertAdjacentHTML(
-        'beforeend',
-        `
-          <div class="toggle-group">
-            <span class="toggle-label">Heatmap</span>
-            <label class="toggle-switch">
-              <input id="heatmap-toggle" type="checkbox" />
-              <span class="toggle-track"></span>
-              <span id="heatmap-thumb" class="toggle-thumb"></span>
-            </label>
-          </div>
-        `
-      )
-      createdHeatmapToggle = true
-    }
+    document.getElementById('rail-info')?.remove()
 
-    if (!document.getElementById('flight-visualization-toggle')) {
-      uiToggle.insertAdjacentHTML(
-        'beforeend',
-        `
-          <div class="toggle-group">
-            <span class="toggle-label">Flight V2</span>
-            <label class="toggle-switch">
-              <input id="flight-visualization-toggle" type="checkbox" />
-              <span class="toggle-track"></span>
-              <span id="flight-visualization-thumb" class="toggle-thumb"></span>
-            </label>
-          </div>
-        `
-      )
-      createdHeatmapToggle = true
-    }
-
-    if (!document.getElementById('globe-ui')) {
-      const globeUi = document.createElement('div')
+    let globeUi = document.getElementById('globe-ui') as HTMLDivElement | null
+    if (!globeUi) {
+      globeUi = document.createElement('div')
       globeUi.id = 'globe-ui'
-      const story = document.createElement('div')
-      story.className = 'ui-story is-collapsed'
-      const storyRow = document.createElement('div')
-      storyRow.className = 'ui-story-row'
-      const storyCaption = document.createElement('div')
-      storyCaption.id = 'story-caption'
-      story.appendChild(storyRow)
-      story.appendChild(storyCaption)
-      globeUi.appendChild(story)
       overlayTarget.appendChild(globeUi)
       createdScaffold = true
     }
@@ -524,7 +488,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     if (!document.getElementById('country-panel')) {
       const panel = document.createElement('div')
       panel.id = 'country-panel'
-      overlayTarget.appendChild(panel)
+      ;(globeUi ?? overlayTarget).appendChild(panel)
       createdScaffold = true
     }
 
@@ -553,7 +517,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
       panelEl.style.margin = '0'
       panelEl.style.zIndex = '4'
     }
-    if (!createdScaffold && !createdHeatmapToggle && !panelLooksUnstyled) return
+    if (!createdScaffold && !createdZoomRail && !panelLooksUnstyled) return
 
     const style = document.createElement('style')
     style.id = styleId
@@ -561,45 +525,35 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
       :root {
         ${DEFAULT_UI_CSS_VARIABLES}
       }
-      #ui-toggle {
+      #left-rail {
         position: fixed;
-        right: 24px;
-        top: 58px;
+        left: 28px;
+        bottom: 64px;
         z-index: 5;
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: var(--ui-bg);
-        border: 1px solid var(--ui-border);
-        color: var(--ui-text);
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 10px 30px var(--ui-shadow);
+        display: grid;
+        gap: 10px;
         pointer-events: auto;
       }
-      #ui-toggle,
-      #ui-toggle *,
-      #ui-toggle *::before,
-      #ui-toggle *::after { box-sizing: border-box; }
-      .toggle-group { display: flex; align-items: center; gap: 8px; }
-      .toggle-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
-      .toggle-switch { position: relative; display: inline-flex; width: 42px; height: 22px; }
-      .toggle-switch input { opacity: 0; width: 0; height: 0; }
-      .toggle-track { position: absolute; inset: 0; background: var(--ui-track); border-radius: 999px; }
-      .toggle-thumb {
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 18px;
-        height: 18px;
-        border-radius: 50%;
-        background: var(--ui-thumb);
-        transition: transform 420ms ease;
+      .rail-button {
+        width: 28px;
+        height: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(5, 16, 35, 0.38);
+        color: rgba(255, 255, 255, 0.8);
+        display: grid;
+        place-items: center;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        transition: border-color 380ms ease, background 380ms ease, color 380ms ease;
+      }
+      .rail-button:hover {
+        border-color: rgba(255, 255, 255, 0.46);
+        background: rgba(5, 16, 35, 0.6);
+        color: rgba(255, 255, 255, 0.95);
       }
       #globe-ui { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
-      #globe-ui .ui-story { display: none; }
       #country-panel,
       #country-panel *,
       #country-panel *::before,
@@ -662,10 +616,10 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
       .panel-tooltip-more:hover { background: var(--panel-more-hover-bg); }
       .panel-tooltip-more:active { transform: translateY(1px); }
       @media (max-width: 980px) {
-        #ui-toggle { right: 12px; top: 52px; }
         #country-panel { right: 12px !important; bottom: 74px !important; width: calc(100vw - 24px); max-height: 70vh; }
       }
       @media (max-width: 700px) {
+        #left-rail { left: 12px; bottom: 68px; }
         .panel-tooltip-title, .panel-tooltip-stat-value, .panel-tooltip-total-value { font-size: 34px; }
         .panel-tooltip-aircraft-value { font-size: 16px; }
       }
@@ -683,7 +637,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   const SYNTHETIC_AIRPORT_TARGET = 5200
   const AIRPORT_MIN_SPACING_DEG = 0.5
   const SHOW_GLOBE_POINTS = false
-  const MOCK_FLIGHT_ROUTE_COUNT = 700
+  const MOCK_FLIGHT_ROUTE_COUNT = 950
   let countriesGeoJSON: any = null
 
 let triGrid: ReturnType<typeof createAdaptiveTriGrid> | null = null
@@ -993,8 +947,8 @@ const heatmapToggle = document.getElementById('heatmap-toggle') as HTMLInputElem
 const heatmapThumb = document.getElementById('heatmap-thumb') as HTMLSpanElement | null
 const flightVisualizationToggle = document.getElementById('flight-visualization-toggle') as HTMLInputElement | null
 const flightVisualizationThumb = document.getElementById('flight-visualization-thumb') as HTMLSpanElement | null
-const initialHeatmapEnabled = options.initialHeatmapEnabled ?? (heatmapToggle ? heatmapToggle.checked : true)
-const initialFlightVisualizationMode: FlightVisualizationMode = options.initialFlightVisualizationMode ?? 'reengineered'
+const initialHeatmapEnabled = options.initialHeatmapEnabled ?? (heatmapToggle ? heatmapToggle.checked : false)
+const initialFlightVisualizationMode: FlightVisualizationMode = options.initialFlightVisualizationMode ?? 'legacy'
 if (heatmapToggle) {
   heatmapToggle.checked = initialHeatmapEnabled
 }
@@ -1089,6 +1043,7 @@ function applyVisualPreset() {
   }
 
   setHoverBorderLineWidth(cfg.borderLineWidth)
+  setSelectedBorderLineWidth(cfg.borderLineWidth)
 
   if (countriesLines) {
     countriesLines.setStyle({
@@ -1459,10 +1414,7 @@ const RELEASE_PITCH_DAMP = 0.42
 const CLICK_DRAG_THRESHOLD = 4 // px: acima disso consideramos que foi drag
 const FLIGHT_CLICK_THRESHOLD = 0.08
 const FLIGHT_HOVER_THRESHOLD = 0.09
-const AUTO_ROTATE_SPEED = THREE.MathUtils.degToRad(0.30)
-const AUTO_ROTATE_BREAK_CYCLE_SEC = 20.0
-const AUTO_ROTATE_BREAK_WINDOW_SEC = 5.2
-const AUTO_ROTATE_BREAK_MIN_FACTOR = 0.42
+const AUTO_ROTATE_SPEED = THREE.MathUtils.degToRad(0.9)
 let dragDistance = 0
 let dragSuppressUntil = 0
 let activePointerId: number | null = null
@@ -1474,17 +1426,6 @@ let hoveredCountryRouteFocusIso3: string | null = null
 
 function markUserInteracted() {
   hasUserInteracted = true
-}
-
-function getIdleAutoRotateFactor(timeSeconds: number) {
-  const phaseSec = timeSeconds % AUTO_ROTATE_BREAK_CYCLE_SEC
-  if (phaseSec > AUTO_ROTATE_BREAK_WINDOW_SEC) return 1
-
-  const t = THREE.MathUtils.clamp(phaseSec / AUTO_ROTATE_BREAK_WINDOW_SEC, 0, 1)
-  // Smooth brake envelope: gentle slow-down and recovery (no hard "stop" feel).
-  const wave = 0.5 - 0.5 * Math.cos(Math.PI * 2 * t)
-  const brake = Math.pow(wave, 1.35)
-  return 1.0 - brake * (1.0 - AUTO_ROTATE_BREAK_MIN_FACTOR)
 }
 
 function clampDragDelta(deltaRad: number) {
@@ -2409,9 +2350,8 @@ function animate() {
       if (Math.abs(velYaw) < 0.00001) velYaw = 0
       if (Math.abs(velPitch) < 0.00001) velPitch = 0
     } else if (!hasUserInteracted && !isCountrySelected && selectedFlightRouteId === null) {
-      // Very slow idle rotation with periodic "breaks" (Google-like breathing pace).
-      const brakeFactor = getIdleAutoRotateFactor(now)
-      yawAccum += AUTO_ROTATE_SPEED * brakeFactor * deltaSeconds
+      // Idle rotation until first user interaction.
+      yawAccum += AUTO_ROTATE_SPEED * deltaSeconds
       applyYawPitchToGlobe()
     }
   }
