@@ -36,11 +36,11 @@ const HOVER_POP_START = 0.95
 const HOVER_POP_TARGET = 1.02
 const HOVER_BREATH_AMP = 0.006
 const HOVER_BREATH_SPEED = 1.85
-const HOVER_CORE_THICKNESS_PER_BORDER_WIDTH = 0.00084 / 1.8
-const HOVER_MIN_CORE_THICKNESS = 0.00072
-const HOVER_GLOW_TO_CORE_RATIO = 1.06
-const HOVER_GLOW_OPACITY_MUL = 1.34
-const HOVER_CORE_OPACITY_MUL = 1.06
+const HOVER_CORE_THICKNESS_PER_BORDER_WIDTH = 0.0016 / 1.8
+const HOVER_MIN_CORE_THICKNESS = 0.00135
+const HOVER_GLOW_TO_CORE_RATIO = 1.32
+const HOVER_GLOW_OPACITY_MUL = 1.58
+const HOVER_CORE_OPACITY_MUL = 1.18
 
 const HOVER_VERT = /* glsl */ `
 uniform float uThickness;
@@ -77,7 +77,9 @@ function createHoverMaterial(thickness: number) {
 }
 
 function computeHoverCoreThickness(strokeScale: number) {
-  const widthHint = THREE.MathUtils.clamp(hoverBorderLineWidthHint * strokeScale, 0.35, 4)
+  // Keep hover line weight from collapsing on tiny countries.
+  const strokeScaleFloor = Math.max(0.75, strokeScale)
+  const widthHint = THREE.MathUtils.clamp(hoverBorderLineWidthHint * strokeScaleFloor, 0.35, 4)
   return Math.max(
     scaleThickness(HOVER_MIN_CORE_THICKNESS),
     scaleThickness(HOVER_CORE_THICKNESS_PER_BORDER_WIDTH * widthHint)
@@ -197,9 +199,9 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
   // ✅ opacidade adaptativa ao zoom (longe = menos forte)
   // ajuste fino: quanto menor o número, mais cedo ele fica forte
   const zoomFactor = THREE.MathUtils.clamp((28 - cameraDistance) / 12, 0, 1)
-  const desiredMax = 0.24 + 0.46 * zoomFactor // 0.24..0.70 (pre-reduction intensity)
+  const desiredMax = 0.34 + 0.50 * zoomFactor // 0.34..0.84
 
-  const maxOp = Math.min(desiredMax, 0.72)
+  const maxOp = Math.min(desiredMax, 0.82)
   const tgt = Math.min(targetOpacity, maxOp)
 
   // ✅ fade suave (critico pro "Google feel")
