@@ -61,8 +61,21 @@ function parseColorThemeParams(params: URLSearchParams): Partial<GlobeTheme> | u
   const gridEffectColor = parseHexColorParam(params, 'gridEffectColor')
   const gridMainColor = parseHexColorParam(params, 'gridMainColor')
   const countryLineColor = parseHexColorParam(params, 'countryLineColor')
+  const planeCoreColor = parseHexColorParam(params, 'planeCoreColor')
+  const planeGlowColor = parseHexColorParam(params, 'planeGlowColor')
+  const planeTintColor = parseHexColorParam(params, 'planeTintColor')
+  const planeAccentColor = parseHexColorParam(params, 'planeAccentColor')
 
-  if (!bgColor && !gridEffectColor && !gridMainColor && !countryLineColor) {
+  if (
+    !bgColor &&
+    !gridEffectColor &&
+    !gridMainColor &&
+    !countryLineColor &&
+    !planeCoreColor &&
+    !planeGlowColor &&
+    !planeTintColor &&
+    !planeAccentColor
+  ) {
     return undefined
   }
 
@@ -93,6 +106,22 @@ function parseColorThemeParams(params: URLSearchParams): Partial<GlobeTheme> | u
     theme.countries = {
       ...(theme.countries ?? {}),
       border: countryLineColor
+    }
+  }
+
+  if (planeCoreColor || planeGlowColor || planeTintColor || planeAccentColor) {
+    theme.flights = { ...(theme.flights ?? {}) }
+    if (planeCoreColor) {
+      theme.flights.planeCoreColor = planeCoreColor
+    }
+    if (planeGlowColor) {
+      theme.flights.planeGlowColor = planeGlowColor
+    }
+    if (planeTintColor) {
+      theme.flights.planeTintColor = planeTintColor
+    }
+    if (planeAccentColor) {
+      theme.flights.planeAccentColor = planeAccentColor
     }
   }
 
@@ -197,8 +226,12 @@ const options: GlobeOptions = {
   assetBaseUrl: normalizeAssetBaseUrl(params.get('assetBaseUrl') ?? defaultAssetBaseUrl),
   initialHeatmapEnabled: parseBooleanParam(params, 'heatmap'),
   initialFlightVisualizationMode: parseFlightModeParam(params.get('flightMode')),
+  initialIntroAnimationEnabled: parseBooleanParam(params, 'introAnimation'),
   minZoomDistance: parseNumberParam(params, 'minZoomDistance'),
   maxZoomDistance: parseNumberParam(params, 'maxZoomDistance'),
+  routeCount: parseNumberParam(params, 'routeCount'),
+  planesPerRoute: parseNumberParam(params, 'planesPerRoute'),
+  planeDensityScale: parseNumberParam(params, 'planeDensityScale'),
   theme: mergeThemes(themeFromParams, colorThemeParams)
 }
 

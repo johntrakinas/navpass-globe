@@ -72,6 +72,12 @@ export type FlightRouteMaterials = {
 
 export type FlightVisualizationMode = 'legacy' | 'reengineered'
 
+export type CreateFlightRoutesOptions = {
+  routeCount?: number
+  planesPerRoute?: number
+  planeDensityScale?: number
+}
+
 export type FlightRoutesLayer = {
   group: THREE.Group
   lines: THREE.LineSegments
@@ -460,19 +466,37 @@ export function createFlightRoutes(
   airports: Airport[],
   radius: number,
   countriesGeoJSON: any | null,
-  count = 180
+  options: CreateFlightRoutesOptions | number = 180
 ): FlightRoutesLayer {
+  const resolvedOptions: CreateFlightRoutesOptions =
+    typeof options === 'number' ? { routeCount: options } : (options ?? {})
+  const routeCount = THREE.MathUtils.clamp(
+    Number.isFinite(Number(resolvedOptions.routeCount)) ? Math.round(Number(resolvedOptions.routeCount)) : 180,
+    20,
+    2000
+  )
+  const planesPerRoute = THREE.MathUtils.clamp(
+    Number.isFinite(Number(resolvedOptions.planesPerRoute)) ? Math.round(Number(resolvedOptions.planesPerRoute)) : 3,
+    1,
+    8
+  )
+  const planeDensityScale = THREE.MathUtils.clamp(
+    Number.isFinite(Number(resolvedOptions.planeDensityScale)) ? Number(resolvedOptions.planeDensityScale) : 0.74,
+    0.2,
+    2.5
+  )
+
   const group = new THREE.Group()
   group.name = 'flightRoutes'
-  const TRAFFIC_LEVELS = 3
-  const PLANE_DENSITY_SCALE = 0.74
+  const TRAFFIC_LEVELS = planesPerRoute
+  const PLANE_DENSITY_SCALE = planeDensityScale
   const SHOW_ROUTE_ENDPOINTS = false
   const SHOW_HOVER_ENDPOINTS = false
   const SHOW_ROUTE_PIN = false
   const SHOW_ROUTE_PLANES = true
   const SHOW_ROUTE_HUBS = false
 
-  const { valid, routes } = pickRouteIndices(airports, count)
+  const { valid, routes } = pickRouteIndices(airports, routeCount)
   const LINE_SEGMENTS_COARSE = 20
   const LINE_SEGMENTS_FINE = 64
   const LINE_LOD_FINE_IN = 0.58

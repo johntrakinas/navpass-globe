@@ -48,8 +48,8 @@ function ensureStyles() {
       z-index: 2;
       pointer-events: none;
       opacity: 0;
-      background: rgba(2, 6, 12, 0.3);
-      transition: opacity 760ms ease;
+      background: transparent;
+      transition: opacity 0ms linear;
     }
     .panel-tooltip,
     .panel-tooltip * { margin: 0; }
@@ -358,7 +358,7 @@ export function hideCountryPanel() {
 
 export function showFocusDim() {
   const focusDim = getOrCreateFocusDim()
-  focusDim.style.opacity = '1'
+  focusDim.style.opacity = '0'
 }
 
 export function hideFocusDim() {
@@ -368,6 +368,6 @@ export function hideFocusDim() {
 
 export function setFocusDimOpacity(value: number) {
   const focusDim = getOrCreateFocusDim()
-  const clamped = Math.max(0, Math.min(1, value))
-  focusDim.style.opacity = clamped.toFixed(3)
+  void value
+  focusDim.style.opacity = '0'
 }

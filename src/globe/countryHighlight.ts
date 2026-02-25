@@ -19,9 +19,9 @@ const SELECT_BREATH_BASE = 0.0015
 const SELECT_BREATH_AMP = 0.006
 let selectedBorderLineWidthHint = 1.8
 let activeFeatureStrokeScale = 1
-const SELECT_CORE_THICKNESS_PER_BORDER_WIDTH = 0.0005 / 1.8
-const SELECT_MIN_CORE_THICKNESS = 0.00042
-const SELECT_GLOW_TO_CORE_RATIO = 1.08
+const SELECT_CORE_THICKNESS_PER_BORDER_WIDTH = 0.00084 / 1.8
+const SELECT_MIN_CORE_THICKNESS = 0.00072
+const SELECT_GLOW_TO_CORE_RATIO = 1.04
 const selectedPalette = {
   a: new THREE.Color('#ffffff'),
   b: new THREE.Color('#FBBC05'),

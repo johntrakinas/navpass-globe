@@ -272,8 +272,12 @@ export type GlobeOptions = {
   assetBaseUrl?: string
   initialHeatmapEnabled?: boolean
   initialFlightVisualizationMode?: FlightVisualizationMode
+  initialIntroAnimationEnabled?: boolean
   minZoomDistance?: number
   maxZoomDistance?: number
+  routeCount?: number
+  planesPerRoute?: number
+  planeDensityScale?: number
   theme?: GlobeTheme
 }
 
@@ -321,7 +325,24 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   const SYNTHETIC_AIRPORT_TARGET = 5200
   const AIRPORT_MIN_SPACING_DEG = 0.5
   const SHOW_GLOBE_POINTS = false
-  const FLIGHT_ROUTE_TARGET = 300
+  const requestedRouteCount = Number(options.routeCount)
+  const FLIGHT_ROUTE_TARGET = THREE.MathUtils.clamp(
+    Number.isFinite(requestedRouteCount) ? Math.round(requestedRouteCount) : 300,
+    40,
+    1500
+  )
+  const requestedPlanesPerRoute = Number(options.planesPerRoute)
+  const FLIGHT_PLANES_PER_ROUTE = THREE.MathUtils.clamp(
+    Number.isFinite(requestedPlanesPerRoute) ? Math.round(requestedPlanesPerRoute) : 3,
+    1,
+    8
+  )
+  const requestedPlaneDensityScale = Number(options.planeDensityScale)
+  const FLIGHT_PLANE_DENSITY_SCALE = THREE.MathUtils.clamp(
+    Number.isFinite(requestedPlaneDensityScale) ? requestedPlaneDensityScale : 0.74,
+    0.2,
+    2.5
+  )
   let countriesGeoJSON: any = null
 
 let triGrid: ReturnType<typeof createAdaptiveTriGrid> | null = null
@@ -358,6 +379,165 @@ let innerSphereMesh: THREE.Mesh | null = null
 let depthMaskMesh: THREE.Mesh | null = null
 let lastHoverKey = ''
 const tooltip = createTooltip(document.body)
+const countrySearch = document.getElementById('country-search') as HTMLFormElement | null
+const countrySearchInput = document.getElementById('country-search-input') as HTMLInputElement | null
+const countrySearchButton = document.getElementById('country-search-button') as HTMLButtonElement | null
+const countrySearchList = document.getElementById('country-search-list') as HTMLDataListElement | null
+const countrySearchMobileQuery = window.matchMedia('(max-width: 720px)')
+
+type CountrySearchEntry = {
+  feature: any
+  label: string
+  tokens: string[]
+}
+
+let countrySearchIndex: CountrySearchEntry[] = []
+
+function isCountrySearchEnabled() {
+  return countrySearchMobileQuery.matches
+}
+
+function normalizeSearchToken(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function buildCountrySearchIndex(geojson: any): CountrySearchEntry[] {
+  const entries: CountrySearchEntry[] = []
+  for (const feature of geojson?.features ?? []) {
+    const props = feature?.properties ?? {}
+    const names = [
+      props.NAME_LONG,
+      props.NAME_EN,
+      props.ADMIN,
+      props.NAME
+    ].filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+    const codes = [
+      props.ISO_A3,
+      props.ADM0_A3,
+      props.BRK_A3,
+      props.SU_A3,
+      props.ISO_A2,
+      props.WB_A2
+    ].filter((value: unknown): value is string => typeof value === 'string' && value !== '-99' && value.trim().length > 0)
+
+    const tokens = new Set<string>()
+    for (const name of names) {
+      tokens.add(normalizeSearchToken(name))
+    }
+    for (const code of codes) {
+      tokens.add(normalizeSearchToken(code))
+    }
+    if (!tokens.size) continue
+
+    entries.push({
+      feature,
+      label: names[0] ?? String(codes[0] ?? 'Country'),
+      tokens: [...tokens]
+    })
+  }
+
+  entries.sort((a, b) => a.label.localeCompare(b.label))
+  return entries
+}
+
+function populateCountrySearchDatalist(entries: CountrySearchEntry[]) {
+  if (!countrySearchList) return
+  countrySearchList.innerHTML = ''
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    if (seen.has(entry.label)) continue
+    seen.add(entry.label)
+    const option = document.createElement('option')
+    option.value = entry.label
+    countrySearchList.appendChild(option)
+  }
+}
+
+function setCountrySearchInvalidState(isInvalid: boolean) {
+  if (!countrySearch) return
+  countrySearch.classList.toggle('is-invalid', isInvalid)
+}
+
+function applyCountrySearchVisibility() {
+  if (!countrySearch) return
+  const enabled = isCountrySearchEnabled()
+  countrySearch.style.display = enabled ? '' : 'none'
+  if (!enabled) {
+    setCountrySearchInvalidState(false)
+  }
+}
+
+function findCountryByQuery(query: string) {
+  const needle = normalizeSearchToken(query)
+  if (!needle) return null
+
+  let startsWith: CountrySearchEntry | null = null
+  let includes: CountrySearchEntry | null = null
+
+  for (const entry of countrySearchIndex) {
+    for (const token of entry.tokens) {
+      if (token === needle) return entry
+      if (!startsWith && token.startsWith(needle)) {
+        startsWith = entry
+      } else if (!includes && token.includes(needle)) {
+        includes = entry
+      }
+    }
+  }
+
+  return startsWith ?? includes
+}
+
+function runCountrySearch() {
+  if (!countrySearchInput) return
+  if (!isCountrySearchEnabled()) return
+  markUserInteracted()
+  const rawQuery = countrySearchInput.value.trim()
+  if (!rawQuery) {
+    setCountrySearchInvalidState(false)
+    return
+  }
+
+  const match = findCountryByQuery(rawQuery)
+  if (!match) {
+    setCountrySearchInvalidState(true)
+    return
+  }
+
+  setCountrySearchInvalidState(false)
+  countrySearchInput.value = match.label
+  selectCountryFeature(match.feature)
+}
+
+countrySearch?.addEventListener('submit', (event) => {
+  event.preventDefault()
+  runCountrySearch()
+})
+
+countrySearchInput?.addEventListener('input', () => {
+  setCountrySearchInvalidState(false)
+})
+
+countrySearchInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return
+  event.preventDefault()
+  runCountrySearch()
+})
+
+countrySearchButton?.addEventListener('click', () => {
+  runCountrySearch()
+})
+
+applyCountrySearchVisibility()
+if (typeof countrySearchMobileQuery.addEventListener === 'function') {
+  countrySearchMobileQuery.addEventListener('change', applyCountrySearchVisibility)
+} else {
+  ;(countrySearchMobileQuery as any).addListener?.(applyCountrySearchVisibility)
+}
 
 function setPinnedFlightRoute(_routeId: number | null) {}
 
@@ -464,6 +644,7 @@ updatePostprocessSize()
 
 const initialHeatmapEnabled = options.initialHeatmapEnabled ?? false
 const initialFlightVisualizationMode: FlightVisualizationMode = options.initialFlightVisualizationMode ?? 'legacy'
+const initialIntroAnimationEnabled = options.initialIntroAnimationEnabled ?? true
 type VisualPreset = {
   landAlpha: number
   coastAlpha: number
@@ -807,6 +988,7 @@ function isEventOverUI(target: EventTarget | null) {
   if (!(target instanceof Element)) return false
   return Boolean(
     target.closest('#left-rail') ||
+    target.closest('#country-search') ||
     target.closest('#globe-ui') ||
     target.closest('#country-panel')
   )
@@ -978,7 +1160,7 @@ function onPointerUp(e: PointerEvent) {
 
         // Subtle zoom response: short routes feel closer, long-haul keeps context.
         const distanceKm = Number(info.distanceKm)
-        zoomToSubtle(computeRouteZoomTarget(distanceKm), 980, 0.55)
+        zoomToSubtle(computeRouteZoomTarget(distanceKm), 980, 0.72)
       }
     }
     return
@@ -1058,13 +1240,13 @@ function estimateCountrySpanDeg(feature: any) {
 function computeRouteZoomTarget(distanceKm: number) {
   if (!Number.isFinite(distanceKm)) return 22.5
   const t = THREE.MathUtils.clamp((distanceKm - 600) / 10000, 0, 1)
-  return THREE.MathUtils.lerp(20.6, 24.6, t)
+  return THREE.MathUtils.lerp(19.2, 23.6, t)
 }
 
 function computeCountryZoomTarget(spanDeg: number) {
   if (!Number.isFinite(spanDeg)) return 22.5
   const t = THREE.MathUtils.clamp((spanDeg - 7) / 55, 0, 1)
-  return THREE.MathUtils.lerp(20.4, 24.8, t)
+  return THREE.MathUtils.lerp(19.0, 23.8, t)
 }
 
 function zoomToSubtle(targetDistance: number, durationMs = 950, strength = 0.62) {
@@ -1098,6 +1280,31 @@ function focusGlobeToPoint(worldPoint: THREE.Vector3, durationMs = 1200) {
     from: globeGroup.quaternion.clone(),
     to: qTarget
   }
+}
+
+function startIntroAnimation() {
+  if (!initialIntroAnimationEnabled) return
+  if (hasUserInteracted || isCountrySelected || selectedFlightRouteId !== null) return
+  if (globeAnim || zoomAnim) return
+
+  const introYaw = THREE.MathUtils.degToRad(-24)
+  const introPitch = THREE.MathUtils.degToRad(12)
+  _qYaw.setFromAxisAngle(_axisY, introYaw)
+  _qPitch.setFromAxisAngle(_axisX, introPitch)
+  const qFrom = _qPitch.clone().multiply(_qYaw).normalize()
+  const qTo = new THREE.Quaternion()
+
+  globeGroup.quaternion.copy(qFrom)
+  globeAnim = {
+    t0: performance.now(),
+    dur: 1800,
+    from: qFrom.clone(),
+    to: qTo
+  }
+
+  const introDistance = THREE.MathUtils.lerp(maxZoomDistance, minZoomDistance, 0.30)
+  setCameraDistance(maxZoomDistance)
+  zoomTo(introDistance, 1900)
 }
 
 function clearSelectionUIState() {
@@ -1341,7 +1548,7 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   focusGlobeToPoint(focusPoint.clone(), 1200)
 
   // Subtle zoom: small countries get a touch closer; big ones keep context.
-  zoomToSubtle(computeCountryZoomTarget(spanDeg), 1120, 0.6)
+  zoomToSubtle(computeCountryZoomTarget(spanDeg), 1120, 0.74)
 }
 
 /**
@@ -1688,6 +1895,8 @@ async function init() {
 
   const geojson = await loadGeoJSON(COUNTRIES_GEOJSON_PATH)
   countriesGeoJSON = geojson
+  countrySearchIndex = buildCountrySearchIndex(geojson)
+  populateCountrySearchDatalist(countrySearchIndex)
 
   // Single source of truth for all country-driven layers (render + hover + lookup).
   landWater = createLandWaterLayer(geojson, GLOBE_RADIUS)
@@ -1722,8 +1931,14 @@ async function init() {
     nightLights = null
   }
 
-  flightRoutes = createFlightRoutes(denseAirports, GLOBE_RADIUS, countriesGeoJSON, FLIGHT_ROUTE_TARGET)
-  console.info(`[flights] route_target=${FLIGHT_ROUTE_TARGET} source_airports=${denseAirports.length}`)
+  flightRoutes = createFlightRoutes(denseAirports, GLOBE_RADIUS, countriesGeoJSON, {
+    routeCount: FLIGHT_ROUTE_TARGET,
+    planesPerRoute: FLIGHT_PLANES_PER_ROUTE,
+    planeDensityScale: FLIGHT_PLANE_DENSITY_SCALE
+  })
+  console.info(
+    `[flights] route_target=${FLIGHT_ROUTE_TARGET} planes_per_route=${FLIGHT_PLANES_PER_ROUTE} plane_density_scale=${FLIGHT_PLANE_DENSITY_SCALE.toFixed(2)} source_airports=${denseAirports.length}`
+  )
   globeGroup.add(flightRoutes.group)
   applyFlightVisualization(initialFlightVisualizationMode)
   applyHeatmap(initialHeatmapEnabled)
@@ -1732,6 +1947,7 @@ async function init() {
   globeGroup.add(atmosphere.group)
 
   applyVisualPreset()
+  startIntroAnimation()
 
   // events
   renderer.domElement.addEventListener('pointerdown', onPointerDown)

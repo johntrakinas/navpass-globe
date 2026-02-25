@@ -71,12 +71,20 @@ If your globe URL is under a subpath, use that full URL in `src`.
 - `assetBaseUrl=/some/path`
 - `heatmap=true|false`
 - `flightMode=legacy|reengineered`
+- `introAnimation=true|false` (default `true`)
 - `minZoomDistance=17`
 - `maxZoomDistance=32`
+- `routeCount=300` (how many routes to generate)
+- `planesPerRoute=3` (max planes rendered per route)
+- `planeDensityScale=0.74` (overall plane density multiplier)
 - `bgColor=#091320` (or `0x091320`) for background/globe
 - `gridEffectColor=#B8C0CE` (or `0xB8C0CE`) for grid effect color
 - `gridMainColor=#B8C0CE` (or `0xB8C0CE`) for main grid color
 - `countryLineColor=#122640` (or `0x122640`) for country border lines
+- `planeCoreColor=#FFFFFF` (or `0xFFFFFF`) for plane core
+- `planeGlowColor=#FFE082` (or `0xFFE082`) for plane glow
+- `planeTintColor=#FBBC05` (or `0xFBBC05`) for plane tint
+- `planeAccentColor=#FFFFFF` (or `0xFFFFFF`) for plane accent
 - `theme=<JSON url-encoded>`
 - `theme.<section>.<token>=<value>`
 
