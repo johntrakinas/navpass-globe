@@ -1123,6 +1123,11 @@ function onPointerUp(e: PointerEvent) {
   if (countryPick?.feature) {
     const iso3 = getISO3(countryPick.feature.properties)
     if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
+      const flightHit = getFlightHit(e.clientX, e.clientY, FLIGHT_CLICK_THRESHOLD)
+      if (flightHit) {
+        selectFlightRoute(flightHit.routeId, e.clientX, e.clientY)
+        return
+      }
       clearHoverHighlight(globeGroup)
       tooltip.hide()
       lastHoverKey = ''
@@ -1134,35 +1139,7 @@ function onPointerUp(e: PointerEvent) {
 
   const flightHit = getFlightHit(e.clientX, e.clientY, FLIGHT_CLICK_THRESHOLD)
   if (flightHit) {
-    clearHoverRouteCouplingCountry()
-    // Toggle selection on the same route.
-    if (selectedFlightRouteId === flightHit.routeId) {
-      selectedFlightRouteId = null
-      flightRoutes?.setSelectedRoute(null)
-      setPinnedFlightRoute(null)
-      tooltip.hide()
-    } else {
-      selectedFlightRouteId = flightHit.routeId
-      flightRoutes?.setSelectedRoute(flightHit.routeId)
-      flightRoutes?.setHoverRoute(null)
-      setPinnedFlightRoute(flightHit.routeId)
-      showFlightTooltip(flightHit.routeId, e.clientX, e.clientY)
-
-      // Focus the globe to the arc midpoint (Google-style "route focus").
-      const info = flightRoutes?.getRouteInfo(flightHit.routeId)
-      if (info && Number.isFinite(Number(info.midX)) && Number.isFinite(Number(info.midY)) && Number.isFinite(Number(info.midZ))) {
-        globeAnim = null
-        velYaw = 0
-        velPitch = 0
-        globeGroup.updateMatrixWorld(true)
-        const midWorld = globeGroup.localToWorld(new THREE.Vector3(Number(info.midX), Number(info.midY), Number(info.midZ)))
-        focusGlobeToPoint(midWorld, 980)
-
-        // Subtle zoom response: short routes feel closer, long-haul keeps context.
-        const distanceKm = Number(info.distanceKm)
-        zoomToSubtle(computeRouteZoomTarget(distanceKm), 980, 0.72)
-      }
-    }
+    selectFlightRoute(flightHit.routeId, e.clientX, e.clientY)
     return
   }
 
@@ -1420,6 +1397,42 @@ function showFlightTooltip(routeId: number, x: number, y: number) {
   tooltip.showHTML(html, x, y)
 }
 
+function selectFlightRoute(routeId: number, clientX: number, clientY: number) {
+  clearHoverRouteCouplingCountry()
+  // Toggle selection on the same route.
+  if (selectedFlightRouteId === routeId) {
+    selectedFlightRouteId = null
+    flightRoutes?.setSelectedRoute(null)
+    setPinnedFlightRoute(null)
+    tooltip.hide()
+    return
+  }
+
+  selectedFlightRouteId = routeId
+  flightRoutes?.setSelectedRoute(routeId)
+  flightRoutes?.setHoverRoute(null)
+  setPinnedFlightRoute(routeId)
+  showFlightTooltip(routeId, clientX, clientY)
+
+  // Focus the globe to the arc midpoint (Google-style "route focus").
+  const info = flightRoutes?.getRouteInfo(routeId)
+  if (!info) return
+  if (!Number.isFinite(Number(info.midX)) || !Number.isFinite(Number(info.midY)) || !Number.isFinite(Number(info.midZ))) return
+
+  globeAnim = null
+  velYaw = 0
+  velPitch = 0
+  globeGroup.updateMatrixWorld(true)
+  const midWorld = globeGroup.localToWorld(
+    new THREE.Vector3(Number(info.midX), Number(info.midY), Number(info.midZ))
+  )
+  focusGlobeToPoint(midWorld, 980)
+
+  // Subtle zoom response: short routes feel closer, long-haul keeps context.
+  const distanceKm = Number(info.distanceKm)
+  zoomToSubtle(computeRouteZoomTarget(distanceKm), 980, 0.72)
+}
+
 function setHoverRouteCouplingCountry(iso3: string | null) {
   if (!flightRoutes) return
   if (isCountrySelected || selectedFlightRouteId !== null) return
@@ -1621,7 +1634,53 @@ function onPointerHover(e: PointerEvent) {
     return
   }
 
-  // Flight hover primeiro: rota/avião acima do país.
+  const countryPick = getCountryPick(e.clientX, e.clientY)
+  const feature = countryPick?.feature ?? null
+  if (feature) {
+    // Country hover takes priority over flight hover.
+    flightRoutes?.setHoverRoute(null)
+    const iso3 = getISO3(feature.properties)
+    if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
+      clearHoverRouteCouplingCountry()
+      clearHoverHighlight(globeGroup)
+      tooltip.hide()
+      lastHoverKey = ''
+      renderer.domElement.style.cursor = 'default'
+      return
+    }
+
+    // evita recalcular highlight a cada pixel
+    const key = feature.properties?.ISO_A3 || feature.properties?.ADMIN || feature.properties?.NAME || 'country'
+    if (key !== lastHoverKey) {
+      lastHoverKey = key
+      setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
+    }
+    setHoverRouteCouplingCountry(iso3)
+
+    renderer.domElement.style.cursor = 'pointer'
+    const name = getFeatureLabel(feature)
+    const iso2 = getISO2(feature.properties)
+    const flagUrl = isoToFlagUrl(iso2)
+    const meta = getFeatureMeta(feature)
+
+    if (iso2) {
+      const html = `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="font-size:12px;line-height:1.1;">${escapeHtml(name)}</div>
+            <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(meta)}</div>
+          </div>
+          <img src="${flagUrl}" alt="" style="height:28px;width:auto;border-radius:2px;display:block;" onerror="this.style.display='none'">
+        </div>
+      `
+      tooltip.showHTML(html, e.clientX, e.clientY)
+      return
+    }
+
+    tooltip.show(name, e.clientX, e.clientY)
+    return
+  }
+
   const flightHit = getFlightHit(e.clientX, e.clientY, FLIGHT_HOVER_THRESHOLD)
   if (flightHit) {
     clearHoverRouteCouplingCountry()
@@ -1633,53 +1692,7 @@ function onPointerHover(e: PointerEvent) {
     return
   }
 
-  const countryPick = getCountryPick(e.clientX, e.clientY)
-  const feature = countryPick?.feature ?? null
-  if (!feature) {
-    clearHoverInteractionState()
-    return
-  }
-
-  flightRoutes?.setHoverRoute(null)
-  const iso3 = getISO3(feature.properties)
-  if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
-    clearHoverRouteCouplingCountry()
-    clearHoverHighlight(globeGroup)
-    tooltip.hide()
-    lastHoverKey = ''
-    renderer.domElement.style.cursor = 'default'
-    return
-  }
-
-  // evita recalcular highlight a cada pixel
-  const key = feature.properties?.ISO_A3 || feature.properties?.ADMIN || feature.properties?.NAME || 'country'
-  if (key !== lastHoverKey) {
-    lastHoverKey = key
-    setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
-  }
-  setHoverRouteCouplingCountry(iso3)
-
-  renderer.domElement.style.cursor = 'pointer'
-  const name = getFeatureLabel(feature)
-  const iso2 = getISO2(feature.properties)
-  const flagUrl = isoToFlagUrl(iso2)
-  const meta = getFeatureMeta(feature)
-
-  if (iso2) {
-    const html = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div style="display:flex;flex-direction:column;gap:2px;">
-          <div style="font-size:12px;line-height:1.1;">${escapeHtml(name)}</div>
-          <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(meta)}</div>
-        </div>
-        <img src="${flagUrl}" alt="" style="height:28px;width:auto;border-radius:2px;display:block;" onerror="this.style.display='none'">
-      </div>
-    `
-    tooltip.showHTML(html, e.clientX, e.clientY)
-    return
-  }
-
-  tooltip.show(name, e.clientX, e.clientY)
+  clearHoverInteractionState()
 }
 
 /**
