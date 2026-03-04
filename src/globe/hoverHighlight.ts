@@ -48,14 +48,14 @@ const HOVER_MIN_CORE_THICKNESS = 0.00135
 const HOVER_GLOW_TO_CORE_RATIO = 1.32
 const HOVER_GLOW_OPACITY_MUL = 1.58
 const HOVER_CORE_OPACITY_MUL = 1.18
-const HOVER_SHADOW_BASE_WIDTH = 4.5
-const HOVER_SHADOW_WIDTH_PER_HINT = 2.2
-const HOVER_SHADOW_PEAK_WIDTH_MUL = 1.16
+const HOVER_SHADOW_BASE_WIDTH = 6.2
+const HOVER_SHADOW_WIDTH_PER_HINT = 3.1
+const HOVER_SHADOW_PEAK_WIDTH_MUL = 1.28
 const HOVER_SHADOW_COLOR_WARMTH = 0.05
 const HOVER_SHADOW_LAYERS = [
-  { baseScale: 1.0, peakScale: 1.006, widthMul: 1.0, opacityMul: 0.34 },
-  { baseScale: 1.004, peakScale: 1.012, widthMul: 1.65, opacityMul: 0.2 },
-  { baseScale: 1.008, peakScale: 1.018, widthMul: 2.35, opacityMul: 0.11 }
+  { baseScale: 1.0, peakScale: 1.008, widthMul: 1.0, opacityMul: 0.46 },
+  { baseScale: 1.004, peakScale: 1.014, widthMul: 1.75, opacityMul: 0.3 },
+  { baseScale: 1.008, peakScale: 1.02, widthMul: 2.5, opacityMul: 0.18 }
 ] as const
 
 const HOVER_VERT = /* glsl */ `
@@ -327,7 +327,7 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
     0,
     1
   )
-  const popShadowBoost = Math.pow(THREE.MathUtils.smoothstep(popMix, 0.42, 0.96), 1.05)
+  const popShadowBoost = THREE.MathUtils.smoothstep(popMix, 0.32, 0.92)
   shadowColor.copy(popShadowTint).lerp(hoverColorB, HOVER_SHADOW_COLOR_WARMTH * shimmer)
   shadowColor.lerp(popShadowTint, 0.28 + 0.2 * popShadowBoost)
 
@@ -343,7 +343,7 @@ export function updateHoverHighlight(parent: THREE.Object3D, timeSeconds: number
     mat.linewidth = baseLineWidth * THREE.MathUtils.lerp(1.0, HOVER_SHADOW_PEAK_WIDTH_MUL, popShadowBoost)
     mat.color.copy(shadowColor)
     mat.opacity =
-      currentOpacity * popShadowBoost * (0.92 + 0.08 * pulse) * hoverOpacityMul * layer.opacityMul
+      currentOpacity * popShadowBoost * (0.98 + 0.1 * pulse) * hoverOpacityMul * layer.opacityMul
     if (group) {
       group.scale.setScalar(THREE.MathUtils.lerp(layer.baseScale, layer.peakScale, popShadowBoost))
     }

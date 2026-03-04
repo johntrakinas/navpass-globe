@@ -61,7 +61,6 @@ function drawRingStroke(
     if (i === 0) ctx.moveTo(x, y)
     else ctx.lineTo(x, y)
   }
-  ctx.closePath()
   ctx.stroke()
 }
 
@@ -88,11 +87,6 @@ function collectCountryRings(geojson: any) {
         }
         if (out.length < 2) continue
 
-        const first = out[0]
-        const last = out[out.length - 1]
-        if (Math.abs(first[0] - last[0]) < 1e-8 && Math.abs(first[1] - last[1]) < 1e-8) {
-          out.pop()
-        }
         if (out.length >= 2) {
           rings.push({ points: out, strokeScale })
         }
@@ -157,7 +151,6 @@ export function createCountries(
   let widthHint = 1
   const rings = collectCountryRings(geojson)
   const { texture, redraw } = createBorderTexture(rings, widthHint)
-
   const geometry = new THREE.SphereGeometry(radius * 1.0035, 96, 96)
   const material = new THREE.MeshBasicMaterial({
     color: 0xffffff,
