@@ -24,15 +24,15 @@ export function createLanguagePoints(data: any[], radius: number) {
       continue;
     }
 
-    const v = latLongToVector3(lat, lng, radius * 1.01);
+    const v = latLongToVector3(lat, lng, radius * 1.014);
 
     positions.push(v.x, v.y, v.z);
 
     color.copy(GOOGLE_COLORS.white);
     colors.push(color.r, color.g, color.b);
 
-    // Smaller footprint to keep nearby airports visually separable.
-    sizes.push(Math.random() * 0.34 + 0.58);
+    // Keep points compact and secondary to the route/aircraft layer.
+    sizes.push(Math.random() * 0.30 + 0.68);
     seeds.push(Math.random());
   }
 
@@ -65,10 +65,10 @@ export function createLanguagePoints(data: any[], radius: number) {
       uTime: { value: 0 },
       uCameraDistance: { value: 0 },
       uColorMul: { value: new THREE.Color(1, 1, 1) },
-      uAlphaMul: { value: 0.98 },
+      uAlphaMul: { value: 1.18 },
       uFlowSpeed: { value: 0.058 },
-      uFlowWidth: { value: 0.13 },
-      uFlowStrength: { value: 0.82 },
+      uFlowWidth: { value: 0.15 },
+      uFlowStrength: { value: 1.05 },
       uFlowColor: { value: GOOGLE_COLORS.white.clone().lerp(GOOGLE_COLORS.yellow, 0.22) },
       uFlowDir: { value: new THREE.Vector3(0.74, 0.18, 0.65).normalize() },
       uFlowScale: { value: 0.16 },
@@ -78,7 +78,7 @@ export function createLanguagePoints(data: any[], radius: number) {
 
 
   const points = new THREE.Points(geometry, material);
-  points.renderOrder = 4
+  points.renderOrder = 5.4
   points.frustumCulled = false
 
   return { points, material };

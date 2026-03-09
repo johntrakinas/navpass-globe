@@ -273,6 +273,7 @@ export type GlobeOptions = {
   initialHeatmapEnabled?: boolean
   initialFlightVisualizationMode?: FlightVisualizationMode
   initialIntroAnimationEnabled?: boolean
+  disableScrollZoom?: boolean
   minZoomDistance?: number
   maxZoomDistance?: number
   routeCount?: number
@@ -324,10 +325,12 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   const COUNTRIES_GEOJSON_PATH = resolveAssetPath('data/ne_110m_admin_0_countries.geojson')
   const SYNTHETIC_AIRPORT_TARGET = 5200
   const AIRPORT_MIN_SPACING_DEG = 0.5
-  const SHOW_GLOBE_POINTS = false
+  const SHOW_AIRPORT_POINTS = true
+  const SHOW_NIGHT_LIGHTS = false
+  const disableScrollZoom = options.disableScrollZoom === true
   const requestedRouteCount = Number(options.routeCount)
   const FLIGHT_ROUTE_TARGET = THREE.MathUtils.clamp(
-    Number.isFinite(requestedRouteCount) ? Math.round(requestedRouteCount) : 300,
+    Number.isFinite(requestedRouteCount) ? Math.round(requestedRouteCount) : 220,
     40,
     1500
   )
@@ -339,7 +342,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   )
   const requestedPlaneDensityScale = Number(options.planeDensityScale)
   const FLIGHT_PLANE_DENSITY_SCALE = THREE.MathUtils.clamp(
-    Number.isFinite(requestedPlaneDensityScale) ? requestedPlaneDensityScale : 0.74,
+    Number.isFinite(requestedPlaneDensityScale) ? requestedPlaneDensityScale : 0.62,
     0.2,
     2.5
   )
@@ -382,16 +385,21 @@ const tooltip = createTooltip(document.body)
 const countrySearch = document.getElementById('country-search') as HTMLFormElement | null
 const countrySearchInput = document.getElementById('country-search-input') as HTMLInputElement | null
 const countrySearchButton = document.getElementById('country-search-button') as HTMLButtonElement | null
-const countrySearchList = document.getElementById('country-search-list') as HTMLDataListElement | null
+const countrySearchResults = document.getElementById('country-search-results') as HTMLDivElement | null
 const countrySearchMobileQuery = window.matchMedia('(max-width: 720px)')
 
 type CountrySearchEntry = {
   feature: any
   label: string
+  meta: string
+  iso2: string
+  iso3: string
   tokens: string[]
 }
 
 let countrySearchIndex: CountrySearchEntry[] = []
+let countrySearchSuggestions: CountrySearchEntry[] = []
+let countrySearchActiveIndex = -1
 
 function isCountrySearchEnabled() {
   return countrySearchMobileQuery.matches
@@ -436,6 +444,9 @@ function buildCountrySearchIndex(geojson: any): CountrySearchEntry[] {
     entries.push({
       feature,
       label: names[0] ?? String(codes[0] ?? 'Country'),
+      meta: names.find((name) => name !== (names[0] ?? '')) ?? '',
+      iso2: String(props.ISO_A2 || props.WB_A2 || ''),
+      iso3: String(props.ISO_A3 || props.ADM0_A3 || props.BRK_A3 || props.SU_A3 || ''),
       tokens: [...tokens]
     })
   }
@@ -444,22 +455,18 @@ function buildCountrySearchIndex(geojson: any): CountrySearchEntry[] {
   return entries
 }
 
-function populateCountrySearchDatalist(entries: CountrySearchEntry[]) {
-  if (!countrySearchList) return
-  countrySearchList.innerHTML = ''
-  const seen = new Set<string>()
-  for (const entry of entries) {
-    if (seen.has(entry.label)) continue
-    seen.add(entry.label)
-    const option = document.createElement('option')
-    option.value = entry.label
-    countrySearchList.appendChild(option)
-  }
-}
-
 function setCountrySearchInvalidState(isInvalid: boolean) {
   if (!countrySearch) return
   countrySearch.classList.toggle('is-invalid', isInvalid)
+}
+
+function clearCountrySearchSuggestions() {
+  countrySearchSuggestions = []
+  countrySearchActiveIndex = -1
+  if (countrySearchResults) {
+    countrySearchResults.innerHTML = ''
+  }
+  countrySearch?.classList.remove('has-results')
 }
 
 function applyCountrySearchVisibility() {
@@ -468,6 +475,7 @@ function applyCountrySearchVisibility() {
   countrySearch.style.display = enabled ? '' : 'none'
   if (!enabled) {
     setCountrySearchInvalidState(false)
+    clearCountrySearchSuggestions()
   }
 }
 
@@ -492,25 +500,116 @@ function findCountryByQuery(query: string) {
   return startsWith ?? includes
 }
 
-function runCountrySearch() {
+function getCountrySearchSuggestions(query: string, limit = 7) {
+  const needle = normalizeSearchToken(query)
+  if (!needle) return []
+
+  const matches: Array<{ entry: CountrySearchEntry; rank: number }> = []
+  const seen = new Set<CountrySearchEntry>()
+
+  for (const entry of countrySearchIndex) {
+    let rank = Number.POSITIVE_INFINITY
+    for (const token of entry.tokens) {
+      if (token === needle) {
+        rank = 0
+        break
+      }
+      if (token.startsWith(needle)) {
+        rank = Math.min(rank, 1)
+        continue
+      }
+      if (token.includes(needle)) {
+        rank = Math.min(rank, 2)
+      }
+    }
+    if (!Number.isFinite(rank) || seen.has(entry)) continue
+    seen.add(entry)
+    matches.push({ entry, rank })
+  }
+
+  matches.sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank
+    return a.entry.label.localeCompare(b.entry.label)
+  })
+
+  return matches.slice(0, limit).map((item) => item.entry)
+}
+
+function renderCountrySearchSuggestions(entries: CountrySearchEntry[]) {
+  if (!countrySearchResults) return
+
+  countrySearchSuggestions = entries
+  countrySearchResults.innerHTML = ''
+  countrySearch?.classList.toggle('has-results', entries.length > 0)
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]
+    const option = document.createElement('button')
+    option.type = 'button'
+    option.className = 'country-search-option'
+    option.setAttribute('role', 'option')
+    option.setAttribute('aria-selected', i === countrySearchActiveIndex ? 'true' : 'false')
+    if (i === countrySearchActiveIndex) {
+      option.classList.add('is-active')
+    }
+
+    const meta = entry.meta && entry.meta !== entry.label ? entry.meta : 'Country'
+    const hasFlag = entry.iso2 && entry.iso2 !== '-99' && entry.iso2.length === 2
+    const flagThumb = hasFlag
+      ? `<span class="country-search-option-flag" style="background-image:url('${isoToFlagUrl(entry.iso2)}')"></span>`
+      : '<span class="country-search-option-flag country-search-option-flag--empty"></span>'
+    option.innerHTML = `
+      ${flagThumb}
+      <span class="country-search-option-main">
+        <span class="country-search-option-label">${escapeHtml(entry.label)}</span>
+        <span class="country-search-option-meta">${escapeHtml(meta)}</span>
+      </span>
+      <span class="country-search-option-code">${escapeHtml(entry.iso3 || '---')}</span>
+    `
+
+    option.addEventListener('click', () => {
+      selectCountrySearchEntry(entry)
+    })
+    countrySearchResults.appendChild(option)
+  }
+}
+
+function setCountrySearchSuggestions(entries: CountrySearchEntry[], activeIndex = -1) {
+  countrySearchActiveIndex =
+    entries.length > 0 ? THREE.MathUtils.clamp(activeIndex, 0, entries.length - 1) : -1
+  renderCountrySearchSuggestions(entries)
+}
+
+function selectCountrySearchEntry(entry: CountrySearchEntry) {
+  if (!countrySearchInput) return
+  markUserInteracted()
+  setCountrySearchInvalidState(false)
+  countrySearchInput.value = entry.label
+  clearCountrySearchSuggestions()
+  selectCountryFeature(entry.feature)
+}
+
+function runCountrySearch(preferredEntry?: CountrySearchEntry | null) {
   if (!countrySearchInput) return
   if (!isCountrySearchEnabled()) return
   markUserInteracted()
   const rawQuery = countrySearchInput.value.trim()
   if (!rawQuery) {
     setCountrySearchInvalidState(false)
+    clearCountrySearchSuggestions()
     return
   }
 
-  const match = findCountryByQuery(rawQuery)
+  const match =
+    preferredEntry ??
+    (countrySearchActiveIndex >= 0 ? countrySearchSuggestions[countrySearchActiveIndex] ?? null : null) ??
+    findCountryByQuery(rawQuery)
   if (!match) {
     setCountrySearchInvalidState(true)
     return
   }
 
-  setCountrySearchInvalidState(false)
-  countrySearchInput.value = match.label
-  selectCountryFeature(match.feature)
+  selectCountrySearchEntry(match)
 }
 
 countrySearch?.addEventListener('submit', (event) => {
@@ -520,16 +619,50 @@ countrySearch?.addEventListener('submit', (event) => {
 
 countrySearchInput?.addEventListener('input', () => {
   setCountrySearchInvalidState(false)
+  const rawQuery = countrySearchInput.value.trim()
+  if (!rawQuery) {
+    clearCountrySearchSuggestions()
+    return
+  }
+  setCountrySearchSuggestions(getCountrySearchSuggestions(rawQuery), 0)
 })
 
 countrySearchInput?.addEventListener('keydown', (event) => {
+  if (event.key === 'ArrowDown') {
+    if (!countrySearchSuggestions.length) return
+    event.preventDefault()
+    setCountrySearchSuggestions(countrySearchSuggestions, countrySearchActiveIndex + 1)
+    return
+  }
+  if (event.key === 'ArrowUp') {
+    if (!countrySearchSuggestions.length) return
+    event.preventDefault()
+    setCountrySearchSuggestions(countrySearchSuggestions, countrySearchActiveIndex <= 0 ? countrySearchSuggestions.length - 1 : countrySearchActiveIndex - 1)
+    return
+  }
+  if (event.key === 'Escape') {
+    clearCountrySearchSuggestions()
+    return
+  }
   if (event.key !== 'Enter') return
   event.preventDefault()
   runCountrySearch()
 })
 
+countrySearchInput?.addEventListener('focus', () => {
+  const rawQuery = countrySearchInput.value.trim()
+  if (!rawQuery) return
+  setCountrySearchSuggestions(getCountrySearchSuggestions(rawQuery), 0)
+})
+
 countrySearchButton?.addEventListener('click', () => {
   runCountrySearch()
+})
+
+window.addEventListener('pointerdown', (event) => {
+  if (!(event.target instanceof Element)) return
+  if (event.target.closest('#country-search')) return
+  clearCountrySearchSuggestions()
 })
 
 applyCountrySearchVisibility()
@@ -643,7 +776,7 @@ function updatePostprocessSize() {
 updatePostprocessSize()
 
 const initialHeatmapEnabled = options.initialHeatmapEnabled ?? false
-const initialFlightVisualizationMode: FlightVisualizationMode = options.initialFlightVisualizationMode ?? 'legacy'
+const initialFlightVisualizationMode: FlightVisualizationMode = options.initialFlightVisualizationMode ?? 'reengineered'
 const initialIntroAnimationEnabled = options.initialIntroAnimationEnabled ?? true
 type VisualPreset = {
   landAlpha: number
@@ -683,12 +816,12 @@ const DRAMATIC_VISUAL_PRESET: VisualPreset = {
   atmoInner: 0.0,
   atmoOuter: 0.0,
   atmoSubsurface: 0.0,
-  dotAlpha: 1.08,
-  dotSizeMul: 1.36,
-  planeAlpha: 0.64,
-  planeSizeMul: 0.84,
-  routeLineBaseAlpha: 0.058,
-  routeLineGlowAlpha: 0.48,
+  dotAlpha: 1.34,
+  dotSizeMul: 1.84,
+  planeAlpha: 0.82,
+  planeSizeMul: 1.08,
+  routeLineBaseAlpha: 0.072,
+  routeLineGlowAlpha: 0.58,
   nightLightsAlpha: 0.42,
   shadowMul: 0.0,
   dayMul: 0.0,
@@ -873,7 +1006,7 @@ controls.enableDamping = true
 controls.dampingFactor = 0.08
 controls.enableRotate = false
 controls.enablePan = false
-controls.enableZoom = true
+controls.enableZoom = !disableScrollZoom
 controls.minDistance = minZoomDistance
 controls.maxDistance = maxZoomDistance
 controls.target.set(0, 0, 0)
@@ -1382,6 +1515,7 @@ function showFlightTooltip(routeId: number, x: number, y: number) {
   const isForward = Number(info.dir) >= 0
   const from = compactAirportName(isForward ? info.fromName : info.toName)
   const to = compactAirportName(isForward ? info.toName : info.fromName)
+  const flightName = String(info.flightName || `${from}-${to}`)
   const distanceKm = Number(info.distanceKm)
   const kmText = Number.isFinite(distanceKm) ? `${Math.round(distanceKm).toLocaleString('en-US')} km` : '— km'
   const trafficCount = Number(info.trafficCount)
@@ -1389,9 +1523,9 @@ function showFlightTooltip(routeId: number, x: number, y: number) {
   const trafficText = Number.isFinite(trafficClamped) ? `Traffic ${trafficClamped}/3` : 'Traffic —/3'
 
   const html = `
-    <div style="display:flex;flex-direction:column;gap:2px;">
+    <div style="display:flex;flex-direction:column;gap:2px;min-width:160px;">
       <div style="font-size:12px;line-height:1.1;">${escapeHtml(from)} → ${escapeHtml(to)}</div>
-      <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(kmText)} • ${escapeHtml(trafficText)}</div>
+      <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(flightName)} • ${escapeHtml(kmText)} • ${escapeHtml(trafficText)}</div>
     </div>
   `
   tooltip.showHTML(html, x, y)
@@ -1553,7 +1687,7 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   flightRoutes?.setSelectedRoute(null)
   flightRoutes?.setHoverRoute(null)
   setPinnedFlightRoute(null)
-  flightRoutes?.setFocusCountry(iso3)
+  flightRoutes?.setFocusCountry(null)
   const spanDeg = estimateCountrySpanDeg(feature)
   velYaw = 0
   velPitch = 0
@@ -1909,7 +2043,6 @@ async function init() {
   const geojson = await loadGeoJSON(COUNTRIES_GEOJSON_PATH)
   countriesGeoJSON = geojson
   countrySearchIndex = buildCountrySearchIndex(geojson)
-  populateCountrySearchDatalist(countrySearchIndex)
 
   // Single source of truth for all country-driven layers (render + hover + lookup).
   landWater = createLandWaterLayer(geojson, GLOBE_RADIUS)
@@ -1929,18 +2062,22 @@ async function init() {
     targetCount: SYNTHETIC_AIRPORT_TARGET,
     minSpacingDeg: AIRPORT_MIN_SPACING_DEG
   })
+  const airportPointData = Array.isArray(baseAirports) ? baseAirports : []
   const baseCount = Array.isArray(baseAirports) ? baseAirports.length : 0
   console.info(
     `[airports] base=${baseCount} land_spaced=${denseAirports.length} spacingDeg=${AIRPORT_MIN_SPACING_DEG}`
   )
-  if (SHOW_GLOBE_POINTS) {
-    languagePoints = createLanguagePoints(denseAirports, GLOBE_RADIUS)
+  if (SHOW_AIRPORT_POINTS) {
+    languagePoints = createLanguagePoints(airportPointData, GLOBE_RADIUS)
     globeGroup.add(languagePoints.points)
+  } else {
+    languagePoints = null
+  }
 
+  if (SHOW_NIGHT_LIGHTS) {
     nightLights = createNightLights(denseAirports, GLOBE_RADIUS)
     globeGroup.add(nightLights.points)
   } else {
-    languagePoints = null
     nightLights = null
   }
 
@@ -1981,6 +2118,9 @@ async function init() {
     if (e.key === 'Escape') {
       clearSelectionUIState()
     }
+  })
+  window.addEventListener('navpass:close-country-panel', () => {
+    clearSelectionUIState()
   })
 
   window.addEventListener('resize', () => {

@@ -31,6 +31,16 @@ varying vec2 vVel2;
 varying float vHub;
 varying float vFacing;
 varying float vAltitude;
+varying float vLead;
+
+vec3 bezierPoint(vec3 p0, vec3 p1, vec3 p2, float t) {
+  float omt = 1.0 - t;
+  return p0 * (omt * omt) + p1 * (2.0 * omt * t) + p2 * (t * t);
+}
+
+float safeClipW(vec4 clipPos) {
+  return clipPos.w >= 0.0 ? max(clipPos.w, 1e-5) : min(clipPos.w, -1e-5);
+}
 
 void main() {
   float aSpeed = aAnimA.x;
@@ -53,6 +63,8 @@ void main() {
   vHub = aTraffic;
   vEmph = 0.0;
   vAltitude = aAltitude;
+  float leadPlane = 1.0 - step(0.0001, abs(aOffset));
+  vLead = leadPlane;
 
   // LOD: thin planes when zoomed out (keep mask based on seed).
   float keepMask = 1.0 - smoothstep(uRouteKeep - 0.12, uRouteKeep, aSeed);
@@ -73,6 +85,8 @@ void main() {
   float hubKeep = smoothstep(0.72, 1.12, aTraffic);
   keepMask = max(keepMask, hubKeep * bundleMix);
   densMask = max(densMask, hubKeep * bundleMix);
+  keepMask = max(keepMask, leadPlane);
+  densMask = max(densMask, leadPlane);
   keepMask *= altitudeKeep;
   densMask *= altitudeKeep;
 
@@ -81,8 +95,7 @@ void main() {
     t = 1.0 - t;
   }
 
-  float omt = 1.0 - t;
-  vec3 p = aP0 * (omt * omt) + aP1 * (2.0 * omt * t) + aP2 * (t * t);
+  vec3 p = bezierPoint(aP0, aP1, aP2, t);
 
   // Safety clamp: never place a plane inside the globe.
   float minShell = min(length(aP0), length(aP2)) * 0.995;
@@ -99,15 +112,32 @@ void main() {
     p *= minShell / pLen;
   }
 
-  // Screen-space velocity direction (for a small "comet" trail in the fragment shader).
-  vec3 dpdt = 2.0 * (1.0 - t) * (aP1 - aP0) + 2.0 * t * (aP2 - aP1);
-  dpdt *= aDir; // actual motion direction (handles reversed routes)
-  vec3 velView = (modelViewMatrix * vec4(dpdt, 0.0)).xyz;
-  vec2 vel2 = velView.xy;
-  float velLen = length(vel2);
-  vVel2 = velLen > 1e-5 ? (vel2 / velLen) : vec2(0.0, 1.0);
-
   vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+  float tangentStep = 0.018 * aDir;
+  float tAhead = clamp(t + tangentStep, 0.0, 1.0);
+  float tBehind = clamp(t - tangentStep, 0.0, 1.0);
+  vec3 pAhead = bezierPoint(aP0, aP1, aP2, tAhead);
+  vec3 pBehind = bezierPoint(aP0, aP1, aP2, tBehind);
+  vec4 mvAhead = modelViewMatrix * vec4(pAhead, 1.0);
+  vec4 mvBehind = modelViewMatrix * vec4(pBehind, 1.0);
+  vec4 clipPosition = projectionMatrix * mvPosition;
+  vec4 clipAhead = projectionMatrix * mvAhead;
+  vec4 clipBehind = projectionMatrix * mvBehind;
+  vec2 ndc = clipPosition.xy / safeClipW(clipPosition);
+  vec2 ndcAhead = clipAhead.xy / safeClipW(clipAhead);
+  vec2 ndcBehind = clipBehind.xy / safeClipW(clipBehind);
+  float aspect = projectionMatrix[1][1] / max(1e-5, projectionMatrix[0][0]);
+  vec2 screenDir = ndcAhead - ndcBehind;
+  screenDir.x *= aspect;
+  screenDir.y *= -1.0;
+  if (length(screenDir) <= 1e-5) {
+    screenDir = ndcAhead - ndc;
+    screenDir.x *= aspect;
+    screenDir.y *= -1.0;
+  }
+  float velLen = length(screenDir);
+  vVel2 = velLen > 1e-5 ? (screenDir / velLen) : vec2(0.0, 1.0);
+
   float dist = max(1.0, -mvPosition.z);
 
   // Horizon fade helper: 1 = facing camera, 0 = at the limb/horizon.
@@ -115,10 +145,11 @@ void main() {
   vFacing = dot(normalize(worldPos), normalize(cameraPosition));
 
   float baseSize = aSize * aTraffic;
-  float pointSize = baseSize * uSizeMul * (136.0 / dist);
-  pointSize *= mix(0.85, 1.34, uRepresentationMix);
+  float pointSize = baseSize * uSizeMul * (92.0 / dist);
+  pointSize *= mix(0.66, 0.96, uRepresentationMix);
+  pointSize *= mix(1.0, 1.08, leadPlane);
   pointSize *= aEnable * keepMask * densMask;
 
-  gl_PointSize = clamp(pointSize, 0.0, 20.0);
-  gl_Position = projectionMatrix * mvPosition;
+  gl_PointSize = clamp(pointSize, 0.0, 13.0);
+  gl_Position = clipPosition;
 }

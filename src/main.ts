@@ -61,20 +61,33 @@ function parseColorThemeParams(params: URLSearchParams): Partial<GlobeTheme> | u
   const gridEffectColor = parseHexColorParam(params, 'gridEffectColor')
   const gridMainColor = parseHexColorParam(params, 'gridMainColor')
   const countryLineColor = parseHexColorParam(params, 'countryLineColor')
+  const hoverColor = parseHexColorParam(params, 'hoverColor')
+  const hoverAccentColor = parseHexColorParam(params, 'hoverAccentColor')
+  const hoverCoreColor = parseHexColorParam(params, 'hoverCoreColor')
+  const hoverPaletteMix = parseNumberParam(params, 'hoverPaletteMix')
   const planeCoreColor = parseHexColorParam(params, 'planeCoreColor')
   const planeGlowColor = parseHexColorParam(params, 'planeGlowColor')
   const planeTintColor = parseHexColorParam(params, 'planeTintColor')
   const planeAccentColor = parseHexColorParam(params, 'planeAccentColor')
+  const airportDotColor =
+    parseHexColorParam(params, 'airportDotColor') ??
+    parseHexColorParam(params, 'airportPulseColor') ??
+    parseHexColorParam(params, 'airportColor')
 
   if (
     !bgColor &&
     !gridEffectColor &&
     !gridMainColor &&
     !countryLineColor &&
+    !hoverColor &&
+    !hoverAccentColor &&
+    !hoverCoreColor &&
+    hoverPaletteMix === undefined &&
     !planeCoreColor &&
     !planeGlowColor &&
     !planeTintColor &&
-    !planeAccentColor
+    !planeAccentColor &&
+    !airportDotColor
   ) {
     return undefined
   }
@@ -109,6 +122,24 @@ function parseColorThemeParams(params: URLSearchParams): Partial<GlobeTheme> | u
     }
   }
 
+  if (hoverColor || hoverAccentColor || hoverCoreColor || hoverPaletteMix !== undefined) {
+    theme.highlights = { ...(theme.highlights ?? {}) }
+    if (hoverColor) {
+      theme.highlights.hoverA = hoverColor
+      theme.highlights.hoverB = hoverColor
+      theme.highlights.hoverCore = hoverColor
+    }
+    if (hoverAccentColor) {
+      theme.highlights.hoverB = hoverAccentColor
+    }
+    if (hoverCoreColor) {
+      theme.highlights.hoverCore = hoverCoreColor
+    }
+    if (hoverPaletteMix !== undefined) {
+      theme.highlights.hoverPaletteMix = Math.max(0, Math.min(1, hoverPaletteMix))
+    }
+  }
+
   if (planeCoreColor || planeGlowColor || planeTintColor || planeAccentColor) {
     theme.flights = { ...(theme.flights ?? {}) }
     if (planeCoreColor) {
@@ -123,6 +154,12 @@ function parseColorThemeParams(params: URLSearchParams): Partial<GlobeTheme> | u
     if (planeAccentColor) {
       theme.flights.planeAccentColor = planeAccentColor
     }
+  }
+
+  if (airportDotColor) {
+    theme.points = { ...(theme.points ?? {}) }
+    theme.points.dotColorMul = airportDotColor
+    theme.points.dotFlowColor = airportDotColor
   }
 
   return theme
@@ -227,6 +264,7 @@ const options: GlobeOptions = {
   initialHeatmapEnabled: parseBooleanParam(params, 'heatmap'),
   initialFlightVisualizationMode: parseFlightModeParam(params.get('flightMode')),
   initialIntroAnimationEnabled: parseBooleanParam(params, 'introAnimation'),
+  disableScrollZoom: parseBooleanParam(params, 'disableScrollZoom') ?? parseBooleanParam(params, 'disableScroll'),
   minZoomDistance: parseNumberParam(params, 'minZoomDistance'),
   maxZoomDistance: parseNumberParam(params, 'maxZoomDistance'),
   routeCount: parseNumberParam(params, 'routeCount'),

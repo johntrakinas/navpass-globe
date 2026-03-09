@@ -45,6 +45,7 @@ type Route = {
   hub: number
   altitude01: number
   distanceKm: number
+  flightName: string
   fromName: string
   toName: string
   fromLat: number
@@ -59,6 +60,8 @@ type CountryFlightStats = {
   now: number
   tenMinAgo: number
   routes: number
+  incoming: number
+  outgoing: number
 }
 
 export type FlightRouteMaterials = {
@@ -462,6 +465,29 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   return R * c
 }
 
+function compactFlightToken(name: string) {
+  const raw = String(name || '').trim().toUpperCase()
+  if (!raw) return 'FLIGHT'
+
+  const normalized = raw
+    .replace(/\bINTERNATIONAL\b/g, '')
+    .replace(/\bAIRPORT\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const collapsed = normalized.replace(/[^A-Z0-9]+/g, '')
+  if (collapsed.length >= 3) {
+    return collapsed.slice(0, 6)
+  }
+
+  const fallback = raw.replace(/[^A-Z0-9]+/g, '')
+  return fallback.slice(0, 6) || 'FLIGHT'
+}
+
+function buildFlightName(fromName: string, toName: string) {
+  return `${compactFlightToken(fromName)}-${compactFlightToken(toName)}`
+}
+
 export function createFlightRoutes(
   airports: Airport[],
   radius: number,
@@ -495,6 +521,11 @@ export function createFlightRoutes(
   const SHOW_ROUTE_PIN = false
   const SHOW_ROUTE_PLANES = true
   const SHOW_ROUTE_HUBS = false
+  const AIRCRAFT_CRUISE_KMH_MIN = 720
+  const AIRCRAFT_CRUISE_KMH_MAX = 900
+  const AIRCRAFT_SIM_HOURS_PER_REAL_SECOND = 0.12
+  const MIN_ROUTE_TRAVEL_SECONDS = 9
+  const MAX_ROUTE_TRAVEL_SECONDS = 84
 
   const { valid, routes } = pickRouteIndices(airports, routeCount)
   const LINE_SEGMENTS_COARSE = 20
@@ -570,8 +601,21 @@ export function createFlightRoutes(
     const antipodalBoost = THREE.MathUtils.smoothstep(arcBoost, 0.95, 1.25)
     const mid = midDir.multiplyScalar(radius * (1.10 + arcBoost * 0.20 + antipodalBoost * 0.16))
 
-    // Cycles per second for shader animation.
-    const speed = 0.022 + arcBoost * 0.037
+    const distanceKm = haversineKm(Number(a.latitude), Number(a.longitude), Number(b.latitude), Number(b.longitude))
+    const altitude01 = THREE.MathUtils.clamp((arcBoost - 0.25) / (1.25 - 0.25), 0, 1)
+    const routeSpan01 = THREE.MathUtils.clamp((distanceKm - 400) / 9000, 0, 1)
+    const cruiseKmhBase = THREE.MathUtils.lerp(AIRCRAFT_CRUISE_KMH_MIN, AIRCRAFT_CRUISE_KMH_MAX, routeSpan01)
+    const cruiseKmh = cruiseKmhBase * THREE.MathUtils.lerp(0.96, 1.04, seed)
+    const visualDistanceKm = distanceKm * THREE.MathUtils.lerp(1.03, 1.14, altitude01)
+    const travelSeconds = THREE.MathUtils.clamp(
+      visualDistanceKm / Math.max(1e-3, cruiseKmh * AIRCRAFT_SIM_HOURS_PER_REAL_SECOND),
+      MIN_ROUTE_TRAVEL_SECONDS,
+      MAX_ROUTE_TRAVEL_SECONDS
+    )
+
+    // Cycles per second for shader animation. We compress time, but keep speed tied to route distance
+    // so the visual rhythm reads more like aircraft cruise than route-first pulses.
+    const speed = 1 / travelSeconds
     const size = 3.1 + arcBoost * 1.25
     const dir = seed < 0.5 ? 1 : -1
 
@@ -580,8 +624,6 @@ export function createFlightRoutes(
     const traffic = THREE.MathUtils.clamp(0.68 + trafficBase * 0.72 + (seed - 0.5) * 0.14, 0.68, 1.34)
     const traffic01 = THREE.MathUtils.clamp((traffic - 0.68) / (1.34 - 0.68), 0, 0.9999)
     const trafficCount = 1 + Math.floor(traffic01 * TRAFFIC_LEVELS) // 1..3
-    const altitude01 = THREE.MathUtils.clamp((arcBoost - 0.25) / (1.25 - 0.25), 0, 1)
-    const distanceKm = haversineKm(Number(a.latitude), Number(a.longitude), Number(b.latitude), Number(b.longitude))
 
     // Hubness for zoom-out "corridors": routes connected to high-degree airports
     // remain visible longer (aggregation feel without heavy bundling).
@@ -611,6 +653,7 @@ export function createFlightRoutes(
       hub,
       altitude01,
       distanceKm,
+      flightName: buildFlightName(String(a.name || 'Origin'), String(b.name || 'Destination')),
       fromName: String(a.name || 'Origin'),
       toName: String(b.name || 'Destination'),
       fromLat: Number(a.latitude),
@@ -930,8 +973,8 @@ export function createFlightRoutes(
 
       // Spread planes along the route; add a small deterministic jitter.
       const denom = Math.max(1, r.trafficCount)
-      const baseOffset = j / denom
-      const jitter = (fract01(r.seed * 17.0 + j * 3.1) - 0.5) * 0.06
+      const baseOffset = j === 0 ? 0 : j / denom
+      const jitter = j === 0 ? 0 : (fract01(r.seed * 17.0 + j * 3.1) - 0.5) * 0.06
       planeAnimA[po + 2] = fract01(baseOffset + jitter)
 
       // Subtle variety and traffic scaling.
@@ -1219,6 +1262,7 @@ export function createFlightRoutes(
       toLat: r.toLat,
       toLon: r.toLon,
       distanceKm: r.distanceKm,
+      flightName: r.flightName,
       traffic: r.traffic,
       trafficCount: r.trafficCount,
       dir: r.dir,
@@ -1230,44 +1274,60 @@ export function createFlightRoutes(
     }
   }
 
-  function computeCountryFlightsAtTime(routeIds: number[], timeSeconds: number) {
-    // This is a *synthetic* but stable metric derived from our current simulated network:
-    // - more routes + higher traffic => higher baseline
-    // - time-varying modulation => plausible "now" vs "10 minutes ago" change
-    //
-    // We keep it deterministic and smooth so the UI doesn't jump around.
-    let sum = 0
+  function computeRouteFlightsAtTime(r: Route, timeSeconds: number) {
+    // This is a synthetic but stable metric derived from the simulated network:
+    // more routes + higher traffic => higher baseline, plus smooth time modulation.
+    const w1 = 0.6 + 0.4 * Math.sin(timeSeconds * 0.019 + r.seed * 11.7)
+    const w2 = 0.65 + 0.35 * Math.sin(timeSeconds * 0.007 + r.phase * Math.PI * 2 + r.seed * 3.9)
+    const w3 = 0.75 + 0.25 * Math.sin(timeSeconds * 0.003 + r.id * 0.8)
+    const activity = THREE.MathUtils.clamp((w1 * 0.46 + w2 * 0.38 + w3 * 0.16), 0.18, 1.15)
+    const trafficBoost = THREE.MathUtils.clamp(0.85 + (r.traffic - 0.62) * 0.25, 0.82, 1.05)
+    return r.trafficCount * activity * trafficBoost
+  }
+
+  function computeCountryFlightsAtTime(routeIds: number[], iso3: string, timeSeconds: number) {
+    let incoming = 0
+    let outgoing = 0
 
     for (let i = 0; i < routeIds.length; i++) {
       const r = routeData[routeIds[i]]
       if (!r) continue
 
-      // Two slow waves + one per-route wobble.
-      const w1 = 0.6 + 0.4 * Math.sin(timeSeconds * 0.019 + r.seed * 11.7)
-      const w2 = 0.65 + 0.35 * Math.sin(timeSeconds * 0.007 + r.phase * Math.PI * 2 + r.seed * 3.9)
-      const w3 = 0.75 + 0.25 * Math.sin(timeSeconds * 0.003 + r.id * 0.8)
-      const activity = THREE.MathUtils.clamp((w1 * 0.46 + w2 * 0.38 + w3 * 0.16), 0.18, 1.15)
+      const flightsNow = computeRouteFlightsAtTime(r, timeSeconds)
+      const isOrigin = r.isoA3 === iso3
+      const isDestination = r.isoB3 === iso3
 
-      // Higher traffic routes contribute a bit more (without exploding).
-      const trafficBoost = THREE.MathUtils.clamp(0.85 + (r.traffic - 0.62) * 0.25, 0.82, 1.05)
-
-      sum += r.trafficCount * activity * trafficBoost
+      if (isOrigin && isDestination) {
+        incoming += flightsNow * 0.5
+        outgoing += flightsNow * 0.5
+        continue
+      }
+      if (isDestination) {
+        incoming += flightsNow
+      }
+      if (isOrigin) {
+        outgoing += flightsNow
+      }
     }
 
-    return Math.max(0, Math.round(sum))
+    return {
+      incoming: Math.max(0, Math.round(incoming)),
+      outgoing: Math.max(0, Math.round(outgoing))
+    }
   }
 
   function getCountryFlightStats(iso3: string, timeSeconds: number): CountryFlightStats {
     const key = (iso3 || '').trim()
     const routeIds = key ? routesByCountry.get(key) ?? [] : []
-
-    const now = computeCountryFlightsAtTime(routeIds, timeSeconds)
-    const tenMinAgo = computeCountryFlightsAtTime(routeIds, timeSeconds - 600)
+    const nowBreakdown = computeCountryFlightsAtTime(routeIds, key, timeSeconds)
+    const tenMinAgoBreakdown = computeCountryFlightsAtTime(routeIds, key, timeSeconds - 600)
 
     return {
-      now,
-      tenMinAgo,
-      routes: routeIds.length
+      now: nowBreakdown.incoming + nowBreakdown.outgoing,
+      tenMinAgo: tenMinAgoBreakdown.incoming + tenMinAgoBreakdown.outgoing,
+      routes: routeIds.length,
+      incoming: nowBreakdown.incoming,
+      outgoing: nowBreakdown.outgoing
     }
   }
 
@@ -1382,13 +1442,13 @@ export function createFlightRoutes(
         setActiveLineLod('coarse')
       }
 
-      routeKeep = THREE.MathUtils.lerp(0.60, 1.0, zoom)
-      planeDensity = THREE.MathUtils.lerp(0.58, 1.0, zoom)
-      representationMix = THREE.MathUtils.smoothstep(zoomOut, 0.30, 0.92)
+      routeKeep = THREE.MathUtils.lerp(0.84, 1.0, zoom)
+      planeDensity = THREE.MathUtils.lerp(0.86, 1.0, zoom)
+      representationMix = THREE.MathUtils.smoothstep(zoomOut, 0.46, 0.98)
       altitudeLodMix = 1.0
     }
 
-    planeDensity = THREE.MathUtils.clamp(planeDensity * PLANE_DENSITY_SCALE, 0.28, 1.0)
+    planeDensity = THREE.MathUtils.clamp(planeDensity * PLANE_DENSITY_SCALE, 0.45, 1.0)
 
     lineMat.uniforms.uRouteKeep.value = routeKeep
     lineMat.uniforms.uAltitudeLodMix.value = altitudeLodMix
@@ -1436,14 +1496,14 @@ export function createFlightRoutes(
         0.02,
         0.5
       )
-      lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.42, 0.68, zoomOut) * hoverBoost * selectedBoost
-      lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.054, 0.088, zoomOut) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
+      lineMat.uniforms.uGlowAlpha.value = THREE.MathUtils.lerp(0.5, 0.82, zoomOut) * hoverBoost * selectedBoost
+      lineMat.uniforms.uBaseAlpha.value = THREE.MathUtils.lerp(0.064, 0.11, zoomOut) * THREE.MathUtils.lerp(1.0, 1.30, selectedMix)
       lineMat.uniforms.uHeadWidth.value = THREE.MathUtils.clamp(
         scaleThickness(THREE.MathUtils.lerp(0.024, 0.046, zoomOut) * selectedWidthBoost),
         0.004,
         0.1
       )
-      planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.24, 0.86, representationMix) * THREE.MathUtils.lerp(1.0, 1.18, Math.max(hoverMix, selectedMix))
+      planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.38, 0.94, representationMix) * THREE.MathUtils.lerp(1.0, 1.18, Math.max(hoverMix, selectedMix))
     }
   }
 
