@@ -21,6 +21,8 @@ let selectedBorderLineWidthHint = 1.8
 let activeFeatureStrokeScale = 1
 const SELECT_CORE_THICKNESS_PER_BORDER_WIDTH = 0.00084 / 1.8
 const SELECT_MIN_CORE_THICKNESS = 0.00072
+const SELECT_SHADOW_INNER_TO_CORE_RATIO = 3.1
+const SELECT_SHADOW_OUTER_TO_CORE_RATIO = 5.0
 const SELECT_GLOW_TO_CORE_RATIO = 1.04
 const selectedPalette = {
   a: new THREE.Color('#ffffff'),
@@ -49,6 +51,7 @@ const FRAG = /* glsl */ `
 precision mediump float;
 uniform float uTime;
 uniform float uOpacity;
+uniform float uShade;
 uniform vec3 uColorA;
 uniform vec3 uColorB;
 uniform vec3 uColorC;
@@ -67,7 +70,7 @@ void main() {
   float flow = vT + uTime * 0.06 + vSeed * 0.05;
   float hue = fract(flow);
   float shimmer = 0.75 + 0.25 * sin((flow + uTime * 0.18) * 6.2831);
-  vec3 color = googlePaletteSmooth(hue) * shimmer;
+  vec3 color = googlePaletteSmooth(hue) * shimmer * uShade;
   gl_FragColor = vec4(color, uOpacity);
 }
 `
@@ -79,16 +82,21 @@ function applySelectedPalette(mat: THREE.ShaderMaterial) {
   ;(mat.uniforms.uColorD.value as THREE.Color).copy(selectedPalette.d)
 }
 
-function createHighlightMaterial(opacity: number, thickness: number) {
+function createHighlightMaterial(
+  opacity: number,
+  thickness: number,
+  options: { blending?: THREE.Blending; shade?: number } = {}
+) {
   const mat = new THREE.ShaderMaterial({
     vertexShader: VERT,
     fragmentShader: FRAG,
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending: options.blending ?? THREE.AdditiveBlending,
     uniforms: {
       uTime: { value: 0 },
       uOpacity: { value: opacity },
+      uShade: { value: options.shade ?? 1 },
       uPulse: { value: 0 },
       uThickness: { value: thickness },
       uColorA: { value: selectedPalette.a.clone() },
@@ -111,8 +119,15 @@ function computeSelectedCoreThickness(strokeScale: number) {
   )
 }
 
-function applySelectedStrokeThickness(glowMat: THREE.ShaderMaterial, coreMat: THREE.ShaderMaterial) {
+function applySelectedStrokeThickness(
+  shadowOuterMat: THREE.ShaderMaterial,
+  shadowInnerMat: THREE.ShaderMaterial,
+  glowMat: THREE.ShaderMaterial,
+  coreMat: THREE.ShaderMaterial
+) {
   const coreThickness = computeSelectedCoreThickness(activeFeatureStrokeScale)
+  shadowOuterMat.uniforms.uThickness.value = coreThickness * SELECT_SHADOW_OUTER_TO_CORE_RATIO
+  shadowInnerMat.uniforms.uThickness.value = coreThickness * SELECT_SHADOW_INNER_TO_CORE_RATIO
   glowMat.uniforms.uThickness.value = coreThickness * SELECT_GLOW_TO_CORE_RATIO
   coreMat.uniforms.uThickness.value = coreThickness
 }
@@ -131,11 +146,19 @@ export function highlightCountryFromFeature(
   const geom = feature.geometry
   const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates]
 
-  // Two-pass render to fake thicker country outline in WebGL line rendering.
+  // Three-pass render: a soft backing shadow plus glow + core.
+  const shadowOuterMat = createHighlightMaterial(0.26, scaleThickness(0.0036), {
+    blending: THREE.NormalBlending,
+    shade: 0.12
+  })
+  const shadowInnerMat = createHighlightMaterial(0.42, scaleThickness(0.0025), {
+    blending: THREE.NormalBlending,
+    shade: 0.24
+  })
   const glowMat = createHighlightMaterial(0.64, scaleThickness(0.0009))
   const coreMat = createHighlightMaterial(1.0, scaleThickness(0.0005))
-  applySelectedStrokeThickness(glowMat, coreMat)
-  currentMats = [glowMat, coreMat]
+  applySelectedStrokeThickness(shadowOuterMat, shadowInnerMat, glowMat, coreMat)
+  currentMats = [shadowOuterMat, shadowInnerMat, glowMat, coreMat]
   pulsePhase = Math.random() * Math.PI * 2
 
   for (const poly of polys) {
@@ -159,12 +182,20 @@ export function highlightCountryFromFeature(
       lineGeomGlow.setAttribute('aT', new THREE.Float32BufferAttribute(tValues, 1))
       lineGeomGlow.setAttribute('aSeed', new THREE.Float32BufferAttribute(seedValues, 1))
 
+      const lineGeomShadowOuter = lineGeomGlow.clone()
+      const lineGeomShadowInner = lineGeomGlow.clone()
       const lineGeomCore = lineGeomGlow.clone()
+      const shadowOuterLine = new THREE.Line(lineGeomShadowOuter, shadowOuterMat)
+      const shadowInnerLine = new THREE.Line(lineGeomShadowInner, shadowInnerMat)
       const glowLine = new THREE.Line(lineGeomGlow, glowMat)
       const coreLine = new THREE.Line(lineGeomCore, coreMat)
+      shadowOuterLine.renderOrder = 8
+      shadowInnerLine.renderOrder = 9
       glowLine.renderOrder = 10
       coreLine.renderOrder = 11
 
+      group.add(shadowOuterLine)
+      group.add(shadowInnerLine)
       group.add(glowLine)
       group.add(coreLine)
     }
@@ -221,7 +252,7 @@ export function configureCountryHighlightPalette(theme: CountryHighlightPaletteT
 export function setSelectedBorderLineWidth(lineWidthHint: number) {
   if (!Number.isFinite(lineWidthHint)) return
   selectedBorderLineWidthHint = THREE.MathUtils.clamp(lineWidthHint, 0.35, 4)
-  if (currentMats.length >= 2) {
-    applySelectedStrokeThickness(currentMats[0], currentMats[1])
+  if (currentMats.length >= 4) {
+    applySelectedStrokeThickness(currentMats[0], currentMats[1], currentMats[2], currentMats[3])
   }
 }
