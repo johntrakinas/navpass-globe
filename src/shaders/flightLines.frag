@@ -40,12 +40,20 @@ void main() {
     head = 1.0 - head;
   }
 
-  // "behind" = 0 at head, increases along the tail.
-  float behind = head - vT;
-  if (behind < 0.0) behind += 1.0;
-
-  float tailMask = 1.0 - smoothstep(0.0, uTailLength, behind);
-  float headMask = 1.0 - smoothstep(0.0, uHeadWidth, behind);
+  // Open-route semantics:
+  // - tail exists only behind the aircraft
+  // - future path exists only between aircraft and destination
+  float tailDist = vDir < 0.0 ? (vT - head) : (head - vT);
+  float futureDist = vDir < 0.0 ? (head - vT) : (vT - head);
+  float tailMask =
+    step(0.0, tailDist) *
+    (1.0 - smoothstep(0.0, uTailLength, tailDist));
+  float headMask = 1.0 - smoothstep(0.0, uHeadWidth, abs(vT - head));
+  float traveledSpan = max(0.0001, vDir < 0.0 ? (1.0 - head) : head);
+  float traveledMask = vDir < 0.0 ? step(head, vT) : step(vT, head);
+  float traveledCoord = clamp((vDir < 0.0 ? (1.0 - vT) : vT) / traveledSpan, 0.0, 1.0);
+  float traveledFade = mix(0.26, 0.88, smoothstep(0.0, 1.0, traveledCoord));
+  float routeBodyMask = max(tailMask, traveledMask * traveledFade);
 
   float isHover = 1.0 - step(0.5, abs(vRouteId - uHoverRouteId));
   float isSel = 1.0 - step(0.5, abs(vRouteId - uSelectedRouteId));
@@ -55,23 +63,37 @@ void main() {
 
   // Keep the effect subtle when zoomed out.
   float zoom = clamp((32.0 - uCameraDistance) / 16.0, 0.0, 1.0);
-  float zoomFade = 0.55 + 0.45 * zoom;
   float zoomOut = 1.0 - zoom;
+  float zoomFade = 0.72 + 0.34 * zoomOut;
 
   float shimmer = 0.94 + 0.06 * sin(uTime * 3.0 + vSeed * 6.2831 + vT * 10.0);
 
   // Traffic heat: higher traffic becomes a touch warmer/brighter (subtle, not carnival).
   float traffic01 = clamp((vTraffic - 0.62) / (1.22 - 0.62), 0.0, 1.0);
 
-  float tailT = clamp(behind / max(0.0001, uTailLength), 0.0, 1.0);
+  float tailT = clamp(tailDist / max(0.0001, uTailLength), 0.0, 1.0);
   vec3 tailColor = mix(uHeadColor, uTailColor, tailT);
   // Direction cue: slightly cooler tint for reverse direction.
   tailColor = mix(tailColor, uBaseColor, step(0.0, -vDir) * 0.18);
 
-  vec3 color = mix(uBaseColor, tailColor, tailMask);
+  vec3 color = mix(uBaseColor, tailColor, routeBodyMask);
   // Stronger "head glint"
   color = mix(color, uAccentColor, headMask * 0.55);
+  color = mix(color, uHeadColor, tailMask * 0.18);
   color = mix(color, uTailColor, traffic01 * 0.16);
+
+  float destDist = vDir < 0.0 ? head : (1.0 - head);
+  float futureStart = smoothstep(uHeadWidth * 0.8, uHeadWidth * 1.8, futureDist);
+  float futureEnd = 1.0 - smoothstep(max(0.0, destDist - 0.06), max(0.01, destDist), futureDist);
+  float futureMask = step(0.0, futureDist) * futureStart * futureEnd;
+  float futureNorm = futureDist / max(0.0001, destDist);
+  float dashCoord = fract(futureNorm * 11.0 + 0.16);
+  float dashMask =
+    smoothstep(0.02, 0.18, dashCoord) *
+    (1.0 - smoothstep(0.42, 0.76, dashCoord));
+  float selectedDashMask = futureMask * dashMask * selectedEmph;
+  vec3 selectedDashColor = mix(uHeadColor, uAccentColor, 0.32);
+  color = mix(color, selectedDashColor, selectedDashMask * 0.78);
 
   // When a country is selected we keep routes connected to it and softly fade the rest.
   float focusKeep = mix(1.0, vFocus, uFocusMix);
@@ -115,7 +137,7 @@ void main() {
   keepMask *= altitudeKeep;
 
   float alpha =
-    (uBaseAlpha + tailMask * uGlowAlpha + headMask * uGlowAlpha * 0.65) *
+    (routeBodyMask * (uBaseAlpha * 0.86 + uGlowAlpha * 0.18) + tailMask * uGlowAlpha * 0.82 + headMask * uGlowAlpha * 0.62 + selectedDashMask * (uBaseAlpha * 0.95 + uGlowAlpha * 0.26)) *
     shimmer *
     zoomFade *
     focusFade *
@@ -130,7 +152,7 @@ void main() {
   bundleContext = mix(bundleContext, 1.0, emphasize);
   alpha *= bundleContext;
   // Particle representation becomes primary at zoom-out; keep only a soft line context.
-  alpha *= mix(1.0, 0.26, uRepresentationMix);
+  alpha *= mix(1.0, 0.46, uRepresentationMix);
 
   // Fade softly near the horizon so the depth mask occlusion feels natural.
   float limb = smoothstep(0.02, 0.18, vFacing);

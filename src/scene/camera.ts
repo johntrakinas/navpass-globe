@@ -55,34 +55,195 @@ function ensureStyles() {
     .panel-tooltip * { margin: 0; }
     .panel-tooltip { display: flex; flex-direction: column; width: 100%; background: #0d1c30; color: #fff; }
     .panel-tooltip-header { position: relative; display: flex; min-height: 162px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); overflow: hidden; }
-    .panel-tooltip-headcopy { flex: 1; padding: 58px 20px 18px; }
-    .panel-tooltip-title { font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1.05; letter-spacing: -0.7px; }
+    .panel-tooltip-headcopy { flex: 1; min-width: 0; padding: 58px 20px 18px; }
+    .panel-tooltip-title { font-family: "Optima","Times New Roman",serif; font-size: clamp(32px, 4vw, 42px); line-height: 1.05; letter-spacing: -0.7px; text-wrap: balance; }
     .panel-tooltip-live { margin-top: 8px; display: flex; align-items: center; gap: 8px; font: 13px/1.1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: rgba(255, 255, 255, 0.52); }
     .panel-tooltip-live-dot { width: 8px; height: 8px; border-radius: 999px; background: #ecb200; }
-    .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: rgba(255, 255, 255, 0.82); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; }
-    .panel-tooltip-flagbox { width: 122px; border-left: 1px solid rgba(255, 255, 255, 0.1); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: 80px auto; opacity: 0.95; }
+    .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: rgba(255, 255, 255, 0.82); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; z-index: 3; pointer-events: auto; }
+    .panel-tooltip--country { background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.12), transparent 42%), linear-gradient(180deg, #10233f, #0d1c30 66%); }
+    .panel-tooltip-header--country {
+      min-height: 220px;
+      display: block;
+      background-image:
+        linear-gradient(180deg, rgba(4, 10, 18, 0.12), rgba(4, 10, 18, 0.46) 42%, rgba(4, 10, 18, 0.92)),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 58%),
+        var(--country-flag-bg, linear-gradient(135deg, #18365b, #10233f));
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: cover;
+    }
+    .panel-tooltip-headcopy--country {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      min-height: 220px;
+      padding: 76px 22px 20px;
+      position: relative;
+      z-index: 1;
+    }
+    .panel-tooltip-country-topline {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .panel-tooltip--country .panel-tooltip-live {
+      display: inline-flex;
+      width: fit-content;
+      margin-top: 0;
+      padding: 7px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      background: rgba(7, 15, 26, 0.34);
+      color: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(10px);
+    }
+    .panel-tooltip-country-code {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 54px;
+      min-height: 32px;
+      padding: 0 12px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      background: rgba(7, 15, 26, 0.3);
+      color: rgba(255, 255, 255, 0.96);
+      font: 700 12px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      backdrop-filter: blur(10px);
+    }
+    .panel-tooltip-title--country {
+      margin-top: 16px;
+      max-width: 78%;
+      text-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+    }
+    .panel-tooltip-country-subtitle {
+      margin-top: 10px;
+      color: rgba(255, 255, 255, 0.72);
+      font: 13px/1.3 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .panel-tooltip--country .panel-tooltip-close {
+      left: 14px;
+      top: 14px;
+      width: 32px;
+      height: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      background: rgba(7, 15, 26, 0.32);
+      backdrop-filter: blur(10px);
+      font-size: 22px;
+    }
+    .panel-tooltip-flagbox { width: clamp(92px, 22vw, 122px); flex: 0 0 clamp(92px, 22vw, 122px); border-left: 1px solid rgba(255, 255, 255, 0.1); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: min(80px, 72%) auto; opacity: 0.95; }
     .panel-tooltip-flagbox--empty { background: rgba(255, 255, 255, 0.04); }
     .panel-tooltip-dual { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+    .panel-tooltip-primary { padding: 18px 20px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)); }
+    .panel-tooltip-primary-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
+    .panel-tooltip-primary-value { margin-top: 10px; font-family: "Optima","Times New Roman",serif; font-size: clamp(34px, 5vw, 52px); line-height: 0.95; color: #fff; word-break: break-word; }
+    .panel-tooltip-primary-sub { margin-top: 8px; font: 13px/1.3 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.38); }
     .panel-tooltip-stat { padding: 16px 18px 14px; }
     .panel-tooltip-stat:first-child { border-right: 1px solid rgba(255, 255, 255, 0.12); }
     .panel-tooltip-stat-label { font: 14px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
-    .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: #fff; }
+    .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: clamp(28px, 4.4vw, 42px); line-height: 1; color: #fff; }
     .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.32); }
-    .panel-tooltip-aircraft { border-bottom: 1px solid rgba(255, 255, 255, 0.12); padding: 16px 20px; }
-    .panel-tooltip-aircraft-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
-    .panel-tooltip-aircraft-value { margin-top: 8px; font: 20px/1.34 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.92); }
-    .panel-tooltip-footer { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: rgba(255, 255, 255, 0.05); }
+    .panel-tooltip--country .panel-tooltip-dual {
+      gap: 10px;
+      padding: 14px 14px 0;
+      border-bottom: 0;
+      background: transparent;
+    }
+    .panel-tooltip--country .panel-tooltip-stat {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    .panel-tooltip--country .panel-tooltip-stat:first-child {
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .panel-tooltip--country .panel-tooltip-stat-label {
+      color: rgba(255, 255, 255, 0.54);
+    }
+    .panel-tooltip--country .panel-tooltip-stat-sub {
+      color: rgba(255, 255, 255, 0.44);
+    }
     .panel-tooltip-total-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
-    .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: 42px; line-height: 1; color: #fff; }
-    .panel-tooltip-more { height: 50px; min-width: 120px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 16px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 20px; cursor: pointer; }
-    .panel-tooltip-more:hover { background: rgba(255, 255, 255, 0.16); }
-    .panel-tooltip-more:active { transform: translateY(1px); }
+    .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: clamp(32px, 4.6vw, 42px); line-height: 1; color: #fff; }
+    .panel-tooltip-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px 20px; background: rgba(255, 255, 255, 0.05); }
+    .panel-tooltip-footer-note { font: 13px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
+    .panel-tooltip-more { min-height: 44px; min-width: 110px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 14px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 18px; display: grid; place-items: center; text-transform: uppercase; letter-spacing: 0.9px; }
+    .panel-tooltip--country .panel-tooltip-footer {
+      margin: 14px;
+      margin-top: 12px;
+      padding: 16px 18px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    }
+    .panel-tooltip--country .panel-tooltip-total-label {
+      color: rgba(255, 255, 255, 0.5);
+    }
+    .panel-tooltip--country .panel-tooltip-more {
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+    }
     @media (max-width: 980px) {
-      #country-panel { right: 12px !important; bottom: 74px !important; width: calc(100vw - 24px); max-height: 70vh; }
+      #country-panel { right: 12px !important; bottom: 74px !important; width: min(420px, calc(100vw - 24px)); max-height: 72vh; }
+      .panel-tooltip-header { min-height: 148px; }
+      .panel-tooltip-headcopy { padding-top: 52px; }
+      .panel-tooltip-header--country { min-height: 208px; }
+      .panel-tooltip-headcopy--country { min-height: 208px; }
     }
     @media (max-width: 700px) {
-      .panel-tooltip-title, .panel-tooltip-stat-value, .panel-tooltip-total-value { font-size: 34px; }
-      .panel-tooltip-aircraft-value { font-size: 16px; }
+      #country-panel { right: 10px !important; bottom: 68px !important; width: calc(100vw - 20px); max-height: min(68vh, 520px); }
+      .panel-tooltip-header { min-height: 136px; }
+      .panel-tooltip-headcopy { padding: 50px 16px 16px; }
+      .panel-tooltip-live { gap: 6px; font-size: 11px; letter-spacing: 0.55px; }
+      .panel-tooltip-dual { grid-template-columns: 1fr; }
+      .panel-tooltip-stat { padding: 14px 16px; }
+      .panel-tooltip-stat:first-child { border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+      .panel-tooltip-stat-sub { font-size: 13px; }
+      .panel-tooltip-footer { padding: 12px 16px; }
+      .panel-tooltip-header--country { min-height: 156px; }
+      .panel-tooltip-headcopy--country { min-height: 156px; padding: 52px 16px 14px; }
+      .panel-tooltip-country-topline { gap: 8px; }
+      .panel-tooltip-title--country { max-width: 100%; margin-top: 10px; font-size: clamp(24px, 7vw, 30px); }
+      .panel-tooltip-country-subtitle { display: none; }
+      .panel-tooltip--country .panel-tooltip-dual { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px 10px 0; }
+      .panel-tooltip--country .panel-tooltip-stat { padding: 12px; border-radius: 14px; }
+      .panel-tooltip--country .panel-tooltip-stat:first-child { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+      .panel-tooltip--country .panel-tooltip-stat-label { font-size: 11px; letter-spacing: 1px; }
+      .panel-tooltip--country .panel-tooltip-stat-value { font-size: clamp(22px, 6vw, 28px); }
+      .panel-tooltip--country .panel-tooltip-stat-sub { margin-top: 4px; font-size: 11px; line-height: 1.15; }
+      .panel-tooltip--country .panel-tooltip-footer { margin: 10px; margin-top: 8px; padding: 12px 14px; }
+      .panel-tooltip--country .panel-tooltip-total-label { font-size: 11px; }
+      .panel-tooltip--country .panel-tooltip-total-value { font-size: clamp(24px, 6vw, 30px); }
+      .panel-tooltip--country .panel-tooltip-more { min-height: 36px; min-width: 84px; padding: 0 14px; font-size: 11px; }
+    }
+    @media (max-width: 520px) {
+      #country-panel { left: 12px !important; right: 12px !important; bottom: 64px !important; width: auto; max-height: min(62vh, 460px); }
+      .panel-tooltip-header { min-height: 0; flex-direction: column; }
+      .panel-tooltip-headcopy { padding: 44px 14px 14px; }
+      .panel-tooltip-flagbox { width: 100%; flex-basis: 76px; border-left: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); background-size: 72px auto; }
+      .panel-tooltip-stat { padding: 12px 14px; }
+      .panel-tooltip-primary-sub,
+      .panel-tooltip-stat-sub,
+      .panel-tooltip-footer-note { font-size: 12px; }
+      .panel-tooltip-header--country { min-height: 142px; flex-direction: column; }
+      .panel-tooltip-headcopy--country { min-height: 142px; padding: 48px 14px 12px; }
+      .panel-tooltip-country-topline { flex-wrap: wrap; }
+      .panel-tooltip-country-code { min-height: 28px; padding: 0 10px; font-size: 11px; }
+      .panel-tooltip--country .panel-tooltip-dual { padding: 8px 8px 0; gap: 6px; }
+      .panel-tooltip--country .panel-tooltip-stat { padding: 10px 10px 9px; }
+      .panel-tooltip--country .panel-tooltip-stat-label { font-size: 10px; }
+      .panel-tooltip--country .panel-tooltip-stat-value { font-size: 20px; }
+      .panel-tooltip--country .panel-tooltip-stat-sub { font-size: 10px; }
+      .panel-tooltip--country .panel-tooltip-footer { margin: 8px; margin-top: 6px; padding: 10px 12px; gap: 10px; }
+      .panel-tooltip--country .panel-tooltip-more { min-height: 32px; min-width: 72px; font-size: 10px; }
     }
   `
   document.head.appendChild(style)
@@ -145,34 +306,18 @@ function formatInt(value: number | null | undefined) {
   return Math.max(0, Math.round(value)).toLocaleString('en-US')
 }
 
-function splitValue(total: number | null | undefined, seed: number) {
-  if (typeof total !== 'number' || !Number.isFinite(total)) {
-    return { a: null, b: null }
-  }
-  const clamped = Math.max(0, Math.round(total))
-  const ratio = 0.46 + (seed % 9) * 0.01 // 0.46 .. 0.54
-  const a = Math.round(clamped * ratio)
-  const b = clamped - a
-  return { a, b }
-}
-
-function hashSeed(text: string) {
-  let seed = 0
-  for (let i = 0; i < text.length; i++) {
-    seed = (seed * 33 + text.charCodeAt(i)) >>> 0
-  }
-  return seed
-}
-
 type CountryFlightStats = {
   now: number
   tenMinAgo: number
   routes?: number
+  incoming?: number
+  outgoing?: number
 }
 
 export type CountryPanelMode = 'selected' | 'hover'
 
 type RouteHoverPanelData = {
+  flightName?: string
   from: string
   to: string
   distanceKm: number | null
@@ -210,77 +355,60 @@ export function showCountryPanel(
 
   const flightsNow = Number.isFinite(flights?.now) ? Number(flights?.now) : null
   const routesNow = Number.isFinite(flights?.routes) ? Number(flights?.routes) : null
+  const incomingFlights = Number.isFinite(flights?.incoming) ? Number(flights?.incoming) : null
+  const outgoingFlights = Number.isFinite(flights?.outgoing) ? Number(flights?.outgoing) : null
   const totalFlightsLabel = formatInt(flightsNow)
-
-  const seed = hashSeed(String(iso3))
-  const incomingFlights = splitValue(flightsNow, seed)
-  const outgoingFlights = { a: incomingFlights.b, b: incomingFlights.a }
-  const incomingRoutes = splitValue(routesNow, seed + 7)
-  const outgoingRoutes = { a: incomingRoutes.b, b: incomingRoutes.a }
-
-  const aircraftOperating =
-    props.AIRCRAFTS_OPERATING ||
-    props.AIRCRAFTS ||
-    props.AIRCRAFT_TYPES ||
-    'Airbus A320, Airbus A350, Boeing 777'
-
-  const incomingFlightsLabel = formatInt(incomingFlights.a)
-  const outgoingFlightsLabel = formatInt(outgoingFlights.a)
-  const incomingRoutesLabel = formatInt(incomingRoutes.a)
-  const outgoingRoutesLabel = formatInt(outgoingRoutes.a)
+  const incomingFlightsLabel = formatInt(incomingFlights)
+  const outgoingFlightsLabel = formatInt(outgoingFlights)
+  const routesNowLabel = formatInt(routesNow)
 
   const flagUrl =
     iso2 && typeof iso2 === 'string' && iso2.length === 2 && iso2 !== '-99'
       ? resolveFlagUrl(iso2)
       : ''
 
-  const flagBox = flagUrl
-    ? `<div class="panel-tooltip-flagbox" style="--flag-bg:url('${flagUrl}')"></div>`
-    : '<div class="panel-tooltip-flagbox panel-tooltip-flagbox--empty"></div>'
-
   const closeButton = isHoverMode
     ? ''
     : '<button type="button" class="panel-tooltip-close" aria-label="Close">×</button>'
   const liveLabel = isHoverMode ? 'HOVER PREVIEW' : 'LIVE MONITORING'
+  const countryCardStyle = flagUrl ? ` style="--country-flag-bg:url('${flagUrl}')"` : ''
 
   showPanel(`
-    <div class="panel-tooltip">
-      <div class="panel-tooltip-header">
+    <div class="panel-tooltip panel-tooltip--country"${countryCardStyle}>
+      <div class="panel-tooltip-header panel-tooltip-header--country">
         ${closeButton}
-        <div class="panel-tooltip-headcopy">
-          <div class="panel-tooltip-title">${escapeHtml(name)}</div>
-          <div class="panel-tooltip-live">
-            <span class="panel-tooltip-live-dot"></span>
-            <span>${liveLabel}</span>
+        <div class="panel-tooltip-headcopy panel-tooltip-headcopy--country">
+          <div class="panel-tooltip-country-topline">
+            <div class="panel-tooltip-live">
+              <span class="panel-tooltip-live-dot"></span>
+              <span>${liveLabel}</span>
+            </div>
+            <div class="panel-tooltip-country-code">${escapeHtml(String(iso3))}</div>
           </div>
+          <div class="panel-tooltip-title panel-tooltip-title--country">${escapeHtml(name)}</div>
+          <div class="panel-tooltip-country-subtitle">Flag-layered header with live traffic summary</div>
         </div>
-        ${flagBox}
       </div>
 
       <div class="panel-tooltip-dual">
         <div class="panel-tooltip-stat">
-          <div class="panel-tooltip-stat-label">↙ INCOMING</div>
+          <div class="panel-tooltip-stat-label">Incoming</div>
           <div class="panel-tooltip-stat-value">${escapeHtml(incomingFlightsLabel)}</div>
-          <div class="panel-tooltip-stat-sub">${escapeHtml(incomingRoutesLabel)} Routes Active</div>
+          <div class="panel-tooltip-stat-sub">${escapeHtml(routesNowLabel)} Routes Active</div>
         </div>
         <div class="panel-tooltip-stat">
-          <div class="panel-tooltip-stat-label">↗ OUTGOING</div>
+          <div class="panel-tooltip-stat-label">Outgoing</div>
           <div class="panel-tooltip-stat-value">${escapeHtml(outgoingFlightsLabel)}</div>
-          <div class="panel-tooltip-stat-sub">${escapeHtml(outgoingRoutesLabel)} Routes Active</div>
+          <div class="panel-tooltip-stat-sub">Flights departing now</div>
         </div>
-      </div>
-
-      <div class="panel-tooltip-aircraft">
-        <div class="panel-tooltip-aircraft-label">✈ AIRCRAFTS OPERATING</div>
-        <div class="panel-tooltip-aircraft-value">${escapeHtml(String(aircraftOperating))}</div>
       </div>
 
       <div class="panel-tooltip-footer">
         <div class="panel-tooltip-total">
-          <div class="panel-tooltip-total-label">TOTAL FLIGHTS</div>
+          <div class="panel-tooltip-total-label">TOTAL FLIGHTS OVER COUNTRY</div>
           <div class="panel-tooltip-total-value">${escapeHtml(totalFlightsLabel)}</div>
         </div>
-        <button type="button" class="panel-tooltip-more">Learn More</button>
+        <div class="panel-tooltip-more">${escapeHtml(isHoverMode ? 'Preview' : String(iso3))}</div>
       </div>
     </div>
   `)
@@ -288,13 +416,16 @@ export function showCountryPanel(
   if (!isHoverMode) {
     const panel = getOrCreatePanel()
     const closeButtonEl = panel.querySelector('.panel-tooltip-close') as HTMLButtonElement | null
-    closeButtonEl?.addEventListener('click', () => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    closeButtonEl?.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      window.dispatchEvent(new CustomEvent('navpass:close-country-panel'))
     })
   }
 }
 
 export function showRouteHoverPanel(data: RouteHoverPanelData) {
+  const flightName = escapeHtml(data.flightName || 'Tracked Flight')
   const from = escapeHtml(data.from || 'Origin')
   const to = escapeHtml(data.to || 'Destination')
   const distanceText =
@@ -310,10 +441,10 @@ export function showRouteHoverPanel(data: RouteHoverPanelData) {
     <div class="panel-tooltip">
       <div class="panel-tooltip-header">
         <div class="panel-tooltip-headcopy">
-          <div class="panel-tooltip-title">${from} → ${to}</div>
+          <div class="panel-tooltip-title">${flightName}</div>
           <div class="panel-tooltip-live">
             <span class="panel-tooltip-live-dot"></span>
-            <span>HOVER PREVIEW</span>
+            <span>Hover Preview</span>
           </div>
         </div>
         <div class="panel-tooltip-flagbox panel-tooltip-flagbox--empty"></div>
@@ -332,17 +463,15 @@ export function showRouteHoverPanel(data: RouteHoverPanelData) {
         </div>
       </div>
 
-      <div class="panel-tooltip-aircraft">
-        <div class="panel-tooltip-aircraft-label">↔ ROUTE</div>
-        <div class="panel-tooltip-aircraft-value">${from} → ${to}</div>
+      <div class="panel-tooltip-primary">
+        <div class="panel-tooltip-primary-label">Route</div>
+        <div class="panel-tooltip-primary-value">${from} → ${to}</div>
+        <div class="panel-tooltip-primary-sub">Synthetic flight path</div>
       </div>
 
       <div class="panel-tooltip-footer">
-        <div class="panel-tooltip-total">
-          <div class="panel-tooltip-total-label">STATUS</div>
-          <div class="panel-tooltip-total-value">TRACKED</div>
-        </div>
-        <button type="button" class="panel-tooltip-more" aria-label="Route preview">Hovering</button>
+        <div class="panel-tooltip-footer-note">Status</div>
+        <div class="panel-tooltip-footer-note">Tracked</div>
       </div>
     </div>
   `)

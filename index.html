@@ -60,47 +60,192 @@
         top: 20px;
         z-index: 5;
         display: none;
-        align-items: center;
+        flex-direction: column;
+        align-items: stretch;
         gap: 8px;
         pointer-events: auto;
-        padding: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(5, 16, 35, 0.48);
+        width: min(320px, calc(100vw - 24px));
+        padding: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 18px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+          rgba(5, 16, 35, 0.72);
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 20px 44px -18px rgba(0, 0, 0, 0.58),
+          inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      }
+
+      #country-search-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 2px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        background: rgba(7, 17, 31, 0.38);
       }
 
       #country-search-input {
-        width: min(250px, 52vw);
-        height: 30px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        width: 100%;
+        height: 34px;
+        border: 1px solid transparent;
+        border-radius: 11px;
         background: rgba(9, 19, 32, 0.92);
         color: rgba(255, 255, 255, 0.92);
-        padding: 0 10px;
+        padding: 0 12px;
         font: 500 12px "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        letter-spacing: 0.2px;
+        letter-spacing: 0.22px;
+        transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
       }
 
       #country-search-input::placeholder {
         color: rgba(255, 255, 255, 0.52);
       }
 
+      #country-search-input:focus {
+        outline: none;
+        border-color: rgba(255, 255, 255, 0.18);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+
       #country-search-button {
-        height: 30px;
-        border: 1px solid rgba(255, 255, 255, 0.24);
-        background: rgba(18, 38, 64, 0.9);
+        height: 34px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 11px;
+        background: linear-gradient(135deg, rgba(21, 46, 77, 0.98), rgba(29, 67, 112, 0.92));
         color: rgba(255, 255, 255, 0.9);
-        padding: 0 12px;
+        padding: 0 14px;
         font: 600 12px "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
         cursor: pointer;
-        transition: border-color 220ms ease, background 220ms ease;
+        transition: border-color 220ms ease, background 220ms ease, transform 220ms ease;
       }
 
       #country-search-button:hover {
-        border-color: rgba(255, 255, 255, 0.44);
-        background: rgba(26, 57, 96, 0.9);
+        border-color: rgba(255, 255, 255, 0.28);
+        background: linear-gradient(135deg, rgba(26, 57, 96, 0.98), rgba(39, 83, 136, 0.94));
+      }
+
+      #country-search-button:active {
+        transform: translateY(1px);
       }
 
       #country-search.is-invalid #country-search-input {
         border-color: rgba(255, 196, 0, 0.95);
+      }
+
+      #country-search-results {
+        display: none;
+        max-height: 220px;
+        overflow: auto;
+        padding: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)),
+          rgba(8, 18, 33, 0.94);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+
+      #country-search-results::-webkit-scrollbar {
+        width: 10px;
+      }
+
+      #country-search-results::-webkit-scrollbar-thumb {
+        border: 2px solid transparent;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        background-clip: padding-box;
+      }
+
+      #country-search.has-results #country-search-results {
+        display: grid;
+        gap: 4px;
+      }
+
+      .country-search-option {
+        width: 100%;
+        border: 0;
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
+        color: rgba(255, 255, 255, 0.92);
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        text-align: left;
+        cursor: pointer;
+        transition: background 180ms ease, color 180ms ease, transform 180ms ease, border-color 180ms ease;
+        border: 1px solid transparent;
+      }
+
+      .country-search-option:hover,
+      .country-search-option.is-active {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+        color: rgba(255, 255, 255, 0.98);
+        border-color: rgba(255, 255, 255, 0.1);
+        transform: translateX(2px);
+      }
+
+      .country-search-option:active {
+        transform: translateY(1px);
+      }
+
+      .country-search-option-flag {
+        width: 28px;
+        height: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: cover;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+      }
+
+      .country-search-option-flag--empty {
+        background:
+          radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.16), transparent 45%),
+          rgba(255, 255, 255, 0.05);
+      }
+
+      .country-search-option-main {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      .country-search-option-label {
+        font: 600 12px/1.2 "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        letter-spacing: 0.18px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .country-search-option-meta {
+        font: 11px/1.1 "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.52);
+      }
+
+      .country-search-option-code {
+        flex: 0 0 auto;
+        min-width: 44px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        padding: 4px 8px;
+        font: 700 10px/1 "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.78);
+        background: rgba(255, 255, 255, 0.05);
+        text-align: center;
       }
 
       @media (max-width: 720px) {
@@ -109,10 +254,11 @@
           right: 12px;
           top: 12px;
           left: 12px;
+          width: auto;
+          padding: 8px;
         }
-        #country-search-input {
-          width: 100%;
-          min-width: 0;
+        #country-search-button {
+          flex: 0 0 auto;
         }
       }
     </style>
@@ -120,9 +266,11 @@
   <body>
     <div id="app"></div>
     <form id="country-search" role="search" aria-label="Country search">
-      <input id="country-search-input" type="search" list="country-search-list" placeholder="Search country or ISO code" />
-      <button id="country-search-button" type="submit">Search</button>
-      <datalist id="country-search-list"></datalist>
+      <div id="country-search-controls">
+        <input id="country-search-input" type="search" autocomplete="off" placeholder="Search country or ISO code" />
+        <button id="country-search-button" type="submit">Search</button>
+      </div>
+      <div id="country-search-results" role="listbox" aria-label="Country suggestions"></div>
     </form>
     <aside id="left-rail" aria-label="Zoom controls">
       <button id="rail-zoom-in" type="button" class="rail-button" aria-label="Zoom in">+</button>
