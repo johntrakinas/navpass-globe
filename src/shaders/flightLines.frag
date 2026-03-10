@@ -99,7 +99,7 @@ void main() {
   float focusKeep = mix(1.0, vFocus, uFocusMix);
   // Hover/selected routes always stay readable, even during focus fade.
   focusKeep = mix(focusKeep, 1.0, emphasize);
-  float focusFade = mix(0.08, 1.0, focusKeep);
+  float focusFade = mix(0.0, 1.0, focusKeep);
   float focusBoost = mix(1.0, 1.12, vFocus * uFocusMix);
   color = mix(color, uTailColor, (1.0 - focusKeep) * uFocusMix * 0.08);
 

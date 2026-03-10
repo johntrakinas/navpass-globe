@@ -151,6 +151,50 @@ type ResolvedGlobeTheme = {
   highlights: GlobeHighlightTheme
 }
 
+type EnrichedFlightsFile = {
+  flights?: Array<{
+    id?: string | number
+    cs?: string
+    orig?: string
+    dest?: string
+    reg?: string
+    type?: string
+    air?: string
+    olat: number
+    olon: number
+    dlat: number
+    dlon: number
+    path?: Array<[number, number]>
+    snap_lat?: number
+    snap_lon?: number
+    snap_alt?: number
+  }>
+  airports?: Record<string, {
+    code?: string
+    icao?: string
+    iata?: string
+    name?: string
+    lat?: number
+    lon?: number
+    elev?: number
+    city?: string
+    kind?: string
+    country?: string
+  }>
+  country_stats?: Record<string, {
+    in_air?: number
+    arr?: number
+    dep?: number
+    dom?: number
+    over?: number
+    day_total?: number
+    day_arr?: number
+    day_dep?: number
+    day_dom?: number
+    day_over?: number
+  }>
+}
+
 function mixColor(
   a: THREE.ColorRepresentation,
   b: THREE.ColorRepresentation,
@@ -329,20 +373,18 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   const SHOW_NIGHT_LIGHTS = false
   const disableScrollZoom = options.disableScrollZoom === true
   const requestedRouteCount = Number(options.routeCount)
-  const FLIGHT_ROUTE_TARGET = THREE.MathUtils.clamp(
-    Number.isFinite(requestedRouteCount) ? Math.round(requestedRouteCount) : 220,
-    40,
-    1500
-  )
+  const FLIGHT_ROUTE_TARGET = Number.isFinite(requestedRouteCount)
+    ? THREE.MathUtils.clamp(Math.round(requestedRouteCount), 1, 30000)
+    : null
   const requestedPlanesPerRoute = Number(options.planesPerRoute)
   const FLIGHT_PLANES_PER_ROUTE = THREE.MathUtils.clamp(
-    Number.isFinite(requestedPlanesPerRoute) ? Math.round(requestedPlanesPerRoute) : 3,
+    Number.isFinite(requestedPlanesPerRoute) ? Math.round(requestedPlanesPerRoute) : 1,
     1,
     8
   )
   const requestedPlaneDensityScale = Number(options.planeDensityScale)
   const FLIGHT_PLANE_DENSITY_SCALE = THREE.MathUtils.clamp(
-    Number.isFinite(requestedPlaneDensityScale) ? requestedPlaneDensityScale : 0.62,
+    Number.isFinite(requestedPlaneDensityScale) ? requestedPlaneDensityScale : 1.0,
     0.2,
     2.5
   )
@@ -1515,17 +1557,19 @@ function showFlightTooltip(routeId: number, x: number, y: number) {
   const isForward = Number(info.dir) >= 0
   const from = compactAirportName(isForward ? info.fromName : info.toName)
   const to = compactAirportName(isForward ? info.toName : info.fromName)
-  const flightName = String(info.flightName || `${from}-${to}`)
+  const flightName = String(info.callsign || info.flightName || `${from}-${to}`)
   const distanceKm = Number(info.distanceKm)
   const kmText = Number.isFinite(distanceKm) ? `${Math.round(distanceKm).toLocaleString('en-US')} km` : '— km'
-  const trafficCount = Number(info.trafficCount)
-  const trafficClamped = Number.isFinite(trafficCount) ? Math.max(1, Math.min(3, Math.round(trafficCount))) : NaN
-  const trafficText = Number.isFinite(trafficClamped) ? `Traffic ${trafficClamped}/3` : 'Traffic —/3'
+  const metaParts = [
+    String(info.aircraftType || '').trim(),
+    String(info.airline || '').trim(),
+    kmText
+  ].filter(part => part.length > 0)
 
   const html = `
     <div style="display:flex;flex-direction:column;gap:2px;min-width:160px;">
       <div style="font-size:12px;line-height:1.1;">${escapeHtml(from)} → ${escapeHtml(to)}</div>
-      <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(flightName)} • ${escapeHtml(kmText)} • ${escapeHtml(trafficText)}</div>
+      <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml([flightName, ...metaParts].join(' • '))}</div>
     </div>
   `
   tooltip.showHTML(html, x, y)
@@ -1568,21 +1612,15 @@ function selectFlightRoute(routeId: number, clientX: number, clientY: number) {
 }
 
 function setHoverRouteCouplingCountry(iso3: string | null) {
-  if (!flightRoutes) return
   if (isCountrySelected || selectedFlightRouteId !== null) return
   const normalized = iso3 && iso3 !== '-99' ? iso3 : null
   if (hoveredCountryRouteFocusIso3 === normalized) return
   hoveredCountryRouteFocusIso3 = normalized
-  flightRoutes.setFocusCountry(normalized)
 }
 
 function clearHoverRouteCouplingCountry() {
-  if (!flightRoutes) return
   if (hoveredCountryRouteFocusIso3 === null) return
   hoveredCountryRouteFocusIso3 = null
-  if (!isCountrySelected && selectedFlightRouteId === null) {
-    flightRoutes.setFocusCountry(null)
-  }
 }
 
 function getFlightHit(clientX: number, clientY: number, lineThreshold = FLIGHT_CLICK_THRESHOLD) {
@@ -1687,7 +1725,7 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   flightRoutes?.setSelectedRoute(null)
   flightRoutes?.setHoverRoute(null)
   setPinnedFlightRoute(null)
-  flightRoutes?.setFocusCountry(null)
+  flightRoutes?.setFocusCountry(iso3 || null)
   const spanDeg = estimateCountrySpanDeg(feature)
   velYaw = 0
   velPitch = 0
@@ -2057,11 +2095,25 @@ async function init() {
   latLonGrid = createAdaptiveLatLonGrid(GLOBE_RADIUS, camera)
   globeGroup.add(latLonGrid.group)
 
-  const baseAirports = await fetch(resolveAssetPath('data/airports_points.json')).then(r => r.json())
-  const denseAirports = inflateAirportsDataset(baseAirports, countriesGeoJSON, {
-    targetCount: SYNTHETIC_AIRPORT_TARGET,
-    minSpacingDeg: AIRPORT_MIN_SPACING_DEG
-  })
+  const [baseAirports, enrichedFlightsRaw] = await Promise.all([
+    fetch(resolveAssetPath('data/airports_points.json')).then(r => r.json()),
+    fetch(resolveAssetPath('data/flights_enriched.json')).then(r => r.json() as Promise<EnrichedFlightsFile>)
+  ])
+  const denseAirports = SHOW_NIGHT_LIGHTS
+    ? inflateAirportsDataset(baseAirports, countriesGeoJSON, {
+        targetCount: SYNTHETIC_AIRPORT_TARGET,
+        minSpacingDeg: AIRPORT_MIN_SPACING_DEG
+      })
+    : []
+  const enrichedFlights = Array.isArray(enrichedFlightsRaw?.flights) ? enrichedFlightsRaw.flights : []
+  const enrichedAirports =
+    enrichedFlightsRaw?.airports && typeof enrichedFlightsRaw.airports === 'object'
+      ? enrichedFlightsRaw.airports
+      : null
+  const enrichedCountryStats =
+    enrichedFlightsRaw?.country_stats && typeof enrichedFlightsRaw.country_stats === 'object'
+      ? enrichedFlightsRaw.country_stats
+      : null
   const airportPointData = Array.isArray(baseAirports) ? baseAirports : []
   const baseCount = Array.isArray(baseAirports) ? baseAirports.length : 0
   console.info(
@@ -2081,13 +2133,18 @@ async function init() {
     nightLights = null
   }
 
-  flightRoutes = createFlightRoutes(denseAirports, GLOBE_RADIUS, countriesGeoJSON, {
-    routeCount: FLIGHT_ROUTE_TARGET,
+  flightRoutes = createFlightRoutes({
+    flights: enrichedFlights,
+    airportLookup: enrichedAirports,
+    countryStats: enrichedCountryStats
+  }, GLOBE_RADIUS, countriesGeoJSON, {
+    routeCount: FLIGHT_ROUTE_TARGET ?? undefined,
     planesPerRoute: FLIGHT_PLANES_PER_ROUTE,
-    planeDensityScale: FLIGHT_PLANE_DENSITY_SCALE
+    planeDensityScale: FLIGHT_PLANE_DENSITY_SCALE,
+    currentTimeSeconds: performance.now() * 0.001
   })
   console.info(
-    `[flights] route_target=${FLIGHT_ROUTE_TARGET} planes_per_route=${FLIGHT_PLANES_PER_ROUTE} plane_density_scale=${FLIGHT_PLANE_DENSITY_SCALE.toFixed(2)} source_airports=${denseAirports.length}`
+    `[flights] source=flights_enriched.json source_flights=${enrichedFlights.length} route_target=${FLIGHT_ROUTE_TARGET ?? 'all'} planes_per_route=${FLIGHT_PLANES_PER_ROUTE} plane_density_scale=${FLIGHT_PLANE_DENSITY_SCALE.toFixed(2)} country_stats=${enrichedCountryStats ? Object.keys(enrichedCountryStats).length : 0}`
   )
   globeGroup.add(flightRoutes.group)
   applyFlightVisualization(initialFlightVisualizationMode)

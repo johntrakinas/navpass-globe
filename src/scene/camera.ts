@@ -312,6 +312,10 @@ type CountryFlightStats = {
   routes?: number
   incoming?: number
   outgoing?: number
+  dayTotal?: number
+  dayIncoming?: number
+  dayOutgoing?: number
+  over?: number
 }
 
 export type CountryPanelMode = 'selected' | 'hover'
@@ -357,10 +361,14 @@ export function showCountryPanel(
   const routesNow = Number.isFinite(flights?.routes) ? Number(flights?.routes) : null
   const incomingFlights = Number.isFinite(flights?.incoming) ? Number(flights?.incoming) : null
   const outgoingFlights = Number.isFinite(flights?.outgoing) ? Number(flights?.outgoing) : null
+  const dayTotalFlights = Number.isFinite(flights?.dayTotal) ? Number(flights?.dayTotal) : null
+  const overFlights = Number.isFinite(flights?.over) ? Number(flights?.over) : null
   const totalFlightsLabel = formatInt(flightsNow)
   const incomingFlightsLabel = formatInt(incomingFlights)
   const outgoingFlightsLabel = formatInt(outgoingFlights)
   const routesNowLabel = formatInt(routesNow)
+  const dayTotalFlightsLabel = formatInt(dayTotalFlights)
+  const overFlightsLabel = formatInt(overFlights)
 
   const flagUrl =
     iso2 && typeof iso2 === 'string' && iso2.length === 2 && iso2 !== '-99'
@@ -394,12 +402,20 @@ export function showCountryPanel(
         <div class="panel-tooltip-stat">
           <div class="panel-tooltip-stat-label">Incoming</div>
           <div class="panel-tooltip-stat-value">${escapeHtml(incomingFlightsLabel)}</div>
-          <div class="panel-tooltip-stat-sub">${escapeHtml(routesNowLabel)} Routes Active</div>
+          <div class="panel-tooltip-stat-sub">${
+            dayTotalFlights !== null
+              ? `${escapeHtml(dayTotalFlightsLabel)} in 24h`
+              : `${escapeHtml(routesNowLabel)} Routes Active`
+          }</div>
         </div>
         <div class="panel-tooltip-stat">
           <div class="panel-tooltip-stat-label">Outgoing</div>
           <div class="panel-tooltip-stat-value">${escapeHtml(outgoingFlightsLabel)}</div>
-          <div class="panel-tooltip-stat-sub">Flights departing now</div>
+          <div class="panel-tooltip-stat-sub">${
+            overFlights !== null
+              ? `${escapeHtml(overFlightsLabel)} overflying now`
+              : 'Flights departing now'
+          }</div>
         </div>
       </div>
 

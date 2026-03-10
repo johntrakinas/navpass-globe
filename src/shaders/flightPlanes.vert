@@ -4,6 +4,7 @@ attribute vec3 aP0;
 attribute vec3 aP1;
 attribute vec3 aP2;
 attribute float aAltitude;
+attribute vec2 aFocusRoute;
 
 attribute vec4 aAnimA; // speed, phase, offset, dir
 attribute vec4 aAnimB; // size, seed, traffic, enable
@@ -56,9 +57,8 @@ void main() {
   vSeed = aSeed;
   vTraffic = aTraffic;
   vEnable = aEnable;
-  // Plane sprites are decorative; lines carry the precise route focus/selection state.
-  vFocus = 1.0;
-  vRouteId = -999.0;
+  vFocus = aFocusRoute.x;
+  vRouteId = aFocusRoute.y;
   vDir = aDir;
   vHub = aTraffic;
   vEmph = 0.0;

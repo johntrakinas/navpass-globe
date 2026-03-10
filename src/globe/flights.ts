@@ -24,6 +24,58 @@ type Airport = {
   longitude: number
 }
 
+type EnrichedFlightRecord = {
+  id?: string | number
+  cs?: string
+  orig?: string
+  dest?: string
+  reg?: string
+  type?: string
+  air?: string
+  olat: number
+  olon: number
+  dlat: number
+  dlon: number
+  path?: Array<[number, number]>
+  snap_lat?: number
+  snap_lon?: number
+  snap_alt?: number
+}
+
+type EnrichedAirportMeta = {
+  code?: string
+  icao?: string
+  iata?: string
+  name?: string
+  lat?: number
+  lon?: number
+  elev?: number
+  city?: string
+  kind?: string
+  country?: string
+}
+
+type EnrichedCountryStats = {
+  in_air?: number
+  arr?: number
+  dep?: number
+  dom?: number
+  over?: number
+  day_total?: number
+  day_arr?: number
+  day_dep?: number
+  day_dom?: number
+  day_over?: number
+}
+
+type FlightRoutesSource =
+  | Airport[]
+  | {
+      flights: EnrichedFlightRecord[]
+      airportLookup?: Record<string, EnrichedAirportMeta> | null
+      countryStats?: Record<string, EnrichedCountryStats> | null
+    }
+
 type Route = {
   id: number
   p0x: number
@@ -54,6 +106,12 @@ type Route = {
   toLon: number
   isoA3: string
   isoB3: string
+  countryIso3List: string[]
+  callsign: string
+  airline: string
+  aircraftType: string
+  registration: string
+  sourceMode: 'synthetic' | 'enriched'
 }
 
 type CountryFlightStats = {
@@ -62,6 +120,10 @@ type CountryFlightStats = {
   routes: number
   incoming: number
   outgoing: number
+  dayTotal?: number
+  dayIncoming?: number
+  dayOutgoing?: number
+  over?: number
 }
 
 export type FlightRouteMaterials = {
@@ -79,6 +141,7 @@ export type CreateFlightRoutesOptions = {
   routeCount?: number
   planesPerRoute?: number
   planeDensityScale?: number
+  currentTimeSeconds?: number
 }
 
 export type FlightRoutesLayer = {
@@ -125,7 +188,7 @@ function buildGaussianKernel(radius: number, sigma: number): KernelTap[] {
 function buildFlightHeatmapTexture(routeData: Route[], width: number, height: number) {
   const heat = new Float32Array(width * height)
   const kernel = buildGaussianKernel(4, 2.15)
-  const samplesPerRoute = 84
+  const samplesPerRoute = routeData.length > 12000 ? 24 : routeData.length > 5000 ? 42 : 84
   const tmp = new THREE.Vector3()
 
   for (let i = 0; i < routeData.length; i++) {
@@ -488,33 +551,231 @@ function buildFlightName(fromName: string, toName: string) {
   return `${compactFlightToken(fromName)}-${compactFlightToken(toName)}`
 }
 
+function normalizeCountryKey(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function getCountryNameAliases(name: string) {
+  const key = normalizeCountryKey(name)
+  const out = new Set<string>([key])
+
+  if (key === 'united states of america') out.add('united states')
+  if (key === 'united states') out.add('united states of america')
+  if (key === 'russian federation') out.add('russia')
+  if (key === 'russia') out.add('russian federation')
+  if (key === 'ivory coast') out.add('cote d ivoire')
+  if (key === 'cote d ivoire') out.add('ivory coast')
+  if (key === 'czech republic') out.add('czechia')
+  if (key === 'czechia') out.add('czech republic')
+  if (key === 'republic of korea') out.add('south korea')
+  if (key === 'south korea') out.add('republic of korea')
+  if (key === 'dem rep korea') out.add('north korea')
+  if (key === 'north korea') out.add('dem rep korea')
+  if (key === 'republic of the congo') out.add('congo')
+  if (key === 'congo') out.add('republic of the congo')
+  if (key === 'democratic republic of the congo') out.add('dem rep congo')
+  if (key === 'dem rep congo') out.add('democratic republic of the congo')
+  if (key === 'turkiye') out.add('turkey')
+  if (key === 'turkey') out.add('turkiye')
+  if (key === 'myanmar') out.add('burma')
+  if (key === 'burma') out.add('myanmar')
+
+  return [...out]
+}
+
+function hashString01(value: string) {
+  let hash = 2166136261
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0) / 4294967295
+}
+
+function isEnrichedFlightSource(source: FlightRoutesSource): source is Exclude<FlightRoutesSource, Airport[]> {
+  return !Array.isArray(source)
+}
+
+function isFiniteFlightRecord(flight: EnrichedFlightRecord) {
+  const coords = [flight.olat, flight.olon, flight.dlat, flight.dlon].map(Number)
+  return (
+    coords.every(Number.isFinite) &&
+    Math.abs(coords[0]) <= 90 &&
+    Math.abs(coords[1]) <= 180 &&
+    Math.abs(coords[2]) <= 90 &&
+    Math.abs(coords[3]) <= 180
+  )
+}
+
+function flightAirportKey(code: string | undefined, lat: number, lon: number, role: 'orig' | 'dest') {
+  const normalized = String(code || '').trim().toUpperCase()
+  if (normalized) return normalized
+  return `${role}:${lat.toFixed(3)},${lon.toFixed(3)}`
+}
+
+function resolveAirportDisplayName(
+  code: string | undefined,
+  airportLookup?: Record<string, EnrichedAirportMeta> | null,
+  fallback = 'Airport'
+) {
+  const normalized = String(code || '').trim().toUpperCase()
+  const meta = normalized ? airportLookup?.[normalized] : null
+  return String(meta?.name || normalized || fallback)
+}
+
+function estimatePathProgress(path: EnrichedFlightRecord['path'], snapLat: number, snapLon: number) {
+  if (!Array.isArray(path) || path.length < 2) return null
+  if (!Number.isFinite(snapLat) || !Number.isFinite(snapLon)) return null
+
+  const cleaned: Array<{ lat: number; lon: number }> = []
+  for (let i = 0; i < path.length; i++) {
+    const point = path[i]
+    const lon = Number(point?.[0])
+    const lat = Number(point?.[1])
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
+    cleaned.push({ lat, lon })
+  }
+  if (cleaned.length < 2) return null
+
+  const cumulative = new Float32Array(cleaned.length)
+  let total = 0
+  for (let i = 1; i < cleaned.length; i++) {
+    total += haversineKm(cleaned[i - 1].lat, cleaned[i - 1].lon, cleaned[i].lat, cleaned[i].lon)
+    cumulative[i] = total
+  }
+  if (total <= 1e-3) return null
+
+  let bestIdx = 0
+  let bestDist = Infinity
+  for (let i = 0; i < cleaned.length; i++) {
+    const d = haversineKm(cleaned[i].lat, cleaned[i].lon, snapLat, snapLon)
+    if (d < bestDist) {
+      bestDist = d
+      bestIdx = i
+    }
+  }
+
+  return THREE.MathUtils.clamp(cumulative[bestIdx] / total, 0, 1)
+}
+
+function estimateFlightProgress(flight: EnrichedFlightRecord) {
+  const pathProgress = estimatePathProgress(
+    flight.path,
+    Number(flight.snap_lat),
+    Number(flight.snap_lon)
+  )
+  if (typeof pathProgress === 'number' && Number.isFinite(pathProgress)) {
+    return THREE.MathUtils.clamp(pathProgress, 0.01, 0.99)
+  }
+
+  const totalKm = haversineKm(Number(flight.olat), Number(flight.olon), Number(flight.dlat), Number(flight.dlon))
+  if (!Number.isFinite(totalKm) || totalKm <= 1e-3) return 0.0
+
+  const snapLat = Number(flight.snap_lat)
+  const snapLon = Number(flight.snap_lon)
+  if (Number.isFinite(snapLat) && Number.isFinite(snapLon)) {
+    const flownKm = haversineKm(Number(flight.olat), Number(flight.olon), snapLat, snapLon)
+    return THREE.MathUtils.clamp(flownKm / totalKm, 0.01, 0.99)
+  }
+
+  return 0.0
+}
+
+function buildCountryIsoLookup(countriesGeoJSON: any) {
+  const out = new Map<string, string>()
+  for (const feature of countriesGeoJSON?.features ?? []) {
+    const props = feature?.properties || {}
+    const iso3Candidates = [props.ISO_A3, props.ADM0_A3, props.BRK_A3, props.SU_A3]
+    const iso3 = iso3Candidates.find(
+      (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value !== '-99'
+    )
+    if (!iso3) continue
+
+    const names = [props.NAME_LONG, props.NAME_EN, props.ADMIN, props.NAME]
+      .filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+
+    for (const name of names) {
+      const aliases = getCountryNameAliases(name)
+      for (const alias of aliases) {
+        if (alias) out.set(alias, iso3)
+      }
+    }
+  }
+  return out
+}
+
+function buildCountryStatsByIso3(
+  countryStats: Record<string, EnrichedCountryStats> | null | undefined,
+  countriesGeoJSON: any
+) {
+  const out = new Map<string, EnrichedCountryStats>()
+  if (!countryStats) return out
+
+  const isoByName = buildCountryIsoLookup(countriesGeoJSON)
+  for (const [countryName, stats] of Object.entries(countryStats)) {
+    const aliases = getCountryNameAliases(countryName)
+    const iso3 = aliases.map(alias => isoByName.get(alias)).find((value): value is string => typeof value === 'string' && value.length > 0)
+    if (!iso3) continue
+    out.set(iso3, stats || {})
+  }
+
+  return out
+}
+
 export function createFlightRoutes(
-  airports: Airport[],
+  source: FlightRoutesSource,
   radius: number,
   countriesGeoJSON: any | null,
   options: CreateFlightRoutesOptions | number = 180
 ): FlightRoutesLayer {
   const resolvedOptions: CreateFlightRoutesOptions =
     typeof options === 'number' ? { routeCount: options } : (options ?? {})
-  const routeCount = THREE.MathUtils.clamp(
-    Number.isFinite(Number(resolvedOptions.routeCount)) ? Math.round(Number(resolvedOptions.routeCount)) : 180,
-    20,
-    2000
-  )
+  const isEnrichedSource = isEnrichedFlightSource(source)
+  const sourceFlights = isEnrichedSource
+    ? source.flights.filter(isFiniteFlightRecord)
+    : []
+  const defaultRouteCount = isEnrichedSource ? sourceFlights.length : 180
+  const routeCount = isEnrichedSource
+    ? THREE.MathUtils.clamp(
+        Number.isFinite(Number(resolvedOptions.routeCount))
+          ? Math.round(Number(resolvedOptions.routeCount))
+          : defaultRouteCount,
+        1,
+        Math.max(1, sourceFlights.length)
+      )
+    : THREE.MathUtils.clamp(
+        Number.isFinite(Number(resolvedOptions.routeCount)) ? Math.round(Number(resolvedOptions.routeCount)) : defaultRouteCount,
+        20,
+        2000
+      )
   const planesPerRoute = THREE.MathUtils.clamp(
-    Number.isFinite(Number(resolvedOptions.planesPerRoute)) ? Math.round(Number(resolvedOptions.planesPerRoute)) : 3,
+    Number.isFinite(Number(resolvedOptions.planesPerRoute))
+      ? Math.round(Number(resolvedOptions.planesPerRoute))
+      : (isEnrichedSource ? 1 : 3),
     1,
     8
   )
   const planeDensityScale = THREE.MathUtils.clamp(
-    Number.isFinite(Number(resolvedOptions.planeDensityScale)) ? Number(resolvedOptions.planeDensityScale) : 0.74,
+    Number.isFinite(Number(resolvedOptions.planeDensityScale))
+      ? Number(resolvedOptions.planeDensityScale)
+      : (isEnrichedSource ? 1.0 : 0.74),
     0.2,
     2.5
   )
+  const currentTimeSeconds = Number.isFinite(Number(resolvedOptions.currentTimeSeconds))
+    ? Number(resolvedOptions.currentTimeSeconds)
+    : 0
 
   const group = new THREE.Group()
   group.name = 'flightRoutes'
-  const TRAFFIC_LEVELS = planesPerRoute
+  const TRAFFIC_LEVELS = isEnrichedSource ? 1 : planesPerRoute
   const PLANE_DENSITY_SCALE = planeDensityScale
   const SHOW_ROUTE_ENDPOINTS = false
   const SHOW_HOVER_ENDPOINTS = false
@@ -527,25 +788,16 @@ export function createFlightRoutes(
   const MIN_ROUTE_TRAVEL_SECONDS = 9
   const MAX_ROUTE_TRAVEL_SECONDS = 84
 
-  const { valid, routes } = pickRouteIndices(airports, routeCount)
-  const LINE_SEGMENTS_COARSE = 20
-  const LINE_SEGMENTS_FINE = 64
+  const LINE_SEGMENTS_COARSE = isEnrichedSource && routeCount > 6000 ? 8 : 20
+  const LINE_SEGMENTS_FINE = isEnrichedSource && routeCount > 6000 ? 24 : 64
   const LINE_LOD_FINE_IN = 0.58
   const LINE_LOD_COARSE_OUT = 0.44
 
   const routeData: Route[] = []
-
-  // Airport "importance" for hub glow. Degree is computed from the chosen route list,
-  // traffic is accumulated as we build routes (more planes => more visible hub).
-  const airportDegree = new Int32Array(valid.length)
-  for (let i = 0; i < routes.length; i++) {
-    const [ia, ib] = routes[i]
-    airportDegree[ia]++
-    airportDegree[ib]++
-  }
-  let maxDegree = 1
-  for (let i = 0; i < airportDegree.length; i++) maxDegree = Math.max(maxDegree, airportDegree[i])
-  const airportTraffic = new Float32Array(valid.length)
+  const countryStatsByIso3 = buildCountryStatsByIso3(
+    isEnrichedSource ? source.countryStats : null,
+    countriesGeoJSON
+  )
 
   function getISO3FromFeature(feature: any) {
     const props = feature?.properties || {}
@@ -557,112 +809,290 @@ export function createFlightRoutes(
     }
     return ''
   }
-
-  // Pre-map airports to ISO-3 so we can focus routes by selected country.
-  const airportIso3: string[] = new Array(valid.length).fill('')
   const hasCountryLookup = Boolean(countriesGeoJSON?.features?.length)
-  if (hasCountryLookup) {
-    for (let i = 0; i < valid.length; i++) {
-      const a = valid[i]
-      const feature = findCountryFeature(countriesGeoJSON, Number(a.latitude), Number(a.longitude))
-      airportIso3[i] = feature ? getISO3FromFeature(feature) : ''
+  let validAirports: Airport[] = []
+  let airportDegree = new Int32Array(0)
+  let maxDegree = 1
+  let airportTraffic = new Float32Array(0)
+
+  if (isEnrichedSource) {
+    const selectedFlights = sourceFlights.slice(0, routeCount)
+    const airportDegree = new Map<string, number>()
+    const airportIso3Cache = new Map<string, string>()
+    const pathIso3Cache = new Map<string, string>()
+
+    function getAirportIso3(lat: number, lon: number, code: string | undefined, role: 'orig' | 'dest') {
+      if (!hasCountryLookup) return ''
+      const key = flightAirportKey(code, lat, lon, role)
+      const cached = airportIso3Cache.get(key)
+      if (typeof cached === 'string') return cached
+      const feature = findCountryFeature(countriesGeoJSON, lat, lon)
+      const iso3 = feature ? getISO3FromFeature(feature) : ''
+      airportIso3Cache.set(key, iso3)
+      return iso3
     }
-  }
 
-  // Build route control points and per-route animation parameters.
-  for (const [ia, ib] of routes) {
-    const a = valid[ia]
-    const b = valid[ib]
-    if (!a || !b) continue
+    function getPathPointIso3(lat: number, lon: number) {
+      if (!hasCountryLookup) return ''
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return ''
+      const key = `${lat.toFixed(2)},${lon.toFixed(2)}`
+      const cached = pathIso3Cache.get(key)
+      if (typeof cached === 'string') return cached
+      const feature = findCountryFeature(countriesGeoJSON, lat, lon)
+      const iso3 = feature ? getISO3FromFeature(feature) : ''
+      pathIso3Cache.set(key, iso3)
+      return iso3
+    }
 
-    const p0 = latLongToVector3(Number(a.latitude), Number(a.longitude), radius * 1.01)
-    const p2 = latLongToVector3(Number(b.latitude), Number(b.longitude), radius * 1.01)
-    const p0Dir = p0.clone().normalize()
-    const p2Dir = p2.clone().normalize()
+    function collectFlightCountryIso3List(
+      flight: EnrichedFlightRecord,
+      originIso3: string,
+      destIso3: string
+    ) {
+      const seen = new Set<string>()
+      if (originIso3) seen.add(originIso3)
+      if (destIso3) seen.add(destIso3)
 
-    const phase = Math.random()
-    const seed = Math.random()
+      const path = Array.isArray(flight.path) ? flight.path : []
+      if (path.length > 0) {
+        const step = Math.max(1, Math.floor(path.length / 24))
+        for (let i = 0; i < path.length; i += step) {
+          const point = path[i]
+          const lon = Number(point?.[0])
+          const lat = Number(point?.[1])
+          const iso3 = getPathPointIso3(lat, lon)
+          if (iso3) seen.add(iso3)
+        }
 
-    const chord = p0.distanceTo(p2)
-    const arcBoost = THREE.MathUtils.clamp(chord / (radius * 1.35), 0.25, 1.25)
-    const midDir = p0Dir.clone().add(p2Dir)
-    if (midDir.lengthSq() < 1e-6) {
-      // Near-antipodal endpoints: choose a stable perpendicular arc direction.
-      const axis = new THREE.Vector3(0, 1, 0).cross(p0Dir)
-      if (axis.lengthSq() < 1e-6) {
-        axis.set(1, 0, 0).cross(p0Dir)
+        const last = path[path.length - 1]
+        const lastIso3 = getPathPointIso3(Number(last?.[1]), Number(last?.[0]))
+        if (lastIso3) seen.add(lastIso3)
       }
-      axis.normalize()
-      const sign = seed < 0.5 ? 1 : -1
-      midDir.copy(p0Dir).applyAxisAngle(axis, sign * Math.PI * 0.5).normalize()
-    } else {
-      midDir.normalize()
+
+      const snapIso3 = getPathPointIso3(Number(flight.snap_lat), Number(flight.snap_lon))
+      if (snapIso3) seen.add(snapIso3)
+
+      return [...seen]
     }
-    const antipodalBoost = THREE.MathUtils.smoothstep(arcBoost, 0.95, 1.25)
-    const mid = midDir.multiplyScalar(radius * (1.10 + arcBoost * 0.20 + antipodalBoost * 0.16))
 
-    const distanceKm = haversineKm(Number(a.latitude), Number(a.longitude), Number(b.latitude), Number(b.longitude))
-    const altitude01 = THREE.MathUtils.clamp((arcBoost - 0.25) / (1.25 - 0.25), 0, 1)
-    const routeSpan01 = THREE.MathUtils.clamp((distanceKm - 400) / 9000, 0, 1)
-    const cruiseKmhBase = THREE.MathUtils.lerp(AIRCRAFT_CRUISE_KMH_MIN, AIRCRAFT_CRUISE_KMH_MAX, routeSpan01)
-    const cruiseKmh = cruiseKmhBase * THREE.MathUtils.lerp(0.96, 1.04, seed)
-    const visualDistanceKm = distanceKm * THREE.MathUtils.lerp(1.03, 1.14, altitude01)
-    const travelSeconds = THREE.MathUtils.clamp(
-      visualDistanceKm / Math.max(1e-3, cruiseKmh * AIRCRAFT_SIM_HOURS_PER_REAL_SECOND),
-      MIN_ROUTE_TRAVEL_SECONDS,
-      MAX_ROUTE_TRAVEL_SECONDS
-    )
+    for (let i = 0; i < selectedFlights.length; i++) {
+      const flight = selectedFlights[i]
+      const originKey = flightAirportKey(flight.orig, Number(flight.olat), Number(flight.olon), 'orig')
+      const destKey = flightAirportKey(flight.dest, Number(flight.dlat), Number(flight.dlon), 'dest')
+      airportDegree.set(originKey, (airportDegree.get(originKey) ?? 0) + 1)
+      airportDegree.set(destKey, (airportDegree.get(destKey) ?? 0) + 1)
+    }
+    for (const value of airportDegree.values()) maxDegree = Math.max(maxDegree, value)
 
-    // Cycles per second for shader animation. We compress time, but keep speed tied to route distance
-    // so the visual rhythm reads more like aircraft cruise than route-first pulses.
-    const speed = 1 / travelSeconds
-    const size = 3.1 + arcBoost * 1.25
-    const dir = seed < 0.5 ? 1 : -1
+    for (let i = 0; i < selectedFlights.length; i++) {
+      const flight = selectedFlights[i]
+      const fromLat = Number(flight.olat)
+      const fromLon = Number(flight.olon)
+      const toLat = Number(flight.dlat)
+      const toLon = Number(flight.dlon)
 
-    // Traffic density: longer routes tend to have more planes.
-    const trafficBase = THREE.MathUtils.clamp((arcBoost - 0.25) / 1.0, 0, 1)
-    const traffic = THREE.MathUtils.clamp(0.68 + trafficBase * 0.72 + (seed - 0.5) * 0.14, 0.68, 1.34)
-    const traffic01 = THREE.MathUtils.clamp((traffic - 0.68) / (1.34 - 0.68), 0, 0.9999)
-    const trafficCount = 1 + Math.floor(traffic01 * TRAFFIC_LEVELS) // 1..3
+      const p0 = latLongToVector3(fromLat, fromLon, radius * 1.01)
+      const p2 = latLongToVector3(toLat, toLon, radius * 1.01)
+      const p0Dir = p0.clone().normalize()
+      const p2Dir = p2.clone().normalize()
 
-    // Hubness for zoom-out "corridors": routes connected to high-degree airports
-    // remain visible longer (aggregation feel without heavy bundling).
-    const hub = THREE.MathUtils.clamp((airportDegree[ia] + airportDegree[ib]) / (2 * maxDegree), 0, 1)
+      const seed = hashString01(
+        `${String(flight.id ?? i)}|${String(flight.cs || '')}|${String(flight.orig || '')}|${String(flight.dest || '')}`
+      )
+      const chord = p0.distanceTo(p2)
+      const arcBoost = THREE.MathUtils.clamp(chord / (radius * 1.35), 0.25, 1.25)
+      const midDir = p0Dir.clone().add(p2Dir)
+      if (midDir.lengthSq() < 1e-6) {
+        const axis = new THREE.Vector3(0, 1, 0).cross(p0Dir)
+        if (axis.lengthSq() < 1e-6) {
+          axis.set(1, 0, 0).cross(p0Dir)
+        }
+        axis.normalize()
+        midDir.copy(p0Dir).applyAxisAngle(axis, Math.PI * 0.5).normalize()
+      } else {
+        midDir.normalize()
+      }
+      const antipodalBoost = THREE.MathUtils.smoothstep(arcBoost, 0.95, 1.25)
+      const mid = midDir.multiplyScalar(radius * (1.10 + arcBoost * 0.20 + antipodalBoost * 0.16))
 
-    airportTraffic[ia] += trafficCount * traffic
-    airportTraffic[ib] += trafficCount * traffic
+      const distanceKm = haversineKm(fromLat, fromLon, toLat, toLon)
+      const altitude01 = THREE.MathUtils.clamp((arcBoost - 0.25) / (1.25 - 0.25), 0, 1)
+      const routeSpan01 = THREE.MathUtils.clamp((distanceKm - 400) / 9000, 0, 1)
+      const cruiseKmhBase = THREE.MathUtils.lerp(AIRCRAFT_CRUISE_KMH_MIN, AIRCRAFT_CRUISE_KMH_MAX, routeSpan01)
+      const cruiseKmh = cruiseKmhBase * THREE.MathUtils.lerp(0.98, 1.02, seed)
+      const visualDistanceKm = distanceKm * THREE.MathUtils.lerp(1.03, 1.14, altitude01)
+      const travelSeconds = THREE.MathUtils.clamp(
+        visualDistanceKm / Math.max(1e-3, cruiseKmh * AIRCRAFT_SIM_HOURS_PER_REAL_SECOND),
+        MIN_ROUTE_TRAVEL_SECONDS,
+        MAX_ROUTE_TRAVEL_SECONDS
+      )
+      const speed = 1 / travelSeconds
+      const progress = estimateFlightProgress(flight)
+      const phase = ((progress - currentTimeSeconds * speed) % 1 + 1) % 1
+      const originKey = flightAirportKey(flight.orig, fromLat, fromLon, 'orig')
+      const destKey = flightAirportKey(flight.dest, toLat, toLon, 'dest')
+      const hub = THREE.MathUtils.clamp(
+        ((airportDegree.get(originKey) ?? 1) + (airportDegree.get(destKey) ?? 1)) / (2 * maxDegree),
+        0,
+        1
+      )
+      const flightName = String(flight.cs || `${String(flight.orig || 'ORIG')}-${String(flight.dest || 'DEST')}`)
+      const originIso3 = getAirportIso3(fromLat, fromLon, flight.orig, 'orig')
+      const destIso3 = getAirportIso3(toLat, toLon, flight.dest, 'dest')
+      const countryIso3List = collectFlightCountryIso3List(flight, originIso3, destIso3)
 
-    routeData.push({
-      id: routeData.length,
-      p0x: p0.x,
-      p0y: p0.y,
-      p0z: p0.z,
-      p1x: mid.x,
-      p1y: mid.y,
-      p1z: mid.z,
-      p2x: p2.x,
-      p2y: p2.y,
-      p2z: p2.z,
-      speed,
-      phase,
-      seed,
-      size,
-      dir,
-      traffic,
-      trafficCount,
-      hub,
-      altitude01,
-      distanceKm,
-      flightName: buildFlightName(String(a.name || 'Origin'), String(b.name || 'Destination')),
-      fromName: String(a.name || 'Origin'),
-      toName: String(b.name || 'Destination'),
-      fromLat: Number(a.latitude),
-      fromLon: Number(a.longitude),
-      toLat: Number(b.latitude),
-      toLon: Number(b.longitude),
-      isoA3: airportIso3[ia] ?? '',
-      isoB3: airportIso3[ib] ?? ''
-    })
+      routeData.push({
+        id: routeData.length,
+        p0x: p0.x,
+        p0y: p0.y,
+        p0z: p0.z,
+        p1x: mid.x,
+        p1y: mid.y,
+        p1z: mid.z,
+        p2x: p2.x,
+        p2y: p2.y,
+        p2z: p2.z,
+        speed,
+        phase,
+        seed,
+        size: 2.35 + arcBoost * 0.7,
+        dir: 1,
+        traffic: 1.0,
+        trafficCount: 1,
+        hub,
+        altitude01,
+        distanceKm,
+        flightName,
+        fromName: resolveAirportDisplayName(flight.orig, source.airportLookup, 'Origin'),
+        toName: resolveAirportDisplayName(flight.dest, source.airportLookup, 'Destination'),
+        fromLat,
+        fromLon,
+        toLat,
+        toLon,
+        isoA3: originIso3,
+        isoB3: destIso3,
+        countryIso3List,
+        callsign: String(flight.cs || ''),
+        airline: String(flight.air || ''),
+        aircraftType: String(flight.type || ''),
+        registration: String(flight.reg || ''),
+        sourceMode: 'enriched'
+      })
+    }
+  } else {
+    const { valid, routes } = pickRouteIndices(source, routeCount)
+    validAirports = valid
+
+    airportDegree = new Int32Array(valid.length)
+    for (let i = 0; i < routes.length; i++) {
+      const [ia, ib] = routes[i]
+      airportDegree[ia]++
+      airportDegree[ib]++
+    }
+    for (let i = 0; i < airportDegree.length; i++) maxDegree = Math.max(maxDegree, airportDegree[i])
+    airportTraffic = new Float32Array(valid.length)
+
+    const airportIso3: string[] = new Array(valid.length).fill('')
+    if (hasCountryLookup) {
+      for (let i = 0; i < valid.length; i++) {
+        const a = valid[i]
+        const feature = findCountryFeature(countriesGeoJSON, Number(a.latitude), Number(a.longitude))
+        airportIso3[i] = feature ? getISO3FromFeature(feature) : ''
+      }
+    }
+
+    for (const [ia, ib] of routes) {
+      const a = valid[ia]
+      const b = valid[ib]
+      if (!a || !b) continue
+
+      const p0 = latLongToVector3(Number(a.latitude), Number(a.longitude), radius * 1.01)
+      const p2 = latLongToVector3(Number(b.latitude), Number(b.longitude), radius * 1.01)
+      const p0Dir = p0.clone().normalize()
+      const p2Dir = p2.clone().normalize()
+
+      const phase = Math.random()
+      const seed = Math.random()
+
+      const chord = p0.distanceTo(p2)
+      const arcBoost = THREE.MathUtils.clamp(chord / (radius * 1.35), 0.25, 1.25)
+      const midDir = p0Dir.clone().add(p2Dir)
+      if (midDir.lengthSq() < 1e-6) {
+        const axis = new THREE.Vector3(0, 1, 0).cross(p0Dir)
+        if (axis.lengthSq() < 1e-6) {
+          axis.set(1, 0, 0).cross(p0Dir)
+        }
+        axis.normalize()
+        const sign = seed < 0.5 ? 1 : -1
+        midDir.copy(p0Dir).applyAxisAngle(axis, sign * Math.PI * 0.5).normalize()
+      } else {
+        midDir.normalize()
+      }
+      const antipodalBoost = THREE.MathUtils.smoothstep(arcBoost, 0.95, 1.25)
+      const mid = midDir.multiplyScalar(radius * (1.10 + arcBoost * 0.20 + antipodalBoost * 0.16))
+
+      const distanceKm = haversineKm(Number(a.latitude), Number(a.longitude), Number(b.latitude), Number(b.longitude))
+      const altitude01 = THREE.MathUtils.clamp((arcBoost - 0.25) / (1.25 - 0.25), 0, 1)
+      const routeSpan01 = THREE.MathUtils.clamp((distanceKm - 400) / 9000, 0, 1)
+      const cruiseKmhBase = THREE.MathUtils.lerp(AIRCRAFT_CRUISE_KMH_MIN, AIRCRAFT_CRUISE_KMH_MAX, routeSpan01)
+      const cruiseKmh = cruiseKmhBase * THREE.MathUtils.lerp(0.96, 1.04, seed)
+      const visualDistanceKm = distanceKm * THREE.MathUtils.lerp(1.03, 1.14, altitude01)
+      const travelSeconds = THREE.MathUtils.clamp(
+        visualDistanceKm / Math.max(1e-3, cruiseKmh * AIRCRAFT_SIM_HOURS_PER_REAL_SECOND),
+        MIN_ROUTE_TRAVEL_SECONDS,
+        MAX_ROUTE_TRAVEL_SECONDS
+      )
+
+      const speed = 1 / travelSeconds
+      const size = 3.1 + arcBoost * 1.25
+      const dir = seed < 0.5 ? 1 : -1
+      const trafficBase = THREE.MathUtils.clamp((arcBoost - 0.25) / 1.0, 0, 1)
+      const traffic = THREE.MathUtils.clamp(0.68 + trafficBase * 0.72 + (seed - 0.5) * 0.14, 0.68, 1.34)
+      const traffic01 = THREE.MathUtils.clamp((traffic - 0.68) / (1.34 - 0.68), 0, 0.9999)
+      const trafficCount = 1 + Math.floor(traffic01 * TRAFFIC_LEVELS)
+      const hub = THREE.MathUtils.clamp((airportDegree[ia] + airportDegree[ib]) / (2 * maxDegree), 0, 1)
+
+      airportTraffic[ia] += trafficCount * traffic
+      airportTraffic[ib] += trafficCount * traffic
+
+      routeData.push({
+        id: routeData.length,
+        p0x: p0.x,
+        p0y: p0.y,
+        p0z: p0.z,
+        p1x: mid.x,
+        p1y: mid.y,
+        p1z: mid.z,
+        p2x: p2.x,
+        p2y: p2.y,
+        p2z: p2.z,
+        speed,
+        phase,
+        seed,
+        size,
+        dir,
+        traffic,
+        trafficCount,
+        hub,
+        altitude01,
+        distanceKm,
+        flightName: buildFlightName(String(a.name || 'Origin'), String(b.name || 'Destination')),
+        fromName: String(a.name || 'Origin'),
+        toName: String(b.name || 'Destination'),
+        fromLat: Number(a.latitude),
+        fromLon: Number(a.longitude),
+        toLat: Number(b.latitude),
+        toLon: Number(b.longitude),
+        isoA3: airportIso3[ia] ?? '',
+        isoB3: airportIso3[ib] ?? '',
+        countryIso3List: [airportIso3[ia], airportIso3[ib]].filter((value): value is string => Boolean(value)),
+        callsign: '',
+        airline: '',
+        aircraftType: '',
+        registration: '',
+        sourceMode: 'synthetic'
+      })
+    }
   }
 
   // ---------------------------
@@ -675,7 +1105,7 @@ export function createFlightRoutes(
     for (let i = 0; i < airportTraffic.length; i++) maxTraffic = Math.max(maxTraffic, airportTraffic[i])
 
     const scored: Array<{ idx: number; score: number; deg01: number; traf01: number }> = []
-    for (let i = 0; i < valid.length; i++) {
+    for (let i = 0; i < validAirports.length; i++) {
       const deg = airportDegree[i]
       if (deg <= 0) continue
       const deg01 = THREE.MathUtils.clamp(deg / maxDegree, 0, 1)
@@ -683,9 +1113,8 @@ export function createFlightRoutes(
       const score = deg01 * 0.62 + traf01 * 0.38
       scored.push({ idx: i, score, deg01, traf01 })
     }
-
     scored.sort((a, b) => b.score - a.score)
-    const HUB_COUNT = Math.min(140, Math.max(40, Math.floor(Math.sqrt(routes.length) * 8)))
+    const HUB_COUNT = Math.min(140, Math.max(40, Math.floor(Math.sqrt(routeData.length) * 8)))
     const hubs = scored.slice(0, HUB_COUNT)
 
     const hubPositions = new Float32Array(hubs.length * 3)
@@ -696,7 +1125,7 @@ export function createFlightRoutes(
     const col = new THREE.Color()
     for (let i = 0; i < hubs.length; i++) {
       const h = hubs[i]
-      const a = valid[h.idx]
+      const a = validAirports[h.idx]
       const lat = Number(a.latitude)
       const lon = Number(a.longitude)
       const v = latLongToVector3(lat, lon, radius * 1.012)
@@ -934,6 +1363,7 @@ export function createFlightRoutes(
   const planeP2 = new Float32Array(planeCount * 3)
   const planeAnimA = new Float32Array(planeCount * 4) // speed, phase, offset, dir
   const planeAnimB = new Float32Array(planeCount * 4) // size, seed, traffic, enable
+  const planeFocusRoute = new Float32Array(planeCount * 2) // focus, routeId
   const planeAltitude = new Float32Array(planeCount)
 
   function fract01(v: number) {
@@ -982,6 +1412,9 @@ export function createFlightRoutes(
       planeAnimB[po + 0] = r.size * sizeJitter
       planeAnimB[po + 1] = fract01(r.seed + j * 0.23)
       planeAnimB[po + 2] = r.traffic
+      const ps = idx * 2
+      planeFocusRoute[ps + 0] = 1
+      planeFocusRoute[ps + 1] = r.id
       planeAltitude[idx] = r.altitude01
     }
   }
@@ -992,6 +1425,9 @@ export function createFlightRoutes(
   planeGeo.setAttribute('aP2', new THREE.BufferAttribute(planeP2, 3))
   planeGeo.setAttribute('aAnimA', new THREE.BufferAttribute(planeAnimA, 4))
   planeGeo.setAttribute('aAnimB', new THREE.BufferAttribute(planeAnimB, 4))
+  const planeFocusRouteAttr = new THREE.BufferAttribute(planeFocusRoute, 2)
+  planeFocusRouteAttr.setUsage(THREE.DynamicDrawUsage)
+  planeGeo.setAttribute('aFocusRoute', planeFocusRouteAttr)
   planeGeo.setAttribute('aAltitude', new THREE.BufferAttribute(planeAltitude, 1))
   planeGeo.computeBoundingSphere()
 
@@ -1126,15 +1562,12 @@ export function createFlightRoutes(
   const routesByCountry = new Map<string, number[]>()
   for (let i = 0; i < routeData.length; i++) {
     const r = routeData[i]
-    if (r.isoA3) {
-      const list = routesByCountry.get(r.isoA3) ?? []
+    for (let j = 0; j < r.countryIso3List.length; j++) {
+      const iso3 = r.countryIso3List[j]
+      if (!iso3) continue
+      const list = routesByCountry.get(iso3) ?? []
       list.push(i)
-      routesByCountry.set(r.isoA3, list)
-    }
-    if (r.isoB3 && r.isoB3 !== r.isoA3) {
-      const list = routesByCountry.get(r.isoB3) ?? []
-      list.push(i)
-      routesByCountry.set(r.isoB3, list)
+      routesByCountry.set(iso3, list)
     }
   }
 
@@ -1190,7 +1623,7 @@ export function createFlightRoutes(
       } else {
         for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
           const r = routeData[rIndex]
-          const hit = r.isoA3 === focusIso3 || r.isoB3 === focusIso3 ? 1 : 0
+          const hit = r.countryIso3List.includes(focusIso3) ? 1 : 0
           const base = rIndex * lod.verticesPerRoute
           for (let j = 0; j < lod.verticesPerRoute; j++) {
             lod.focusData[(base + j) * 4 + 1] = hit
@@ -1200,6 +1633,23 @@ export function createFlightRoutes(
 
       lod.focusAttr.needsUpdate = true
     }
+
+    if (!focusIso3) {
+      for (let i = 0; i < planeCount; i++) {
+        planeFocusRoute[i * 2 + 0] = 1
+      }
+    } else {
+      for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
+        const r = routeData[rIndex]
+        const hit = r.countryIso3List.includes(focusIso3) ? 1 : 0
+        const base = rIndex * MAX_PLANES_PER_ROUTE
+        for (let j = 0; j < MAX_PLANES_PER_ROUTE; j++) {
+          planeFocusRoute[(base + j) * 2 + 0] = hit
+        }
+      }
+    }
+
+    planeFocusRouteAttr.needsUpdate = true
   }
 
   function setFocusCountry(iso3: string | null) {
@@ -1266,6 +1716,11 @@ export function createFlightRoutes(
       traffic: r.traffic,
       trafficCount: r.trafficCount,
       dir: r.dir,
+      callsign: r.callsign,
+      airline: r.airline,
+      aircraftType: r.aircraftType,
+      registration: r.registration,
+      sourceMode: r.sourceMode,
       midX,
       midY,
       midZ,
@@ -1318,6 +1773,25 @@ export function createFlightRoutes(
 
   function getCountryFlightStats(iso3: string, timeSeconds: number): CountryFlightStats {
     const key = (iso3 || '').trim()
+    const enrichedStats = countryStatsByIso3.get(key)
+    if (enrichedStats) {
+      const now = Math.max(0, Math.round(Number(enrichedStats.in_air ?? 0)))
+      const incoming = Math.max(0, Math.round(Number(enrichedStats.arr ?? 0)))
+      const outgoing = Math.max(0, Math.round(Number(enrichedStats.dep ?? 0)))
+      const over = Math.max(0, Math.round(Number(enrichedStats.over ?? 0)))
+      return {
+        now,
+        tenMinAgo: now,
+        routes: over,
+        incoming,
+        outgoing,
+        dayTotal: Math.max(0, Math.round(Number(enrichedStats.day_total ?? 0))),
+        dayIncoming: Math.max(0, Math.round(Number(enrichedStats.day_arr ?? 0))),
+        dayOutgoing: Math.max(0, Math.round(Number(enrichedStats.day_dep ?? 0))),
+        over
+      }
+    }
+
     const routeIds = key ? routesByCountry.get(key) ?? [] : []
     const nowBreakdown = computeCountryFlightsAtTime(routeIds, key, timeSeconds)
     const tenMinAgoBreakdown = computeCountryFlightsAtTime(routeIds, key, timeSeconds - 600)
@@ -1427,6 +1901,7 @@ export function createFlightRoutes(
     const zoom = THREE.MathUtils.clamp((32 - cameraDistance) / 16, 0, 1)
     const zoomOut = 1.0 - zoom
     const isLegacyMode = visualizationMode === 'legacy'
+    const hasCountryFocus = focusIso3.length > 0
 
     let routeKeep = THREE.MathUtils.lerp(0.78, 1.0, zoom)
     let planeDensity = THREE.MathUtils.lerp(0.72, 1.0, zoom)
@@ -1435,6 +1910,10 @@ export function createFlightRoutes(
 
     if (isLegacyMode) {
       setActiveLineLod('fine')
+      if (isEnrichedSource) {
+        routeKeep = hasCountryFocus ? 1.0 : THREE.MathUtils.lerp(0.18, 0.26, zoom)
+        planeDensity = hasCountryFocus ? 1.0 : THREE.MathUtils.lerp(0.22, 0.34, zoom)
+      }
     } else {
       if (activeLineLod === 'coarse' && zoom > LINE_LOD_FINE_IN) {
         setActiveLineLod('fine')
@@ -1442,13 +1921,21 @@ export function createFlightRoutes(
         setActiveLineLod('coarse')
       }
 
-      routeKeep = THREE.MathUtils.lerp(0.84, 1.0, zoom)
-      planeDensity = THREE.MathUtils.lerp(0.86, 1.0, zoom)
+      routeKeep = isEnrichedSource
+        ? (hasCountryFocus ? 1.0 : THREE.MathUtils.lerp(0.20, 0.30, zoom))
+        : THREE.MathUtils.lerp(0.84, 1.0, zoom)
+      planeDensity = isEnrichedSource
+        ? (hasCountryFocus ? 1.0 : THREE.MathUtils.lerp(0.24, 0.36, zoom))
+        : THREE.MathUtils.lerp(0.86, 1.0, zoom)
       representationMix = THREE.MathUtils.smoothstep(zoomOut, 0.46, 0.98)
-      altitudeLodMix = 1.0
+      altitudeLodMix = isEnrichedSource ? 0.0 : 1.0
     }
 
-    planeDensity = THREE.MathUtils.clamp(planeDensity * PLANE_DENSITY_SCALE, 0.45, 1.0)
+    planeDensity = THREE.MathUtils.clamp(
+      planeDensity * (isEnrichedSource ? Math.max(1.0, PLANE_DENSITY_SCALE) : PLANE_DENSITY_SCALE),
+      0.45,
+      1.0
+    )
 
     lineMat.uniforms.uRouteKeep.value = routeKeep
     lineMat.uniforms.uAltitudeLodMix.value = altitudeLodMix

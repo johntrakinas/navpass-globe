@@ -91,7 +91,7 @@ void main() {
 
   // When focusing a country, hide planes not connected to it.
   float focusKeep = mix(1.0, vFocus, uFocusMix);
-  float focusFade = mix(0.05, 1.0, focusKeep);
+  float focusFade = mix(0.0, 1.0, focusKeep);
   float focusBoost = mix(1.0, 1.12, vFocus * uFocusMix);
 
   float isHover = 1.0 - step(0.5, abs(vRouteId - uHoverRouteId));
@@ -100,7 +100,7 @@ void main() {
   float selectedEmph = isSel * uSelectedMix;
   float emphasize = max(max(vEmph, hoverEmph), selectedEmph);
   focusKeep = mix(focusKeep, 1.0, emphasize);
-  focusFade = mix(0.05, 1.0, focusKeep);
+  focusFade = mix(0.0, 1.0, focusKeep);
 
   // When a route is selected, de-emphasize the rest a bit.
   float selectedContext = mix(1.0, mix(0.18, 1.0, isSel), uSelectedMix * 0.95);
