@@ -25,7 +25,11 @@ varying vec2 vVel2;
 varying float vHub;
 varying float vFacing;
 varying float vAltitude;
+varying float vDensity;
+varying float vCorridorKeep;
+varying float vCorridorGroup;
 varying float vLead;
+varying float vReveal;
 
 float sdBox(vec2 p, vec2 b) {
   vec2 d = abs(p) - b;
@@ -38,6 +42,7 @@ float sdCircle(vec2 p, float r) {
 
 void main() {
   if (vEnable < 0.5) discard;
+  if (vReveal < 0.001) discard;
 
   vec2 uv = gl_PointCoord - 0.5;
   float d = length(uv);
@@ -82,6 +87,14 @@ void main() {
 
   float shimmer = 0.86 + 0.14 * sin(uTime * 4.2 + vSeed * 6.2831);
   float traffic01 = clamp((vTraffic - 0.62) / (1.22 - 0.62), 0.0, 1.0);
+  float corridorRep = smoothstep(0.08, 0.66, vCorridorKeep);
+  float leadPriority = clamp(
+    corridorRep * 0.54 +
+    smoothstep(0.85, 1.12, vTraffic) * 0.28 +
+    smoothstep(0.18, 0.88, vHub) * 0.18,
+    0.0,
+    1.0
+  );
 
   // Direction cue: forward is warmer, reverse is slightly cooler.
   vec3 dirTint = mix(uTintColor, uGlowColor, step(0.0, vDir) * 0.35);
@@ -126,14 +139,23 @@ void main() {
     hoverContext *
     vTraffic *
     (0.9 + traffic01 * 0.18) *
-    (1.0 + hoverEmph * 1.0 + selectedEmph * 1.95 + vLead * 0.18);
+    (1.0 + hoverEmph * 1.0 + selectedEmph * 1.95 + vLead * mix(0.06, 0.18, leadPriority));
 
   float bundleMix = smoothstep(0.35, 0.95, zoomOut);
   float hubKeep = smoothstep(0.18, 0.88, vHub);
   float bundleContext = mix(1.0, mix(0.36, 1.0, hubKeep), bundleMix);
   bundleContext = mix(bundleContext, 1.0, emphasize);
   alpha *= bundleContext;
+  float denseRegion = smoothstep(0.32, 0.96, vDensity);
+  float densityFade = mix(1.0, 0.76, denseRegion * mix(0.38, 0.7, zoomOut));
+  densityFade = mix(densityFade, 1.0, max(emphasize, vLead * leadPriority * 0.55));
+  alpha *= densityFade;
+  float corridorPressure = denseRegion * vCorridorGroup * mix(0.18, 0.86, zoomOut);
+  float corridorFade = mix(1.0, mix(0.58, 1.0, corridorRep), corridorPressure);
+  corridorFade = mix(corridorFade, 1.0, max(emphasize, vLead * leadPriority * 0.55));
+  alpha *= corridorFade;
   alpha *= mix(0.72, 1.36, uRepresentationMix);
+  alpha *= vReveal;
 
   // Fade softly near the horizon so points don't "pop" at the limb.
   float limb = smoothstep(0.02, 0.18, vFacing);

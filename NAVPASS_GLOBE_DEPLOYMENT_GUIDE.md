@@ -61,6 +61,10 @@ Append query params to the iframe URL:
 - `gridEffectColor=#B8C0CE` (or `0xB8C0CE`) for grid effect color
 - `gridMainColor=#B8C0CE` (or `0xB8C0CE`) for main grid color
 - `countryLineColor=#122640` (or `0x122640`) for country border lines
+- `hoverColor=#FFFFFF` (or `0xFFFFFF`) for the overall hover color
+- `hoverAccentColor=#FBBC05` (or `0xFBBC05`) for the secondary hover tint
+- `hoverCoreColor=#FFFFFF` (or `0xFFFFFF`) for the hover core color
+- `hoverPaletteMix=0.0..1.0` for animated palette blending on hover
 - `theme=<JSON url-encoded>`
 - `theme.<section>.<token>=<value>`
 

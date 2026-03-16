@@ -1,10 +1,10 @@
-// WebWorker: builds a heatmap texture (RGBA8) from packed Bezier routes.
+// WebWorker: builds a heatmap texture (RGBA8) from packed route params.
 //
 // Message in:
 //   { routes: Float32Array, width: number, height: number }
 //
-// routes stride (11 floats):
-//   p0x,p0y,p0z, p1x,p1y,p1z, p2x,p2y,p2z, traffic, trafficCount
+// routes stride (14 floats):
+//   p0x,p0y,p0z, p1x,p1y,p1z, p2x,p2y,p2z, curve0,curve1,curve2, traffic, trafficCount
 //
 // Message out:
 //   { data: ArrayBuffer }
@@ -15,7 +15,7 @@ type InMsg = {
   height: number
 }
 
-const ROUTE_STRIDE = 11
+const ROUTE_STRIDE = 14
 const SAMPLES_PER_ROUTE = 84
 
 type KernelTap = { dx: number; dy: number; w: number }
@@ -51,6 +51,57 @@ function powFast(v: number, e: number) {
   return Math.pow(v, e)
 }
 
+function routePoint(
+  p0x: number,
+  p0y: number,
+  p0z: number,
+  p1x: number,
+  p1y: number,
+  p1z: number,
+  p2x: number,
+  p2y: number,
+  p2z: number,
+  arcHeight: number,
+  lateralOffsetRad: number,
+  loopSweepRad: number,
+  t: number
+) {
+  void arcHeight
+  void lateralOffsetRad
+  void loopSweepRad
+
+  const omt = 1 - t
+  const p = [
+    p0x * (omt * omt) + p1x * (2 * omt * t) + p2x * (t * t),
+    p0y * (omt * omt) + p1y * (2 * omt * t) + p2y * (t * t),
+    p0z * (omt * omt) + p1z * (2 * omt * t) + p2z * (t * t)
+  ] as const
+
+  const minShell =
+    Math.min(
+      Math.sqrt(p0x * p0x + p0y * p0y + p0z * p0z),
+      Math.sqrt(p2x * p2x + p2y * p2y + p2z * p2z)
+    ) * 0.995
+  const len = Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2])
+  if (len < 1e-9) {
+    const fx = p0x + p2x
+    const fy = p0y + p2y
+    const fz = p0z + p2z
+    const fl = Math.sqrt(fx * fx + fy * fy + fz * fz)
+    if (fl > 1e-9) {
+      return [(fx / fl) * minShell, (fy / fl) * minShell, (fz / fl) * minShell] as const
+    }
+    return null
+  }
+
+  if (len < minShell) {
+    const scale = minShell / len
+    return [p[0] * scale, p[1] * scale, p[2] * scale] as const
+  }
+
+  return p
+}
+
 self.onmessage = (ev: MessageEvent<InMsg>) => {
   const routes = ev.data.routes
   const width = Math.max(1, Math.floor(ev.data.width))
@@ -76,8 +127,11 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
     const p2x = routes[o + 6]
     const p2y = routes[o + 7]
     const p2z = routes[o + 8]
-    const traffic = routes[o + 9]
-    const trafficCount = routes[o + 10]
+    const arcHeight = routes[o + 9]
+    const lateralOffsetRad = routes[o + 10]
+    const loopSweepRad = routes[o + 11]
+    const traffic = routes[o + 12]
+    const trafficCount = routes[o + 13]
 
     // Same weighting used in the main thread version.
     const traffic01 = clamp((traffic - 0.62) / (1.22 - 0.62), 0, 1)
@@ -86,22 +140,19 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
 
     for (let s = 0; s < SAMPLES_PER_ROUTE; s++) {
       const t = s / (SAMPLES_PER_ROUTE - 1)
-      const omt = 1 - t
-      const omt2 = omt * omt
-      const tt = t * t
-      const k0 = omt2
-      const k1 = 2 * omt * t
-      const k2 = tt
-
-      let x = p0x * k0 + p1x * k1 + p2x * k2
-      let y = p0y * k0 + p1y * k1 + p2y * k2
-      let z = p0z * k0 + p1z * k1 + p2z * k2
-
-      const len = Math.sqrt(x * x + y * y + z * z)
+      const point = routePoint(
+        p0x, p0y, p0z,
+        p1x, p1y, p1z,
+        p2x, p2y, p2z,
+        arcHeight, lateralOffsetRad, loopSweepRad,
+        t
+      )
+      if (!point) continue
+      const len = Math.sqrt(point[0] * point[0] + point[1] * point[1] + point[2] * point[2])
       if (len < 1e-9) continue
-      x /= len
-      y /= len
-      z /= len
+      const x = point[0] / len
+      const y = point[1] / len
+      const z = point[2] / len
 
       // Matches vector3ToLatLon + (lon + 180) mapping:
       // theta = atan2(z, -x) in [-pi, pi], u = theta / (2pi) wrapped to [0,1)
@@ -147,4 +198,3 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
 
   ;(self as any).postMessage({ data: out.buffer }, [out.buffer])
 }
-

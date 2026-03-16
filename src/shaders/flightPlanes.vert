@@ -3,7 +3,13 @@ precision mediump float;
 attribute vec3 aP0;
 attribute vec3 aP1;
 attribute vec3 aP2;
+attribute vec3 aCurve;
+attribute float aHub;
 attribute float aAltitude;
+attribute float aDensity;
+attribute float aCorridorKeep;
+attribute float aCorridorGroup;
+attribute float aRevealPriority;
 attribute vec2 aFocusRoute;
 
 attribute vec4 aAnimA; // speed, phase, offset, dir
@@ -15,6 +21,7 @@ uniform float uRouteKeep;
 uniform float uPlaneDensity;
 uniform float uAltitudeLodMix;
 uniform float uRepresentationMix;
+uniform float uRevealProgress;
 uniform float uHoverRouteId;
 uniform float uHoverMix;
 uniform float uSelectedRouteId;
@@ -32,11 +39,44 @@ varying vec2 vVel2;
 varying float vHub;
 varying float vFacing;
 varying float vAltitude;
+varying float vDensity;
+varying float vCorridorKeep;
+varying float vCorridorGroup;
 varying float vLead;
+varying float vReveal;
 
-vec3 bezierPoint(vec3 p0, vec3 p1, vec3 p2, float t) {
+const float PI = 3.141592653589793;
+
+vec3 safeNormalize(vec3 v, vec3 fallbackDir) {
+  float lenV = length(v);
+  if (lenV <= 1e-6) {
+    float lenFallback = length(fallbackDir);
+    return lenFallback > 1e-6 ? (fallbackDir / lenFallback) : vec3(0.0, 1.0, 0.0);
+  }
+  return v / lenV;
+}
+
+vec3 routePoint(vec3 p0, vec3 p1, vec3 p2, vec3 curve, float t) {
   float omt = 1.0 - t;
-  return p0 * (omt * omt) + p1 * (2.0 * omt * t) + p2 * (t * t);
+  vec3 p = p0 * (omt * omt) + p1 * (2.0 * omt * t) + p2 * (t * t);
+
+  float minShell = min(length(p0), length(p2)) * 0.995;
+  float pLen = length(p);
+  if (pLen < 1e-6) {
+    vec3 fallbackDir = p0 + p2;
+    float fLen = length(fallbackDir);
+    if (fLen < 1e-6) {
+      fallbackDir = p0;
+      fLen = max(length(fallbackDir), 1e-6);
+    }
+    return (fallbackDir / fLen) * minShell;
+  }
+
+  if (pLen < minShell) {
+    p *= minShell / pLen;
+  }
+
+  return p;
 }
 
 float safeClipW(vec4 clipPos) {
@@ -60,9 +100,12 @@ void main() {
   vFocus = aFocusRoute.x;
   vRouteId = aFocusRoute.y;
   vDir = aDir;
-  vHub = aTraffic;
+  vHub = aHub;
   vEmph = 0.0;
   vAltitude = aAltitude;
+  vDensity = aDensity;
+  vCorridorKeep = aCorridorKeep;
+  vCorridorGroup = aCorridorGroup;
   float leadPlane = 1.0 - step(0.0001, abs(aOffset));
   vLead = leadPlane;
 
@@ -82,42 +125,42 @@ void main() {
   float altitudeKeep = smoothstep(altitudeThreshold - 0.14, altitudeThreshold + 0.14, aAltitude);
   altitudeKeep = mix(1.0, altitudeKeep, uAltitudeLodMix);
   float bundleMix = smoothstep(0.35, 0.95, 1.0 - zoom);
-  float hubKeep = smoothstep(0.72, 1.12, aTraffic);
+  float hubKeep = smoothstep(0.18, 0.88, aHub);
   keepMask = max(keepMask, hubKeep * bundleMix);
   densMask = max(densMask, hubKeep * bundleMix);
-  keepMask = max(keepMask, leadPlane);
-  densMask = max(densMask, leadPlane);
   keepMask *= altitudeKeep;
   densMask *= altitudeKeep;
+
+  float localDensity = smoothstep(0.32, 0.96, aDensity);
+  float denseThin = localDensity * mix(0.42, 1.0, 1.0 - zoom);
+  float localKeepThreshold = max(0.08, uPlaneDensity - denseThin * 0.24);
+  float localDensMask = 1.0 - smoothstep(localKeepThreshold - 0.18, localKeepThreshold, aSeed);
+  localDensMask = max(localDensMask, trafficKeep * denseThin * 0.9);
+  localDensMask = max(localDensMask, leadPlane);
+  densMask *= localDensMask;
+
+  float corridorPressure = localDensity * aCorridorGroup * mix(0.18, 0.92, 1.0 - zoom);
+  float corridorRep = smoothstep(0.08, 0.66, aCorridorKeep);
+  float leadPriority = clamp(corridorRep * 0.54 + trafficKeep * 0.28 + hubKeep * 0.18, 0.0, 1.0);
+  float leadKeep = mix(1.0, mix(0.18, 1.0, leadPriority), corridorPressure);
+  keepMask = max(keepMask, leadPlane * leadKeep);
+  densMask = max(densMask, leadPlane * leadKeep);
+  float corridorContext = mix(1.0, mix(0.5, 1.0, corridorRep), corridorPressure);
+  densMask *= corridorContext;
 
   float t = fract(uTime * aSpeed + aPhase + aOffset);
   if (aDir < 0.0) {
     t = 1.0 - t;
   }
 
-  vec3 p = bezierPoint(aP0, aP1, aP2, t);
-
-  // Safety clamp: never place a plane inside the globe.
-  float minShell = min(length(aP0), length(aP2)) * 0.995;
-  float pLen = length(p);
-  if (pLen < 1e-6) {
-    vec3 fallbackDir = aP0 + aP2;
-    float fLen = length(fallbackDir);
-    if (fLen < 1e-6) {
-      fallbackDir = aP0;
-      fLen = max(length(fallbackDir), 1e-6);
-    }
-    p = (fallbackDir / fLen) * minShell;
-  } else if (pLen < minShell) {
-    p *= minShell / pLen;
-  }
+  vec3 p = routePoint(aP0, aP1, aP2, aCurve, t);
 
   vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
   float tangentStep = 0.018 * aDir;
   float tAhead = clamp(t + tangentStep, 0.0, 1.0);
   float tBehind = clamp(t - tangentStep, 0.0, 1.0);
-  vec3 pAhead = bezierPoint(aP0, aP1, aP2, tAhead);
-  vec3 pBehind = bezierPoint(aP0, aP1, aP2, tBehind);
+  vec3 pAhead = routePoint(aP0, aP1, aP2, aCurve, tAhead);
+  vec3 pBehind = routePoint(aP0, aP1, aP2, aCurve, tBehind);
   vec4 mvAhead = modelViewMatrix * vec4(pAhead, 1.0);
   vec4 mvBehind = modelViewMatrix * vec4(pBehind, 1.0);
   vec4 clipPosition = projectionMatrix * mvPosition;
@@ -147,8 +190,16 @@ void main() {
   float baseSize = aSize * aTraffic;
   float pointSize = baseSize * uSizeMul * (92.0 / dist);
   pointSize *= mix(0.66, 0.96, uRepresentationMix);
-  pointSize *= mix(1.0, 1.08, leadPlane);
-  pointSize *= aEnable * keepMask * densMask;
+  pointSize *= mix(1.0, 1.08, leadPlane * mix(0.32, 1.0, leadKeep));
+  pointSize *= mix(1.0, 0.84, localDensity * mix(0.28, 0.56, 1.0 - zoom));
+  pointSize *= mix(1.0, mix(0.82, 1.0, corridorRep), corridorPressure * 0.68);
+  float revealStart = max(0.0, aRevealPriority - 0.08);
+  float revealEnd = min(1.0, aRevealPriority + 0.08);
+  float revealMask = revealEnd > revealStart
+    ? smoothstep(revealStart, revealEnd, uRevealProgress)
+    : step(aRevealPriority, uRevealProgress);
+  vReveal = revealMask;
+  pointSize *= aEnable * keepMask * densMask * revealMask;
 
   gl_PointSize = clamp(pointSize, 0.0, 13.0);
   gl_Position = clipPosition;

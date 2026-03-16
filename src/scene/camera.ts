@@ -31,19 +31,17 @@ function ensureStyles() {
       position: fixed !important;
       left: auto !important;
       top: auto !important;
-      right: 32px !important;
-      bottom: 92px !important;
-      width: min(312px, calc(100vw - 44px));
-      max-height: 78vh;
+      right: 28px !important;
+      bottom: 42px !important;
+      width: min(356px, calc(100vw - 52px));
+      max-height: 80vh;
       overflow: hidden;
       padding: 1px;
       margin: 0;
-      border: 1px solid rgba(236, 178, 0, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       background: #0d1c30;
       color: #ffffff;
-      box-shadow:
-        0 24px 52px -18px rgba(0, 0, 0, 0.58),
-        0 0 42px -14px rgba(236, 178, 0, 0.54);
+      box-shadow: 0 24px 52px -18px rgba(0, 0, 0, 0.58);
       pointer-events: auto;
       opacity: 0;
       transform: translateY(10px);
@@ -121,7 +119,7 @@ function ensureStyles() {
     .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: rgba(255, 255, 255, 0.82); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; z-index: 3; pointer-events: auto; }
     .panel-tooltip--country { background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.12), transparent 42%), linear-gradient(180deg, #10233f, #0d1c30 66%); }
     .panel-tooltip-header--country {
-      min-height: 122px;
+      min-height: 142px;
       display: block;
       background-image:
         linear-gradient(180deg, rgba(9, 18, 31, 0.72), rgba(9, 18, 31, 0.98)),
@@ -133,9 +131,9 @@ function ensureStyles() {
     .panel-tooltip-headcopy--country {
       display: flex;
       flex-direction: column;
-      justify-content: flex-end;
-      min-height: 122px;
-      padding: 42px 16px 14px;
+      justify-content: flex-start;
+      min-height: 142px;
+      padding: 42px 18px 18px;
       position: relative;
       z-index: 1;
     }
@@ -143,7 +141,14 @@ function ensureStyles() {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 12px;
+      gap: 16px;
+    }
+    .panel-tooltip-country-heading {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
     .panel-tooltip--country .panel-tooltip-live {
       display: inline-flex;
@@ -175,18 +180,40 @@ function ensureStyles() {
       text-transform: uppercase;
       backdrop-filter: blur(10px);
     }
+    .panel-tooltip-country-flag {
+      flex: 0 0 auto;
+      width: 46px;
+      height: 46px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+        var(--country-flag-bg, rgba(255, 255, 255, 0.04));
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: cover;
+      box-shadow:
+        0 10px 26px -16px rgba(0, 0, 0, 0.52),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+    .panel-tooltip-country-flag--empty {
+      background:
+        radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.16), transparent 45%),
+        rgba(255, 255, 255, 0.05);
+    }
     .panel-tooltip-title--country {
-      margin-top: 14px;
+      margin-top: 0;
       max-width: 100%;
-      font-size: clamp(20px, 2.4vw, 38px);
+      font-size: clamp(22px, 2.35vw, 38px);
       text-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
     }
     .panel-tooltip-country-subtitle {
       display: none;
     }
     .panel-tooltip--country .panel-tooltip-close {
-      left: 12px;
-      top: 10px;
+      left: auto;
+      right: 18px;
+      top: 14px;
       width: 20px;
       height: 20px;
       border: 0;
@@ -215,8 +242,8 @@ function ensureStyles() {
       background: rgba(255, 255, 255, 0.015);
     }
     .panel-tooltip--country .panel-tooltip-stat {
-      min-height: 82px;
-      padding: 14px 14px 12px;
+      min-height: 92px;
+      padding: 16px 16px 14px;
       border: 0;
       border-radius: 0;
       background: transparent;
@@ -241,9 +268,10 @@ function ensureStyles() {
     .panel-tooltip-footer-note { font: 13px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
     .panel-tooltip-more { min-height: 44px; min-width: 110px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 14px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 18px; display: grid; place-items: center; text-transform: uppercase; letter-spacing: 0.9px; }
     .panel-tooltip--country .panel-tooltip-footer {
+      display: block;
       margin: 0;
       margin-top: 0;
-      padding: 14px 14px 16px;
+      padding: 16px 16px 18px;
       border: 0;
       border-top: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 0;
@@ -252,33 +280,50 @@ function ensureStyles() {
     .panel-tooltip--country .panel-tooltip-total-label {
       color: rgba(255, 255, 255, 0.5);
     }
+    .panel-tooltip--country .panel-tooltip-total-value {
+      margin-top: 8px;
+      font-size: clamp(34px, 4vw, 44px);
+    }
+    .panel-tooltip--country .panel-tooltip-total {
+      width: 100%;
+    }
     .panel-tooltip--country .panel-tooltip-more {
       border-radius: 999px;
       background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
     }
     @media (max-width: 980px) {
       #globe-breadcrumbs { left: 14px; top: 24px; max-width: min(420px, calc(100vw - 28px)); }
-      #country-panel { right: 16px !important; bottom: 72px !important; width: min(304px, calc(100vw - 32px)); max-height: 72vh; }
+      #country-panel { right: 18px !important; bottom: 36px !important; width: min(324px, calc(100vw - 36px)); max-height: 74vh; }
       .panel-tooltip-header { min-height: 148px; }
       .panel-tooltip-headcopy { padding-top: 52px; }
-      .panel-tooltip-header--country { min-height: 122px; }
-      .panel-tooltip-headcopy--country { min-height: 122px; }
+      .panel-tooltip-header--country { min-height: 132px; }
+      .panel-tooltip-headcopy--country { min-height: 132px; padding: 38px 16px 16px; }
     }
-    @media (max-width: 700px) {
+    @media (max-width: 720px) {
       #globe-breadcrumbs {
-        left: 12px;
-        right: 12px;
-        top: 54px;
-        max-width: none;
+        display: none !important;
       }
-      .globe-breadcrumb__button,
-      .globe-breadcrumb__current {
-        font-size: 12px;
+      #country-panel {
+        left: 0 !important;
+        right: 0 !important;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 12px) !important;
+        width: auto;
+        max-height: none;
+        padding: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.14);
+        border-left: 0;
+        border-right: 0;
+        border-bottom: 0;
+        background: #102038;
+        box-shadow: none;
       }
-      .globe-breadcrumb__separator {
-        font-size: 16px;
+      #country-panel.is-visible:hover {
+        border-color: rgba(255, 255, 255, 0.14);
+        box-shadow: none;
       }
-      #country-panel { right: 10px !important; bottom: 68px !important; width: calc(100vw - 20px); max-height: min(68vh, 520px); }
+      .panel-tooltip--country {
+        background: linear-gradient(180deg, #102038 0%, #0f1e33 100%);
+      }
       .panel-tooltip-header { min-height: 136px; }
       .panel-tooltip-headcopy { padding: 50px 16px 16px; }
       .panel-tooltip-live { gap: 6px; font-size: 11px; letter-spacing: 0.55px; }
@@ -287,24 +332,88 @@ function ensureStyles() {
       .panel-tooltip-stat:first-child { border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
       .panel-tooltip-stat-sub { font-size: 13px; }
       .panel-tooltip-footer { padding: 12px 16px; }
-      .panel-tooltip-header--country { min-height: 148px; }
-      .panel-tooltip-headcopy--country { min-height: 148px; padding: 46px 16px 14px; }
-      .panel-tooltip-country-topline { gap: 8px; }
-      .panel-tooltip-title--country { max-width: 100%; margin-top: 10px; font-size: clamp(24px, 7vw, 30px); }
+      .panel-tooltip-header--country {
+        min-height: 0;
+        background-image: linear-gradient(180deg, rgba(17, 36, 60, 0.98), rgba(16, 32, 56, 0.96));
+      }
+      .panel-tooltip-headcopy--country { min-height: 0; padding: 18px 14px 12px; }
+      .panel-tooltip-country-topline { align-items: center; gap: 12px; }
+      .panel-tooltip-country-heading { gap: 6px; }
+      .panel-tooltip-country-flag {
+        width: 40px;
+        height: 40px;
+        border-color: rgba(255, 255, 255, 0.12);
+        box-shadow: none;
+      }
+      .panel-tooltip-title--country {
+        max-width: 100%;
+        font-family: "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 1.2;
+        letter-spacing: 0;
+        text-shadow: none;
+      }
+      .panel-tooltip-live-dot { width: 6px; height: 6px; }
+      .panel-tooltip--country .panel-tooltip-live {
+        font-size: 10px;
+        letter-spacing: 0.72px;
+        color: rgba(255, 255, 255, 0.42);
+      }
+      .panel-tooltip--country .panel-tooltip-close {
+        display: none;
+      }
       .panel-tooltip-country-subtitle { display: none; }
-      .panel-tooltip--country .panel-tooltip-dual { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px 10px 0; }
-      .panel-tooltip--country .panel-tooltip-stat { padding: 12px; border-radius: 14px; }
-      .panel-tooltip--country .panel-tooltip-stat:first-child { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-      .panel-tooltip--country .panel-tooltip-stat-label { font-size: 11px; letter-spacing: 1px; }
-      .panel-tooltip--country .panel-tooltip-stat-value { font-size: clamp(22px, 6vw, 28px); }
+      .panel-tooltip--country .panel-tooltip-dual {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0;
+        padding: 0;
+        border-top-color: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .panel-tooltip--country .panel-tooltip-stat { min-height: 84px; padding: 14px 14px 12px; border-radius: 0; }
+      .panel-tooltip--country .panel-tooltip-stat:first-child { border-bottom: 0; }
+      .panel-tooltip--country .panel-tooltip-stat-label {
+        font-size: 10px;
+        letter-spacing: 1.2px;
+        color: rgba(255, 255, 255, 0.46);
+      }
+      .panel-tooltip--country .panel-tooltip-stat-value {
+        margin-top: 10px;
+        font-family: "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+        font-size: 17px;
+        font-weight: 400;
+        line-height: 1.05;
+      }
       .panel-tooltip--country .panel-tooltip-stat-sub { margin-top: 4px; font-size: 11px; line-height: 1.15; }
-      .panel-tooltip--country .panel-tooltip-footer { margin: 10px; margin-top: 8px; padding: 12px 14px; }
-      .panel-tooltip--country .panel-tooltip-total-label { font-size: 11px; }
-      .panel-tooltip--country .panel-tooltip-total-value { font-size: clamp(24px, 6vw, 30px); }
+      .panel-tooltip--country .panel-tooltip-footer {
+        margin: 0;
+        padding: 12px 14px 14px;
+        border-top-color: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .panel-tooltip--country .panel-tooltip-total-label {
+        font-size: 10px;
+        letter-spacing: 1px;
+        color: rgba(255, 255, 255, 0.44);
+      }
+      .panel-tooltip--country .panel-tooltip-total-value {
+        margin-top: 8px;
+        font-family: "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+        font-size: 17px;
+        font-weight: 600;
+        line-height: 1.05;
+      }
       .panel-tooltip--country .panel-tooltip-more { min-height: 36px; min-width: 84px; padding: 0 14px; font-size: 11px; }
     }
     @media (max-width: 520px) {
-      #country-panel { left: 12px !important; right: 12px !important; bottom: 64px !important; width: auto; max-height: min(62vh, 460px); }
+      #country-panel {
+        left: 0 !important;
+        right: 0 !important;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 12px) !important;
+        width: auto;
+        max-height: none;
+      }
       .panel-tooltip-header { min-height: 0; flex-direction: column; }
       .panel-tooltip-headcopy { padding: 44px 14px 14px; }
       .panel-tooltip-flagbox { width: 100%; flex-basis: 76px; border-left: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); background-size: 72px auto; }
@@ -312,16 +421,17 @@ function ensureStyles() {
       .panel-tooltip-primary-sub,
       .panel-tooltip-stat-sub,
       .panel-tooltip-footer-note { font-size: 12px; }
-      .panel-tooltip-header--country { min-height: 136px; flex-direction: column; }
-      .panel-tooltip-headcopy--country { min-height: 136px; padding: 42px 14px 12px; }
-      .panel-tooltip-country-topline { flex-wrap: wrap; }
-      .panel-tooltip-country-code { min-height: 28px; padding: 0 10px; font-size: 11px; }
-      .panel-tooltip--country .panel-tooltip-dual { padding: 8px 8px 0; gap: 6px; }
-      .panel-tooltip--country .panel-tooltip-stat { padding: 10px 10px 9px; }
+      .panel-tooltip-header--country { min-height: 0; flex-direction: column; }
+      .panel-tooltip-headcopy--country { min-height: 0; padding: 18px 14px 12px; }
+      .panel-tooltip-country-topline { gap: 10px; }
+      .panel-tooltip-country-flag { width: 38px; height: 38px; }
+      .panel-tooltip--country .panel-tooltip-dual { padding: 0; gap: 0; }
+      .panel-tooltip--country .panel-tooltip-stat { min-height: 80px; padding: 10px 10px 9px; }
       .panel-tooltip--country .panel-tooltip-stat-label { font-size: 10px; }
-      .panel-tooltip--country .panel-tooltip-stat-value { font-size: 20px; }
+      .panel-tooltip--country .panel-tooltip-stat-value { font-size: 16px; }
       .panel-tooltip--country .panel-tooltip-stat-sub { font-size: 10px; }
-      .panel-tooltip--country .panel-tooltip-footer { margin: 8px; margin-top: 6px; padding: 10px 12px; gap: 10px; }
+      .panel-tooltip--country .panel-tooltip-footer { margin: 0; padding: 10px 12px 12px; gap: 10px; }
+      .panel-tooltip--country .panel-tooltip-total-value { font-size: 16px; }
       .panel-tooltip--country .panel-tooltip-more { min-height: 32px; min-width: 72px; font-size: 10px; }
     }
   `
@@ -445,21 +555,6 @@ function resolveFlagUrl(iso2: string) {
   return base ? `${base}/flags/${iso2.toLowerCase()}.svg` : `/flags/${iso2.toLowerCase()}.svg`
 }
 
-function getCountryIso3(props: any) {
-  const candidates = [
-    props?.ISO_A3,
-    props?.ADM0_A3,
-    props?.BRK_A3,
-    props?.SU_A3
-  ]
-  for (const value of candidates) {
-    if (typeof value === 'string' && value.trim().length > 0 && value !== '-99') {
-      return value
-    }
-  }
-  return ''
-}
-
 function getCountryIso2(props: any) {
   const candidates = [
     props?.ISO_A2,
@@ -481,6 +576,14 @@ function escapeHtml(value: string) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
+}
+
+function formatPanelUpdateDate() {
+  return new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric'
+  }).format(new Date())
 }
 
 function formatInt(value: number | null | undefined) {
@@ -535,7 +638,6 @@ export function showCountryPanel(
     props.NAME ||
     'Unknown country'
 
-  const iso3 = getCountryIso3(props) || '—'
   const iso2 = getCountryIso2(props)
 
   const flightsNow = Number.isFinite(flights?.now) ? Number(flights?.now) : null
@@ -559,8 +661,11 @@ export function showCountryPanel(
   const closeButton = isHoverMode || !showCountryCardCloseButton
     ? ''
     : '<button type="button" class="panel-tooltip-close" aria-label="Close">×</button>'
-  const liveLabel = isHoverMode ? 'HOVER PREVIEW' : 'LIVE MONITORING'
+  const liveLabel = isHoverMode ? 'HOVER PREVIEW' : `LAST UPDATED ON: ${formatPanelUpdateDate()}`
   const countryCardStyle = flagUrl ? ` style="--country-flag-bg:url('${flagUrl}')"` : ''
+  const flagBubbleClass = flagUrl
+    ? 'panel-tooltip-country-flag'
+    : 'panel-tooltip-country-flag panel-tooltip-country-flag--empty'
 
   showPanel(`
     <div class="panel-tooltip panel-tooltip--country"${countryCardStyle}>
@@ -568,13 +673,15 @@ export function showCountryPanel(
         ${closeButton}
         <div class="panel-tooltip-headcopy panel-tooltip-headcopy--country">
           <div class="panel-tooltip-country-topline">
-            <div class="panel-tooltip-live">
-              <span class="panel-tooltip-live-dot"></span>
-              <span>${liveLabel}</span>
+            <div class="panel-tooltip-country-heading">
+              <div class="panel-tooltip-title panel-tooltip-title--country">${escapeHtml(name)}</div>
+              <div class="panel-tooltip-live">
+                <span class="panel-tooltip-live-dot"></span>
+                <span>${escapeHtml(liveLabel)}</span>
+              </div>
             </div>
-            <div class="panel-tooltip-country-code">${escapeHtml(String(iso3))}</div>
+            <div class="${flagBubbleClass}" aria-hidden="true"></div>
           </div>
-          <div class="panel-tooltip-title panel-tooltip-title--country">${escapeHtml(name)}</div>
           <div class="panel-tooltip-country-subtitle">Flag-layered header with live traffic summary</div>
         </div>
       </div>
@@ -605,7 +712,6 @@ export function showCountryPanel(
           <div class="panel-tooltip-total-label">TOTAL FLIGHTS OVER COUNTRY</div>
           <div class="panel-tooltip-total-value">${escapeHtml(totalFlightsLabel)}</div>
         </div>
-        <div class="panel-tooltip-more">${escapeHtml(isHoverMode ? 'Preview' : String(iso3))}</div>
       </div>
     </div>
   `)

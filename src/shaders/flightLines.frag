@@ -31,6 +31,9 @@ varying float vRouteId;
 varying float vDir;
 varying float vHub;
 varying float vAltitude;
+varying float vDensity;
+varying float vCorridorKeep;
+varying float vCorridorGroup;
 varying float vFacing;
 
 void main() {
@@ -130,6 +133,21 @@ void main() {
   float trafficKeep = smoothstep(0.85, 1.12, vTraffic);
   keepMask = max(keepMask, trafficKeep * clamp((0.65 - uRouteKeep) / 0.65, 0.0, 1.0));
 
+  // In crowded corridors, thin context routes a bit harder while keeping
+  // hover/selection and higher-traffic flights readable.
+  float denseRegion = smoothstep(0.32, 0.96, vDensity);
+  float denseKeepThreshold = max(0.04, uRouteKeep - denseRegion * mix(0.02, 0.12, zoomOut));
+  float denseKeep = 1.0 - smoothstep(denseKeepThreshold - 0.12, denseKeepThreshold, vSeed);
+  denseKeep = max(denseKeep, emphasize);
+  denseKeep = max(denseKeep, trafficKeep * denseRegion * mix(0.2, 0.5, zoomOut));
+  keepMask *= denseKeep;
+
+  float corridorPressure = denseRegion * vCorridorGroup * mix(0.2, 1.0, zoomOut);
+  float corridorRep = smoothstep(0.12, 0.74, vCorridorKeep);
+  float corridorKeep = mix(1.0, mix(0.12, 1.0, corridorRep), corridorPressure);
+  corridorKeep = mix(corridorKeep, 1.0, emphasize);
+  keepMask *= corridorKeep;
+
   // "Bundling" feel on zoom-out: keep hub-connected corridors longer, and fade weaker routes earlier.
   float bundleMix = smoothstep(0.35, 0.95, zoomOut);
   float hubKeep = smoothstep(0.18, 0.88, vHub);
@@ -151,6 +169,12 @@ void main() {
   float bundleContext = mix(1.0, mix(0.18, 1.0, hubKeep), bundleMix);
   bundleContext = mix(bundleContext, 1.0, emphasize);
   alpha *= bundleContext;
+  float densityContext = mix(1.0, mix(0.48, 0.88, traffic01), denseRegion * mix(0.24, 0.72, zoomOut));
+  densityContext = mix(densityContext, 1.0, emphasize);
+  alpha *= densityContext;
+  float corridorContext = mix(1.0, mix(0.26, 1.0, corridorRep), corridorPressure * 0.85);
+  corridorContext = mix(corridorContext, 1.0, emphasize);
+  alpha *= corridorContext;
   // Particle representation becomes primary at zoom-out; keep only a soft line context.
   alpha *= mix(1.0, 0.46, uRepresentationMix);
 

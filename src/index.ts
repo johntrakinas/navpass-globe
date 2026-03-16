@@ -462,6 +462,7 @@ const countrySearchInput = document.getElementById('country-search-input') as HT
 const countrySearchButton = document.getElementById('country-search-button') as HTMLButtonElement | null
 const countrySearchResults = document.getElementById('country-search-results') as HTMLDivElement | null
 const countrySearchMobileQuery = window.matchMedia('(max-width: 720px)')
+const COUNTRY_SEARCH_RECENTS_STORAGE_KEY = 'navpass:globe:recent-country-searches'
 
 type CountrySearchEntry = {
   feature: any
@@ -475,9 +476,36 @@ type CountrySearchEntry = {
 let countrySearchIndex: CountrySearchEntry[] = []
 let countrySearchSuggestions: CountrySearchEntry[] = []
 let countrySearchActiveIndex = -1
+let countrySearchResultsHeading = ''
+let recentCountrySearchIso3 = loadRecentCountrySearches()
 
 function isCountrySearchEnabled() {
   return countrySearchMobileQuery.matches
+}
+
+function loadRecentCountrySearches() {
+  try {
+    const raw = window.localStorage.getItem(COUNTRY_SEARCH_RECENTS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .slice(0, 5)
+  } catch {
+    return []
+  }
+}
+
+function persistRecentCountrySearches() {
+  try {
+    window.localStorage.setItem(
+      COUNTRY_SEARCH_RECENTS_STORAGE_KEY,
+      JSON.stringify(recentCountrySearchIso3.slice(0, 5))
+    )
+  } catch {
+    // Ignore storage failures so search remains functional in restricted environments.
+  }
 }
 
 function normalizeSearchToken(value: string) {
@@ -540,6 +568,7 @@ function setCountrySearchInvalidState(isInvalid: boolean) {
 function clearCountrySearchSuggestions() {
   countrySearchSuggestions = []
   countrySearchActiveIndex = -1
+  countrySearchResultsHeading = ''
   if (countrySearchResults) {
     countrySearchResults.innerHTML = ''
   }
@@ -612,12 +641,50 @@ function getCountrySearchSuggestions(query: string, limit = 7) {
   return matches.slice(0, limit).map((item) => item.entry)
 }
 
+function findCountrySearchEntryByIso3(iso3: string) {
+  return countrySearchIndex.find((entry) => entry.iso3 === iso3) ?? null
+}
+
+function getRecentCountrySearchEntries(limit = 5) {
+  const entries: CountrySearchEntry[] = []
+  for (const iso3 of recentCountrySearchIso3) {
+    const entry = findCountrySearchEntryByIso3(iso3)
+    if (!entry) continue
+    entries.push(entry)
+    if (entries.length >= limit) break
+  }
+  return entries
+}
+
+function showRecentCountrySearches() {
+  const entries = getRecentCountrySearchEntries()
+  if (!entries.length) {
+    clearCountrySearchSuggestions()
+    return
+  }
+  setCountrySearchSuggestions(entries, -1, 'Recent searches')
+}
+
+function rememberRecentCountry(feature: any) {
+  const iso3 = getISO3(feature?.properties ?? {})
+  if (!iso3) return
+  recentCountrySearchIso3 = [iso3, ...recentCountrySearchIso3.filter((value) => value !== iso3)].slice(0, 5)
+  persistRecentCountrySearches()
+}
+
 function renderCountrySearchSuggestions(entries: CountrySearchEntry[]) {
   if (!countrySearchResults) return
 
   countrySearchSuggestions = entries
   countrySearchResults.innerHTML = ''
   countrySearch?.classList.toggle('has-results', entries.length > 0)
+
+  if (entries.length > 0 && countrySearchResultsHeading) {
+    const heading = document.createElement('div')
+    heading.className = 'country-search-results__heading'
+    heading.textContent = countrySearchResultsHeading
+    countrySearchResults.appendChild(heading)
+  }
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]
@@ -651,9 +718,14 @@ function renderCountrySearchSuggestions(entries: CountrySearchEntry[]) {
   }
 }
 
-function setCountrySearchSuggestions(entries: CountrySearchEntry[], activeIndex = -1) {
+function setCountrySearchSuggestions(
+  entries: CountrySearchEntry[],
+  activeIndex = -1,
+  heading = ''
+) {
   countrySearchActiveIndex =
     entries.length > 0 ? THREE.MathUtils.clamp(activeIndex, 0, entries.length - 1) : -1
+  countrySearchResultsHeading = heading
   renderCountrySearchSuggestions(entries)
 }
 
@@ -672,8 +744,17 @@ function runCountrySearch(preferredEntry?: CountrySearchEntry | null) {
   markUserInteracted()
   const rawQuery = countrySearchInput.value.trim()
   if (!rawQuery) {
+    const fallbackEntry =
+      preferredEntry ??
+      (countrySearchActiveIndex >= 0 ? countrySearchSuggestions[countrySearchActiveIndex] ?? null : null) ??
+      countrySearchSuggestions[0] ??
+      null
+    if (fallbackEntry) {
+      selectCountrySearchEntry(fallbackEntry)
+      return
+    }
     setCountrySearchInvalidState(false)
-    clearCountrySearchSuggestions()
+    showRecentCountrySearches()
     return
   }
 
@@ -698,7 +779,7 @@ countrySearchInput?.addEventListener('input', () => {
   setCountrySearchInvalidState(false)
   const rawQuery = countrySearchInput.value.trim()
   if (!rawQuery) {
-    clearCountrySearchSuggestions()
+    showRecentCountrySearches()
     return
   }
   setCountrySearchSuggestions(getCountrySearchSuggestions(rawQuery), 0)
@@ -728,7 +809,10 @@ countrySearchInput?.addEventListener('keydown', (event) => {
 
 countrySearchInput?.addEventListener('focus', () => {
   const rawQuery = countrySearchInput.value.trim()
-  if (!rawQuery) return
+  if (!rawQuery) {
+    showRecentCountrySearches()
+    return
+  }
   setCountrySearchSuggestions(getCountrySearchSuggestions(rawQuery), 0)
 })
 
@@ -1080,6 +1164,11 @@ const requestedCountryClickZoomDuration = Number(options.countryClickZoomDuratio
 const countryClickZoomDuration = Number.isFinite(requestedCountryClickZoomDuration)
   ? THREE.MathUtils.clamp(Math.round(requestedCountryClickZoomDuration), 120, 8000)
   : null
+const MOBILE_FIXED_ZOOM_DISTANCE = THREE.MathUtils.clamp(21.4, minZoomDistance, maxZoomDistance)
+
+function isMobileZoomLocked() {
+  return countrySearchMobileQuery.matches
+}
 
 function getCameraZoom01(distance: number) {
   const span = Math.max(1e-4, maxZoomDistance - minZoomDistance)
@@ -1091,11 +1180,7 @@ controls.enableDamping = true
 controls.dampingFactor = 0.08
 controls.enableRotate = false
 controls.enablePan = false
-controls.enableZoom = !disableScrollZoom
-controls.minDistance = minZoomDistance
-controls.maxDistance = maxZoomDistance
 controls.target.set(0, 0, 0)
-controls.update()
 
 /**
  * Smooth zoom animation (used by Story mode presets)
@@ -1110,6 +1195,11 @@ function setCameraDistance(distance: number) {
 }
 
 function zoomTo(distance: number, durationMs = 900) {
+  if (isMobileZoomLocked()) {
+    zoomAnim = null
+    setCameraDistance(MOBILE_FIXED_ZOOM_DISTANCE)
+    return
+  }
   zoomAnim = {
     t0: performance.now(),
     dur: durationMs,
@@ -1128,9 +1218,29 @@ const railZoomIn = document.getElementById('rail-zoom-in') as HTMLButtonElement 
 const railZoomOut = document.getElementById('rail-zoom-out') as HTMLButtonElement | null
 const leftRail = document.getElementById('left-rail') as HTMLElement | null
 
-if (leftRail) {
-  leftRail.style.display = showZoomControls ? '' : 'none'
-  leftRail.setAttribute('aria-hidden', showZoomControls ? 'false' : 'true')
+function applyResponsiveZoomMode() {
+  const locked = isMobileZoomLocked()
+  const effectiveZoomDistance = locked ? MOBILE_FIXED_ZOOM_DISTANCE : camera.position.length()
+
+  controls.enableZoom = !disableScrollZoom && !locked
+  controls.minDistance = locked ? MOBILE_FIXED_ZOOM_DISTANCE : minZoomDistance
+  controls.maxDistance = locked ? MOBILE_FIXED_ZOOM_DISTANCE : maxZoomDistance
+  setCameraDistance(effectiveZoomDistance)
+  controls.update()
+
+  if (leftRail) {
+    const showRail = showZoomControls && !locked
+    leftRail.style.display = showRail ? '' : 'none'
+    leftRail.setAttribute('aria-hidden', showRail ? 'false' : 'true')
+  }
+}
+
+applyResponsiveZoomMode()
+
+if (typeof countrySearchMobileQuery.addEventListener === 'function') {
+  countrySearchMobileQuery.addEventListener('change', applyResponsiveZoomMode)
+} else {
+  ;(countrySearchMobileQuery as any).addListener?.(applyResponsiveZoomMode)
 }
 
 function zoomByStep(delta: number) {
@@ -1451,6 +1561,7 @@ function computeCountryZoomTarget(spanDeg: number) {
 }
 
 function zoomToSubtle(targetDistance: number, durationMs = 950, strength = 0.62) {
+  if (isMobileZoomLocked()) return
   const current = camera.position.length()
   const next = THREE.MathUtils.lerp(current, targetDistance, strength)
   if (Math.abs(next - current) < 0.25) return
@@ -1766,6 +1877,7 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   fadeOutHover(globeGroup)
   tooltip.hide()
   highlightCountryFromFeature(feature, globeGroup, GLOBE_RADIUS)
+  rememberRecentCountry(feature)
   isCountrySelected = true
   selectedCountryIso3 = iso3 || null
   setGlobeBreadcrumbs(getCountryBreadcrumbs(getFeatureLabel(feature)))
@@ -2259,6 +2371,7 @@ async function init() {
     renderer.setSize(innerWidth, innerHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     updatePostprocessSize()
+    applyResponsiveZoomMode()
   })
 
   window.addEventListener('pointermove', onPointerHover)

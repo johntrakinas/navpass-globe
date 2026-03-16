@@ -87,6 +87,22 @@
         background: rgba(7, 17, 31, 0.38);
       }
 
+      #country-search-icon {
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
+        margin-left: 10px;
+        color: rgba(255, 255, 255, 0.64);
+        display: grid;
+        place-items: center;
+      }
+
+      #country-search-icon svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+
       #country-search-input {
         width: 100%;
         height: 34px;
@@ -248,17 +264,98 @@
         text-align: center;
       }
 
+      .country-search-results__heading {
+        padding: 10px 12px 8px;
+        font: 500 10px/1 "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.56);
+        text-align: right;
+      }
+
       @media (max-width: 720px) {
+        #left-rail {
+          display: none !important;
+        }
         #country-search {
           display: flex;
-          right: 12px;
-          top: 12px;
-          left: 12px;
+          right: 20px;
+          top: clamp(34px, 6vh, 52px);
+          left: 20px;
           width: auto;
-          padding: 8px;
+          padding: 0;
+          gap: 10px;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          backdrop-filter: none;
+          box-shadow: none;
+        }
+        #country-search-controls {
+          gap: 10px;
+          min-height: 44px;
+          padding: 0 12px 0 0;
+          border: 1px solid rgba(255, 255, 255, 0.26);
+          border-radius: 0;
+          background: rgba(9, 19, 32, 0.94);
+        }
+        #country-search-icon {
+          margin-left: 12px;
+        }
+        #country-search-input {
+          height: 42px;
+          padding: 0;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          font-size: 13px;
+          letter-spacing: 0.14px;
+        }
+        #country-search-input:focus {
+          border-color: transparent;
+          box-shadow: none;
+        }
+        #country-search-results {
+          max-height: min(220px, 32vh);
+          padding: 0;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          border-radius: 0;
+          background:
+            linear-gradient(180deg, rgba(16, 31, 52, 0.96), rgba(9, 19, 32, 0.94)),
+            rgba(8, 18, 33, 0.96);
+          box-shadow: none;
+        }
+        #country-search.has-results #country-search-results {
+          display: grid;
+          gap: 0;
+        }
+        .country-search-option {
+          grid-template-columns: 1fr;
+          gap: 0;
+          padding: 16px 14px;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          transform: none;
+        }
+        .country-search-option:hover,
+        .country-search-option.is-active {
+          background: rgba(255, 255, 255, 0.04);
+          border-color: transparent;
+          transform: none;
+        }
+        .country-search-option-flag,
+        .country-search-option-meta,
+        .country-search-option-code {
+          display: none;
+        }
+        .country-search-option-label {
+          font-size: 14px;
+          font-weight: 500;
+          letter-spacing: 0.02em;
         }
         #country-search-button {
-          flex: 0 0 auto;
+          display: none;
         }
       }
     </style>
@@ -267,7 +364,13 @@
     <div id="app"></div>
     <form id="country-search" role="search" aria-label="Country search">
       <div id="country-search-controls">
-        <input id="country-search-input" type="search" autocomplete="off" placeholder="Search country or ISO code" />
+        <span id="country-search-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"></circle>
+            <path d="M16 16L21 21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+          </svg>
+        </span>
+        <input id="country-search-input" type="search" autocomplete="off" placeholder="Search for a country, region or route..." />
         <button id="country-search-button" type="submit">Search</button>
       </div>
       <div id="country-search-results" role="listbox" aria-label="Country suggestions"></div>
