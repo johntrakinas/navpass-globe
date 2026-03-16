@@ -28,6 +28,8 @@ import { vector3ToLatLon } from './globe/math'
 import { findCountryFeature } from './globe/countryLookUp'
 import {
   ensureCountryPanelScaffold,
+  configureGlobeUi,
+  setGlobeBreadcrumbs,
   showCountryPanel,
   hideCountryPanel,
   showFocusDim,
@@ -165,6 +167,11 @@ type EnrichedFlightsFile = {
     dlat: number
     dlon: number
     path?: Array<[number, number]>
+    segs?: Array<{
+      country?: string
+      enter?: string
+      exit?: string
+    }>
     snap_lat?: number
     snap_lon?: number
     snap_alt?: number
@@ -318,6 +325,11 @@ export type GlobeOptions = {
   initialFlightVisualizationMode?: FlightVisualizationMode
   initialIntroAnimationEnabled?: boolean
   disableScrollZoom?: boolean
+  showBreadcrumbs?: boolean
+  showZoomControls?: boolean
+  countryClickZoomLevel?: number
+  countryClickZoomDuration?: number
+  showCountryCardCloseButton?: boolean
   minZoomDistance?: number
   maxZoomDistance?: number
   routeCount?: number
@@ -330,13 +342,34 @@ export type GlobeInstance = {
   ready: Promise<void>
 }
 
+const BASE_BREADCRUMBS = [
+  { id: 'home', label: 'Home' },
+  { id: 'map', label: 'Map' }
+]
+
+function getBaseBreadcrumbs() {
+  return BASE_BREADCRUMBS.map((item) => ({ ...item }))
+}
+
+function getCountryBreadcrumbs(label: string) {
+  return [
+    ...getBaseBreadcrumbs(),
+    { id: 'country', label }
+  ]
+}
+
 export default function globe(options: GlobeOptions = {}): GlobeInstance {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     throw new Error('The globe package must be instantiated in a browser environment.')
   }
 
   const mountTarget = options.mountTarget ?? document.body
+  const showBreadcrumbs = options.showBreadcrumbs !== false
+  const showZoomControls = options.showZoomControls !== false
+  const showCountryCardCloseButton = options.showCountryCardCloseButton !== false
   ensureCountryPanelScaffold()
+  configureGlobeUi({ showBreadcrumbs, showCountryCardCloseButton })
+  setGlobeBreadcrumbs(getBaseBreadcrumbs())
   const assetBaseUrl = (options.assetBaseUrl ?? '').replace(/\/+$/, '')
   const resolveAssetPath = (assetPath: string) => {
     const normalizedAssetPath = assetPath.replace(/^\/+/, '')
@@ -459,6 +492,8 @@ function buildCountrySearchIndex(geojson: any): CountrySearchEntry[] {
   const entries: CountrySearchEntry[] = []
   for (const feature of geojson?.features ?? []) {
     const props = feature?.properties ?? {}
+    const iso2 = getISO2(props)
+    const iso3 = getISO3(props)
     const names = [
       props.NAME_LONG,
       props.NAME_EN,
@@ -487,8 +522,8 @@ function buildCountrySearchIndex(geojson: any): CountrySearchEntry[] {
       feature,
       label: names[0] ?? String(codes[0] ?? 'Country'),
       meta: names.find((name) => name !== (names[0] ?? '')) ?? '',
-      iso2: String(props.ISO_A2 || props.WB_A2 || ''),
-      iso3: String(props.ISO_A3 || props.ADM0_A3 || props.BRK_A3 || props.SU_A3 || ''),
+      iso2,
+      iso3,
       tokens: [...tokens]
     })
   }
@@ -1037,6 +1072,14 @@ const maxZoomDistance = THREE.MathUtils.clamp(
   minZoomDistance + 2,
   60
 )
+const requestedCountryClickZoomLevel = Number(options.countryClickZoomLevel)
+const countryClickZoomLevel = Number.isFinite(requestedCountryClickZoomLevel)
+  ? THREE.MathUtils.clamp(requestedCountryClickZoomLevel, minZoomDistance, maxZoomDistance)
+  : null
+const requestedCountryClickZoomDuration = Number(options.countryClickZoomDuration)
+const countryClickZoomDuration = Number.isFinite(requestedCountryClickZoomDuration)
+  ? THREE.MathUtils.clamp(Math.round(requestedCountryClickZoomDuration), 120, 8000)
+  : null
 
 function getCameraZoom01(distance: number) {
   const span = Math.max(1e-4, maxZoomDistance - minZoomDistance)
@@ -1083,6 +1126,12 @@ controls.addEventListener('start', () => {
 
 const railZoomIn = document.getElementById('rail-zoom-in') as HTMLButtonElement | null
 const railZoomOut = document.getElementById('rail-zoom-out') as HTMLButtonElement | null
+const leftRail = document.getElementById('left-rail') as HTMLElement | null
+
+if (leftRail) {
+  leftRail.style.display = showZoomControls ? '' : 'none'
+  leftRail.setAttribute('aria-hidden', showZoomControls ? 'false' : 'true')
+}
 
 function zoomByStep(delta: number) {
   const currentDistance = camera.position.length()
@@ -1478,6 +1527,7 @@ function clearSelectionUIState() {
   selectedCountryIso3 = null
   flightRoutes?.setFocusCountry(null)
   clearHighlight(globeGroup)
+  setGlobeBreadcrumbs(getBaseBreadcrumbs())
 }
 
 function getISO3(props: any) {
@@ -1507,7 +1557,7 @@ function getFeatureLabel(feature: any) {
 
 function getFeatureMeta(feature: any) {
   const props = feature.properties || {}
-  const iso = props.ISO_A3 || props.ADM0_A3 || props.BRK_A3 || '—'
+  const iso = getISO3(props) || '—'
   const continent = props.CONTINENT || '—'
   return `${iso} • ${continent}`
 }
@@ -1718,6 +1768,7 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   highlightCountryFromFeature(feature, globeGroup, GLOBE_RADIUS)
   isCountrySelected = true
   selectedCountryIso3 = iso3 || null
+  setGlobeBreadcrumbs(getCountryBreadcrumbs(getFeatureLabel(feature)))
   const flightsStats = flightRoutes ? flightRoutes.getCountryFlightStats(iso3, performance.now() * 0.001) : null
   showCountryPanel(feature.properties, flightsStats, 'selected')
   showFocusDim()
@@ -1732,8 +1783,21 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   const focusPoint = worldPoint ?? getFeatureFocusPoint(feature)
   focusGlobeToPoint(focusPoint.clone(), 1200)
 
+  if (countryClickZoomLevel !== null) {
+    zoomTo(countryClickZoomLevel, countryClickZoomDuration ?? 1120)
+    return
+  }
+
   // Subtle zoom: small countries get a touch closer; big ones keep context.
-  zoomToSubtle(computeCountryZoomTarget(spanDeg), 1120, 0.74)
+  zoomToSubtle(computeCountryZoomTarget(spanDeg), countryClickZoomDuration ?? 1120, 0.74)
+}
+
+function navigateToWorldFromBreadcrumb() {
+  clearSelectionUIState()
+  globeAnim = null
+  velYaw = 0
+  velPitch = 0
+  zoomTo(maxZoomDistance, 900)
 }
 
 /**
@@ -2178,6 +2242,15 @@ async function init() {
   })
   window.addEventListener('navpass:close-country-panel', () => {
     clearSelectionUIState()
+  })
+  window.addEventListener('navpass:breadcrumb-select', (event) => {
+    const detail =
+      event instanceof CustomEvent && typeof event.detail === 'object' && event.detail
+        ? (event.detail as { levelId?: string })
+        : null
+    if (detail?.levelId !== 'home' && detail?.levelId !== 'map') return
+    markUserInteracted()
+    navigateToWorldFromBreadcrumb()
   })
 
   window.addEventListener('resize', () => {

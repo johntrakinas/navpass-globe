@@ -72,6 +72,12 @@ If your globe URL is under a subpath, use that full URL in `src`.
 - `heatmap=true|false`
 - `flightMode=legacy|reengineered`
 - `introAnimation=true|false` (default `true`)
+- `showBreadcrumbs=true|false` (default `true`)
+- `showZoomControls=true|false` (default `true`)
+- `showCountryCardCloseButton=true|false` (default `true`)
+- `countryClickZoomLevel=18` (optional fixed camera distance when a country is selected)
+- `countryClickZoomDuration=1120` (optional zoom animation duration in ms)
+- `disableScrollZoom=true|false`
 - `minZoomDistance=17`
 - `maxZoomDistance=32`
 - `routeCount=300` (how many routes to generate)
@@ -81,6 +87,10 @@ If your globe URL is under a subpath, use that full URL in `src`.
 - `gridEffectColor=#B8C0CE` (or `0xB8C0CE`) for grid effect color
 - `gridMainColor=#B8C0CE` (or `0xB8C0CE`) for main grid color
 - `countryLineColor=#122640` (or `0x122640`) for country border lines
+- `hoverColor=#FFFFFF` (or `0xFFFFFF`) for the overall hover color
+- `hoverAccentColor=#FBBC05` (or `0xFBBC05`) for the secondary hover tint
+- `hoverCoreColor=#FFFFFF` (or `0xFFFFFF`) for the hover core color
+- `hoverPaletteMix=0.0..1.0` for animated palette blending on hover
 - `planeCoreColor=#FFFFFF` (or `0xFFFFFF`) for plane core
 - `planeGlowColor=#FFE082` (or `0xFFE082`) for plane glow
 - `planeTintColor=#FBBC05` (or `0xFBBC05`) for plane tint
@@ -91,7 +101,21 @@ If your globe URL is under a subpath, use that full URL in `src`.
 Example:
 
 ```text
-https://your-globe-domain.example/?heatmap=true&flightMode=reengineered&minZoomDistance=16&maxZoomDistance=30
+https://your-globe-domain.example/?heatmap=true&flightMode=reengineered&showBreadcrumbs=true&showZoomControls=false&showCountryCardCloseButton=false&countryClickZoomLevel=18&minZoomDistance=16&maxZoomDistance=30
+```
+
+## Library Options
+
+When using the package directly, the same controls are available through `GlobeOptions`:
+
+```ts
+globe({
+  showBreadcrumbs: true,
+  showZoomControls: false,
+  showCountryCardCloseButton: false,
+  countryClickZoomLevel: 18,
+  countryClickZoomDuration: 1120
+})
 ```
 
 Theme via JSON:

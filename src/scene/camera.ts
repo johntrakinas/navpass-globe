@@ -1,7 +1,20 @@
 const UI_ROOT_ID = 'globe-ui'
 const PANEL_ID = 'country-panel'
 const FOCUS_DIM_ID = 'focus-dim'
+const BREADCRUMBS_ID = 'globe-breadcrumbs'
 const STYLE_ID = 'navpass-country-panel-style'
+
+export type GlobeBreadcrumbItem = {
+  id: string
+  label: string
+}
+
+let showBreadcrumbs = true
+let showCountryCardCloseButton = true
+let currentBreadcrumbs: GlobeBreadcrumbItem[] = [
+  { id: 'home', label: 'Home' },
+  { id: 'map', label: 'Map' }
+]
 
 function ensureStyles() {
   if (document.getElementById(STYLE_ID)) return
@@ -18,17 +31,19 @@ function ensureStyles() {
       position: fixed !important;
       left: auto !important;
       top: auto !important;
-      right: 24px !important;
-      bottom: 54px !important;
-      width: min(438px, calc(100vw - 36px));
-      max-height: 86vh;
+      right: 32px !important;
+      bottom: 92px !important;
+      width: min(312px, calc(100vw - 44px));
+      max-height: 78vh;
       overflow: hidden;
       padding: 1px;
       margin: 0;
-      border: 1px solid rgba(255, 255, 255, 0.34);
+      border: 1px solid rgba(236, 178, 0, 0.72);
       background: #0d1c30;
       color: #ffffff;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.42);
+      box-shadow:
+        0 24px 52px -18px rgba(0, 0, 0, 0.58),
+        0 0 42px -14px rgba(236, 178, 0, 0.54);
       pointer-events: auto;
       opacity: 0;
       transform: translateY(10px);
@@ -37,10 +52,10 @@ function ensureStyles() {
     }
     #country-panel.is-visible { opacity: 1; transform: translateY(0); }
     #country-panel.is-visible:hover {
-      border-color: rgba(236, 178, 0, 0.78);
+      border-color: rgba(255, 208, 66, 0.92);
       box-shadow:
-        0 25px 50px -12px rgba(0, 0, 0, 0.42),
-        0 0 58px -16px rgba(236, 178, 0, 0.62);
+        0 28px 56px -16px rgba(0, 0, 0, 0.6),
+        0 0 56px -12px rgba(236, 178, 0, 0.68);
     }
     #focus-dim {
       position: fixed;
@@ -50,6 +65,50 @@ function ensureStyles() {
       opacity: 0;
       background: transparent;
       transition: opacity 0ms linear;
+    }
+    #globe-breadcrumbs {
+      position: fixed;
+      left: 18px;
+      top: 62px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      max-width: min(420px, calc(100vw - 36px));
+      pointer-events: none;
+    }
+    .globe-breadcrumb {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
+    }
+    .globe-breadcrumb__button,
+    .globe-breadcrumb__current {
+      color: rgba(255, 255, 255, 0.92);
+      font: 500 12px/1.15 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+      letter-spacing: 0.01em;
+      text-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+      white-space: nowrap;
+    }
+    .globe-breadcrumb__button {
+      border: 0;
+      padding: 0;
+      background: transparent;
+      cursor: pointer;
+      transition: color 220ms ease, opacity 220ms ease;
+    }
+    .globe-breadcrumb__button:hover {
+      color: #ffffff;
+    }
+    .globe-breadcrumb__current {
+      color: #ecb200;
+    }
+    .globe-breadcrumb__separator {
+      color: rgba(255, 255, 255, 0.64);
+      font: 500 16px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+      user-select: none;
     }
     .panel-tooltip,
     .panel-tooltip * { margin: 0; }
@@ -62,12 +121,11 @@ function ensureStyles() {
     .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: rgba(255, 255, 255, 0.82); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; z-index: 3; pointer-events: auto; }
     .panel-tooltip--country { background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.12), transparent 42%), linear-gradient(180deg, #10233f, #0d1c30 66%); }
     .panel-tooltip-header--country {
-      min-height: 220px;
+      min-height: 122px;
       display: block;
       background-image:
-        linear-gradient(180deg, rgba(4, 10, 18, 0.12), rgba(4, 10, 18, 0.46) 42%, rgba(4, 10, 18, 0.92)),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 58%),
-        var(--country-flag-bg, linear-gradient(135deg, #18365b, #10233f));
+        linear-gradient(180deg, rgba(9, 18, 31, 0.72), rgba(9, 18, 31, 0.98)),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 62%);
       background-position: center;
       background-repeat: no-repeat;
       background-size: cover;
@@ -76,8 +134,8 @@ function ensureStyles() {
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
-      min-height: 220px;
-      padding: 76px 22px 20px;
+      min-height: 122px;
+      padding: 42px 16px 14px;
       position: relative;
       z-index: 1;
     }
@@ -91,52 +149,51 @@ function ensureStyles() {
       display: inline-flex;
       width: fit-content;
       margin-top: 0;
-      padding: 7px 10px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 999px;
-      background: rgba(7, 15, 26, 0.34);
-      color: rgba(255, 255, 255, 0.82);
-      backdrop-filter: blur(10px);
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.56);
+      backdrop-filter: none;
+      font-size: 10px;
+      letter-spacing: 0.9px;
     }
     .panel-tooltip-country-code {
       flex: 0 0 auto;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 54px;
-      min-height: 32px;
-      padding: 0 12px;
+      min-width: 46px;
+      min-height: 28px;
+      padding: 0 10px;
       border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 999px;
       background: rgba(7, 15, 26, 0.3);
       color: rgba(255, 255, 255, 0.96);
-      font: 700 12px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
-      letter-spacing: 1.2px;
+      font: 700 10px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+      letter-spacing: 1px;
       text-transform: uppercase;
       backdrop-filter: blur(10px);
     }
     .panel-tooltip-title--country {
-      margin-top: 16px;
-      max-width: 78%;
+      margin-top: 14px;
+      max-width: 100%;
+      font-size: clamp(20px, 2.4vw, 38px);
       text-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
     }
     .panel-tooltip-country-subtitle {
-      margin-top: 10px;
-      color: rgba(255, 255, 255, 0.72);
-      font: 13px/1.3 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
-      letter-spacing: 1px;
-      text-transform: uppercase;
+      display: none;
     }
     .panel-tooltip--country .panel-tooltip-close {
-      left: 14px;
-      top: 14px;
-      width: 32px;
-      height: 32px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 999px;
-      background: rgba(7, 15, 26, 0.32);
-      backdrop-filter: blur(10px);
-      font-size: 22px;
+      left: 12px;
+      top: 10px;
+      width: 20px;
+      height: 20px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      backdrop-filter: none;
+      font-size: 18px;
     }
     .panel-tooltip-flagbox { width: clamp(92px, 22vw, 122px); flex: 0 0 clamp(92px, 22vw, 122px); border-left: 1px solid rgba(255, 255, 255, 0.1); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: min(80px, 72%) auto; opacity: 0.95; }
     .panel-tooltip-flagbox--empty { background: rgba(255, 255, 255, 0.04); }
@@ -151,25 +208,32 @@ function ensureStyles() {
     .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: clamp(28px, 4.4vw, 42px); line-height: 1; color: #fff; }
     .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.32); }
     .panel-tooltip--country .panel-tooltip-dual {
-      gap: 10px;
-      padding: 14px 14px 0;
+      gap: 0;
+      padding: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
       border-bottom: 0;
-      background: transparent;
+      background: rgba(255, 255, 255, 0.015);
     }
     .panel-tooltip--country .panel-tooltip-stat {
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 18px;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      min-height: 82px;
+      padding: 14px 14px 12px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
     }
     .panel-tooltip--country .panel-tooltip-stat:first-child {
       border-right: 1px solid rgba(255, 255, 255, 0.08);
     }
     .panel-tooltip--country .panel-tooltip-stat-label {
       color: rgba(255, 255, 255, 0.54);
+      font-size: 11px;
+      letter-spacing: 1.1px;
     }
     .panel-tooltip--country .panel-tooltip-stat-sub {
       color: rgba(255, 255, 255, 0.44);
+      margin-top: 6px;
+      font-size: 11px;
     }
     .panel-tooltip-total-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
     .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: clamp(32px, 4.6vw, 42px); line-height: 1; color: #fff; }
@@ -177,12 +241,13 @@ function ensureStyles() {
     .panel-tooltip-footer-note { font: 13px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
     .panel-tooltip-more { min-height: 44px; min-width: 110px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 14px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 18px; display: grid; place-items: center; text-transform: uppercase; letter-spacing: 0.9px; }
     .panel-tooltip--country .panel-tooltip-footer {
-      margin: 14px;
-      margin-top: 12px;
-      padding: 16px 18px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 18px;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+      margin: 0;
+      margin-top: 0;
+      padding: 14px 14px 16px;
+      border: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 0;
+      background: rgba(255, 255, 255, 0.045);
     }
     .panel-tooltip--country .panel-tooltip-total-label {
       color: rgba(255, 255, 255, 0.5);
@@ -192,13 +257,27 @@ function ensureStyles() {
       background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
     }
     @media (max-width: 980px) {
-      #country-panel { right: 12px !important; bottom: 74px !important; width: min(420px, calc(100vw - 24px)); max-height: 72vh; }
+      #globe-breadcrumbs { left: 14px; top: 24px; max-width: min(420px, calc(100vw - 28px)); }
+      #country-panel { right: 16px !important; bottom: 72px !important; width: min(304px, calc(100vw - 32px)); max-height: 72vh; }
       .panel-tooltip-header { min-height: 148px; }
       .panel-tooltip-headcopy { padding-top: 52px; }
-      .panel-tooltip-header--country { min-height: 208px; }
-      .panel-tooltip-headcopy--country { min-height: 208px; }
+      .panel-tooltip-header--country { min-height: 122px; }
+      .panel-tooltip-headcopy--country { min-height: 122px; }
     }
     @media (max-width: 700px) {
+      #globe-breadcrumbs {
+        left: 12px;
+        right: 12px;
+        top: 54px;
+        max-width: none;
+      }
+      .globe-breadcrumb__button,
+      .globe-breadcrumb__current {
+        font-size: 12px;
+      }
+      .globe-breadcrumb__separator {
+        font-size: 16px;
+      }
       #country-panel { right: 10px !important; bottom: 68px !important; width: calc(100vw - 20px); max-height: min(68vh, 520px); }
       .panel-tooltip-header { min-height: 136px; }
       .panel-tooltip-headcopy { padding: 50px 16px 16px; }
@@ -208,8 +287,8 @@ function ensureStyles() {
       .panel-tooltip-stat:first-child { border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
       .panel-tooltip-stat-sub { font-size: 13px; }
       .panel-tooltip-footer { padding: 12px 16px; }
-      .panel-tooltip-header--country { min-height: 156px; }
-      .panel-tooltip-headcopy--country { min-height: 156px; padding: 52px 16px 14px; }
+      .panel-tooltip-header--country { min-height: 148px; }
+      .panel-tooltip-headcopy--country { min-height: 148px; padding: 46px 16px 14px; }
       .panel-tooltip-country-topline { gap: 8px; }
       .panel-tooltip-title--country { max-width: 100%; margin-top: 10px; font-size: clamp(24px, 7vw, 30px); }
       .panel-tooltip-country-subtitle { display: none; }
@@ -233,8 +312,8 @@ function ensureStyles() {
       .panel-tooltip-primary-sub,
       .panel-tooltip-stat-sub,
       .panel-tooltip-footer-note { font-size: 12px; }
-      .panel-tooltip-header--country { min-height: 142px; flex-direction: column; }
-      .panel-tooltip-headcopy--country { min-height: 142px; padding: 48px 14px 12px; }
+      .panel-tooltip-header--country { min-height: 136px; flex-direction: column; }
+      .panel-tooltip-headcopy--country { min-height: 136px; padding: 42px 14px 12px; }
       .panel-tooltip-country-topline { flex-wrap: wrap; }
       .panel-tooltip-country-code { min-height: 28px; padding: 0 10px; font-size: 11px; }
       .panel-tooltip--country .panel-tooltip-dual { padding: 8px 8px 0; gap: 6px; }
@@ -257,6 +336,18 @@ function getOrCreateUiRoot() {
     document.body.appendChild(uiRoot)
   }
   return uiRoot
+}
+
+function getOrCreateBreadcrumbs() {
+  const uiRoot = getOrCreateUiRoot()
+  let breadcrumbs = document.getElementById(BREADCRUMBS_ID) as HTMLDivElement | null
+  if (!breadcrumbs) {
+    breadcrumbs = document.createElement('div')
+    breadcrumbs.id = BREADCRUMBS_ID
+    breadcrumbs.setAttribute('aria-label', 'Breadcrumb navigation')
+    uiRoot.appendChild(breadcrumbs)
+  }
+  return breadcrumbs
 }
 
 function getOrCreatePanel() {
@@ -283,13 +374,104 @@ function getOrCreateFocusDim() {
 export function ensureCountryPanelScaffold() {
   ensureStyles()
   getOrCreateUiRoot()
+  getOrCreateBreadcrumbs()
   getOrCreatePanel()
   getOrCreateFocusDim()
+}
+
+function escapeAttribute(value: string) {
+  return escapeHtml(value).replaceAll('`', '&#96;')
+}
+
+function renderBreadcrumbs() {
+  const breadcrumbs = document.getElementById(BREADCRUMBS_ID) as HTMLDivElement | null
+  if (!breadcrumbs) return
+
+  breadcrumbs.style.display = showBreadcrumbs && currentBreadcrumbs.length > 0 ? 'flex' : 'none'
+  if (!showBreadcrumbs || currentBreadcrumbs.length === 0) {
+    breadcrumbs.innerHTML = ''
+    return
+  }
+
+  breadcrumbs.innerHTML = currentBreadcrumbs
+    .map((item, index) => {
+      const isLast = index === currentBreadcrumbs.length - 1
+      const crumb = isLast
+        ? `<span class="globe-breadcrumb__current" aria-current="page">${escapeHtml(item.label)}</span>`
+        : `<button type="button" class="globe-breadcrumb__button" data-breadcrumb-id="${escapeAttribute(item.id)}">${escapeHtml(item.label)}</button>`
+      const separator =
+        index < currentBreadcrumbs.length - 1
+          ? '<span class="globe-breadcrumb__separator" aria-hidden="true">&rsaquo;</span>'
+          : ''
+      return `<span class="globe-breadcrumb">${crumb}${separator}</span>`
+    })
+    .join('')
+}
+
+export function configureGlobeUi(options: {
+  showBreadcrumbs?: boolean
+  showCountryCardCloseButton?: boolean
+} = {}) {
+  showBreadcrumbs = options.showBreadcrumbs !== false
+  showCountryCardCloseButton = options.showCountryCardCloseButton !== false
+  ensureCountryPanelScaffold()
+  renderBreadcrumbs()
+}
+
+export function setGlobeBreadcrumbs(items: GlobeBreadcrumbItem[]) {
+  currentBreadcrumbs = items.length > 0
+    ? items
+    : [
+        { id: 'home', label: 'Home' },
+        { id: 'map', label: 'Map' }
+      ]
+  ensureCountryPanelScaffold()
+  renderBreadcrumbs()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('click', (event) => {
+    if (!(event.target instanceof HTMLElement)) return
+    const button = event.target.closest('[data-breadcrumb-id]') as HTMLButtonElement | null
+    if (!button) return
+    const levelId = button.dataset.breadcrumbId
+    if (!levelId) return
+    window.dispatchEvent(new CustomEvent('navpass:breadcrumb-select', { detail: { levelId } }))
+  })
 }
 
 function resolveFlagUrl(iso2: string) {
   const base = String((globalThis as any).__NAVPASS_GLOBE_ASSET_BASE_URL ?? '').replace(/\/+$/, '')
   return base ? `${base}/flags/${iso2.toLowerCase()}.svg` : `/flags/${iso2.toLowerCase()}.svg`
+}
+
+function getCountryIso3(props: any) {
+  const candidates = [
+    props?.ISO_A3,
+    props?.ADM0_A3,
+    props?.BRK_A3,
+    props?.SU_A3
+  ]
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim().length > 0 && value !== '-99') {
+      return value
+    }
+  }
+  return ''
+}
+
+function getCountryIso2(props: any) {
+  const candidates = [
+    props?.ISO_A2,
+    props?.ISO_A2_EH,
+    props?.WB_A2
+  ]
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim().length === 2 && value !== '-99') {
+      return value
+    }
+  }
+  return ''
 }
 
 function escapeHtml(value: string) {
@@ -353,9 +535,8 @@ export function showCountryPanel(
     props.NAME ||
     'Unknown country'
 
-  const iso3 =
-    props.ISO_A3 || props.ADM0_A3 || props.BRK_A3 || props.SU_A3 || '—'
-  const iso2 = props.ISO_A2 || props.WB_A2 || ''
+  const iso3 = getCountryIso3(props) || '—'
+  const iso2 = getCountryIso2(props)
 
   const flightsNow = Number.isFinite(flights?.now) ? Number(flights?.now) : null
   const routesNow = Number.isFinite(flights?.routes) ? Number(flights?.routes) : null
@@ -375,7 +556,7 @@ export function showCountryPanel(
       ? resolveFlagUrl(iso2)
       : ''
 
-  const closeButton = isHoverMode
+  const closeButton = isHoverMode || !showCountryCardCloseButton
     ? ''
     : '<button type="button" class="panel-tooltip-close" aria-label="Close">×</button>'
   const liveLabel = isHoverMode ? 'HOVER PREVIEW' : 'LIVE MONITORING'
