@@ -16,6 +16,8 @@ uniform float uFocusMix;
 uniform float uRouteKeep;
 uniform float uAltitudeLodMix;
 uniform float uRepresentationMix;
+uniform float uStartupReveal;
+uniform float uStartupFade;
 uniform float uHoverRouteId;
 uniform float uHoverMix;
 uniform float uSelectedRouteId;
@@ -177,6 +179,14 @@ void main() {
   alpha *= corridorContext;
   // Particle representation becomes primary at zoom-out; keep only a soft line context.
   alpha *= mix(1.0, 0.46, uRepresentationMix);
+
+  float startupCoord = vDir < 0.0 ? (1.0 - vT) : vT;
+  float startupStart = max(0.0, startupCoord - 0.16);
+  float startupEnd = min(1.0, startupCoord + 0.04);
+  float startupMask = startupEnd > startupStart
+    ? smoothstep(startupStart, startupEnd, uStartupReveal)
+    : step(startupCoord, uStartupReveal);
+  alpha *= startupMask * uStartupFade;
 
   // Fade softly near the horizon so the depth mask occlusion feels natural.
   float limb = smoothstep(0.02, 0.18, vFacing);

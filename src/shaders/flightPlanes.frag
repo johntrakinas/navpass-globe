@@ -13,6 +13,7 @@ uniform float uHoverRouteId;
 uniform float uHoverMix;
 uniform float uSelectedRouteId;
 uniform float uSelectedMix;
+uniform float uStartupFade;
 
 varying float vSeed;
 varying float vFocus;
@@ -155,7 +156,7 @@ void main() {
   corridorFade = mix(corridorFade, 1.0, max(emphasize, vLead * leadPriority * 0.55));
   alpha *= corridorFade;
   alpha *= mix(0.72, 1.36, uRepresentationMix);
-  alpha *= vReveal;
+  alpha *= vReveal * uStartupFade;
 
   // Fade softly near the horizon so points don't "pop" at the limb.
   float limb = smoothstep(0.02, 0.18, vFacing);

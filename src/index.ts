@@ -221,7 +221,7 @@ const DEFAULT_SCENE_THEME: GlobeSceneTheme = {
 }
 
 const DEFAULT_COUNTRIES_THEME: GlobeCountriesTheme = {
-  border: 0x122640
+  border: 0x4796ff
 }
 
 const DEFAULT_GRID_THEME: GlobeGridTheme = {
@@ -251,8 +251,8 @@ const DEFAULT_LIGHTING_THEME: GlobeLightingTheme = {
 }
 
 const DEFAULT_POINTS_THEME: GlobePointsTheme = {
-  dotColorMul: '#ffffff',
-  dotFlowColor: mixColor('#ffffff', '#FBBC05', 0.22),
+  dotColorMul: '#FBBC05',
+  dotFlowColor: mixColor('#FBBC05', '#ffffff', 0.18),
   nightWarmA: mixColor('#FBBC05', '#ffffff', 0.35),
   nightWarmB: mixColor('#ffffff', '#FBBC05', 0.25)
 }
@@ -275,7 +275,7 @@ const DEFAULT_FLIGHTS_THEME: GlobeFlightsTheme = {
   endpointAccentColor: '#ffffff',
   pinHoverColor: mixColor('#ffffff', '#8AB4F8', 0.08),
   pinSelectedColor: mixColor('#ffffff', '#FBBC05', 0.24),
-  hubColorMul: '#ffffff'
+  hubColorMul: '#FBBC05'
 }
 
 const DEFAULT_HIGHLIGHT_THEME: GlobeHighlightTheme = {
@@ -939,6 +939,9 @@ updatePostprocessSize()
 const initialHeatmapEnabled = options.initialHeatmapEnabled ?? false
 const initialFlightVisualizationMode: FlightVisualizationMode = options.initialFlightVisualizationMode ?? 'reengineered'
 const initialIntroAnimationEnabled = options.initialIntroAnimationEnabled ?? true
+const INTRO_BOOTSTRAP_FRAMES = initialIntroAnimationEnabled ? 2 : 0
+const INTRO_FLIGHT_BOOTSTRAP_DELAY_MS = initialIntroAnimationEnabled ? 140 : 0
+const AIRPORT_REVEAL_DURATION_SECONDS = 1.35
 type VisualPreset = {
   landAlpha: number
   coastAlpha: number
@@ -1187,6 +1190,7 @@ controls.target.set(0, 0, 0)
  */
 let zoomAnim: { t0: number; dur: number; from: number; to: number } | null = null
 const _camDir = new THREE.Vector3()
+let airportRevealStartedAt = -1
 
 function setCameraDistance(distance: number) {
   const clamped = THREE.MathUtils.clamp(distance, controls.minDistance, controls.maxDistance)
@@ -1617,6 +1621,154 @@ function startIntroAnimation() {
   const introDistance = THREE.MathUtils.lerp(maxZoomDistance, minZoomDistance, 0.30)
   setCameraDistance(maxZoomDistance)
   zoomTo(introDistance, 1900)
+}
+
+function waitForAnimationFrames(frameCount = 1) {
+  if (frameCount <= 0) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    let remaining = frameCount
+    const step = () => {
+      remaining -= 1
+      if (remaining <= 0) {
+        resolve()
+        return
+      }
+      requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  })
+}
+
+function waitForDelay(delayMs: number) {
+  if (delayMs <= 0) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, delayMs)
+  })
+}
+
+async function waitForIntroAnimationsToSettle() {
+  while (globeAnim || zoomAnim) {
+    await waitForAnimationFrames(1)
+  }
+}
+
+function waitForBrowserIdle(timeoutMs = 160) {
+  if (typeof window.requestIdleCallback === 'function') {
+    return new Promise<void>((resolve) => {
+      window.requestIdleCallback(() => resolve(), { timeout: timeoutMs })
+    })
+  }
+  return waitForAnimationFrames(1)
+}
+
+async function parseJsonResponse<T>(responsePromise: Promise<Response>, errorLabel: string): Promise<T> {
+  const response = await responsePromise
+  if (!response.ok) {
+    throw new Error(`${errorLabel}: ${response.status}`)
+  }
+  return response.json() as Promise<T>
+}
+
+async function parseEnrichedFlightsResponse(
+  responsePromise: Promise<Response>,
+  errorLabel: string,
+  routeCountLimit: number | null
+): Promise<{
+  flights: NonNullable<EnrichedFlightsFile['flights']>
+  airports: NonNullable<EnrichedFlightsFile['airports']> | null
+  countryStats: NonNullable<EnrichedFlightsFile['country_stats']> | null
+}> {
+  const response = await responsePromise
+  if (!response.ok) {
+    throw new Error(`${errorLabel}: ${response.status}`)
+  }
+
+  const text = await response.text()
+  const safeRouteCountLimit = Number.isFinite(routeCountLimit) ? Math.max(1, Math.floor(routeCountLimit as number)) : null
+
+  const normalizeParsed = (parsed: EnrichedFlightsFile | null | undefined) => {
+    const flightsSource = Array.isArray(parsed?.flights) ? parsed!.flights! : []
+    const flights =
+      safeRouteCountLimit && flightsSource.length > safeRouteCountLimit
+        ? flightsSource.slice(0, safeRouteCountLimit)
+        : flightsSource
+    const airports =
+      parsed?.airports && typeof parsed.airports === 'object'
+        ? parsed.airports
+        : null
+    const countryStats =
+      parsed?.country_stats && typeof parsed.country_stats === 'object'
+        ? parsed.country_stats
+        : null
+
+    return { flights, airports, countryStats }
+  }
+
+  if (typeof Worker === 'undefined') {
+    return normalizeParsed(JSON.parse(text) as EnrichedFlightsFile)
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false
+
+    const finishResolve = (value: {
+      flights: NonNullable<EnrichedFlightsFile['flights']>
+      airports: NonNullable<EnrichedFlightsFile['airports']> | null
+      countryStats: NonNullable<EnrichedFlightsFile['country_stats']> | null
+    }) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+
+    const finishReject = (error: unknown) => {
+      if (settled) return
+      settled = true
+      reject(error)
+    }
+
+    try {
+      const worker = new Worker(new URL('./workers/enrichedFlightsParseWorker.ts', import.meta.url), { type: 'module' })
+      worker.onmessage = (event: MessageEvent<any>) => {
+        worker.terminate()
+        if (event.data?.error) {
+          try {
+            finishResolve(normalizeParsed(JSON.parse(text) as EnrichedFlightsFile))
+          } catch (error) {
+            finishReject(error)
+          }
+          return
+        }
+
+        finishResolve({
+          flights: Array.isArray(event.data?.flights) ? event.data.flights : [],
+          airports:
+            event.data?.airports && typeof event.data.airports === 'object'
+              ? event.data.airports
+              : null,
+          countryStats:
+            event.data?.countryStats && typeof event.data.countryStats === 'object'
+              ? event.data.countryStats
+              : null
+        })
+      }
+      worker.onerror = () => {
+        worker.terminate()
+        try {
+          finishResolve(normalizeParsed(JSON.parse(text) as EnrichedFlightsFile))
+        } catch (error) {
+          finishReject(error)
+        }
+      }
+      worker.postMessage({ text, routeCountLimit: safeRouteCountLimit })
+    } catch {
+      try {
+        finishResolve(normalizeParsed(JSON.parse(text) as EnrichedFlightsFile))
+      } catch (error) {
+        finishReject(error)
+      }
+    }
+  })
 }
 
 function clearSelectionUIState() {
@@ -2132,6 +2284,19 @@ function animate() {
   if (languagePoints) {
     languagePoints.material.uniforms.uTime.value = now
     languagePoints.material.uniforms.uCameraDistance.value = cameraDistance
+    if (airportRevealStartedAt < 0) {
+      airportRevealStartedAt = now
+    }
+    const airportRevealT = THREE.MathUtils.clamp(
+      (now - airportRevealStartedAt) / AIRPORT_REVEAL_DURATION_SECONDS,
+      0,
+      1
+    )
+    languagePoints.material.uniforms.uRevealProgress.value = THREE.MathUtils.smoothstep(
+      airportRevealT,
+      0,
+      1
+    )
   }
   if (flightRoutes) {
     flightRoutes.update(deltaSeconds, now, cameraDistance)
@@ -2238,10 +2403,22 @@ function animate() {
   }
 }
 
+let animationLoopStarted = false
+
+function ensureAnimationLoopStarted() {
+  if (animationLoopStarted) return
+  animationLoopStarted = true
+  animate()
+}
+
 /**
  * Init
  */
 async function init() {
+  const geojsonPromise = loadGeoJSON(COUNTRIES_GEOJSON_PATH)
+  const airportsResponsePromise = fetch(resolveAssetPath('data/airports_points.json'))
+  const enrichedFlightsResponsePromise = fetch(resolveAssetPath('data/flights_enriched.json'))
+
   depthMaskMesh = createDepthMaskSphere(GLOBE_RADIUS)
   globeGroup.add(depthMaskMesh)
   // ⭐ starfield (não dentro do globeGroup!)
@@ -2253,8 +2430,15 @@ async function init() {
   globeGroup.add(innerSphereMesh)
   lightingShell = createLightingShell(GLOBE_RADIUS)
   globeGroup.add(lightingShell.group)
+  atmosphere = createAtmosphere(GLOBE_RADIUS, camera)
+  globeGroup.add(atmosphere.group)
 
-  const geojson = await loadGeoJSON(COUNTRIES_GEOJSON_PATH)
+  applyVisualPreset()
+  ensureAnimationLoopStarted()
+  startIntroAnimation()
+  await waitForAnimationFrames(INTRO_BOOTSTRAP_FRAMES)
+
+  const geojson = await geojsonPromise
   countriesGeoJSON = geojson
   countrySearchIndex = buildCountrySearchIndex(geojson)
 
@@ -2271,25 +2455,23 @@ async function init() {
   latLonGrid = createAdaptiveLatLonGrid(GLOBE_RADIUS, camera)
   globeGroup.add(latLonGrid.group)
 
-  const [baseAirports, enrichedFlightsRaw] = await Promise.all([
-    fetch(resolveAssetPath('data/airports_points.json')).then(r => r.json()),
-    fetch(resolveAssetPath('data/flights_enriched.json')).then(r => r.json() as Promise<EnrichedFlightsFile>)
-  ])
+  applyVisualPreset()
+  await waitForAnimationFrames(1)
+
+  await waitForIntroAnimationsToSettle()
+  await waitForDelay(INTRO_FLIGHT_BOOTSTRAP_DELAY_MS)
+  await waitForBrowserIdle(160)
+
+  const baseAirports = await parseJsonResponse<any[]>(
+    airportsResponsePromise,
+    'Failed to load airport points'
+  )
   const denseAirports = SHOW_NIGHT_LIGHTS
     ? inflateAirportsDataset(baseAirports, countriesGeoJSON, {
         targetCount: SYNTHETIC_AIRPORT_TARGET,
         minSpacingDeg: AIRPORT_MIN_SPACING_DEG
       })
     : []
-  const enrichedFlights = Array.isArray(enrichedFlightsRaw?.flights) ? enrichedFlightsRaw.flights : []
-  const enrichedAirports =
-    enrichedFlightsRaw?.airports && typeof enrichedFlightsRaw.airports === 'object'
-      ? enrichedFlightsRaw.airports
-      : null
-  const enrichedCountryStats =
-    enrichedFlightsRaw?.country_stats && typeof enrichedFlightsRaw.country_stats === 'object'
-      ? enrichedFlightsRaw.country_stats
-      : null
   const airportPointData = Array.isArray(baseAirports) ? baseAirports : []
   const baseCount = Array.isArray(baseAirports) ? baseAirports.length : 0
   console.info(
@@ -2309,16 +2491,45 @@ async function init() {
     nightLights = null
   }
 
-  flightRoutes = createFlightRoutes({
+  applyVisualPreset()
+  const enrichedFlightsDataPromise = parseEnrichedFlightsResponse(
+    enrichedFlightsResponsePromise,
+    'Failed to load enriched flights',
+    FLIGHT_ROUTE_TARGET
+  )
+
+  await waitForAnimationFrames(1)
+  await waitForDelay(
+    SHOW_AIRPORT_POINTS
+      ? Math.max(140, Math.round(AIRPORT_REVEAL_DURATION_SECONDS * 1000 * 0.34))
+      : 110
+  )
+  await waitForBrowserIdle(180)
+
+  const {
     flights: enrichedFlights,
-    airportLookup: enrichedAirports,
+    airports: enrichedAirports,
     countryStats: enrichedCountryStats
-  }, GLOBE_RADIUS, countriesGeoJSON, {
-    routeCount: FLIGHT_ROUTE_TARGET ?? undefined,
-    planesPerRoute: FLIGHT_PLANES_PER_ROUTE,
-    planeDensityScale: FLIGHT_PLANE_DENSITY_SCALE,
-    currentTimeSeconds: performance.now() * 0.001
-  })
+  } = await enrichedFlightsDataPromise
+
+  await waitForAnimationFrames(1)
+  await waitForBrowserIdle(180)
+
+  flightRoutes = createFlightRoutes(
+    {
+      flights: enrichedFlights,
+      airportLookup: enrichedAirports,
+      countryStats: enrichedCountryStats
+    },
+    GLOBE_RADIUS,
+    countriesGeoJSON,
+    {
+      routeCount: FLIGHT_ROUTE_TARGET ?? undefined,
+      planesPerRoute: FLIGHT_PLANES_PER_ROUTE,
+      planeDensityScale: FLIGHT_PLANE_DENSITY_SCALE,
+      currentTimeSeconds: performance.now() * 0.001
+    }
+  )
   console.info(
     `[flights] source=flights_enriched.json source_flights=${enrichedFlights.length} route_target=${FLIGHT_ROUTE_TARGET ?? 'all'} planes_per_route=${FLIGHT_PLANES_PER_ROUTE} plane_density_scale=${FLIGHT_PLANE_DENSITY_SCALE.toFixed(2)} country_stats=${enrichedCountryStats ? Object.keys(enrichedCountryStats).length : 0}`
   )
@@ -2326,11 +2537,7 @@ async function init() {
   applyFlightVisualization(initialFlightVisualizationMode)
   applyHeatmap(initialHeatmapEnabled)
 
-  atmosphere = createAtmosphere(GLOBE_RADIUS, camera)
-  globeGroup.add(atmosphere.group)
-
   applyVisualPreset()
-  startIntroAnimation()
 
   // events
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
@@ -2375,8 +2582,6 @@ async function init() {
   })
 
   window.addEventListener('pointermove', onPointerHover)
-
-  animate()
 }
 
   const ready = init()

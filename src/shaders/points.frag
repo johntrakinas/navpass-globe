@@ -13,8 +13,11 @@ varying vec3 vColor;
 varying float vSeed;
 varying float vFacing;
 varying float vFlowCoord;
+varying float vReveal;
 
 void main() {
+  if (vReveal < 0.001) discard;
+
   // Coordenada dentro do ponto (0–1)
   vec2 uv = gl_PointCoord - 0.5;
   float d = length(uv);
@@ -75,11 +78,13 @@ void main() {
   vec3 pulseColor = mix(uFlowColor, pulseGold, 0.82);
   vec3 glowColor = mix(uFlowColor, pulseGold, 0.34 + syncGate * 0.12);
   vec3 col = mix(baseCol, glowColor, sweepLocal * uFlowStrength);
+  float revealFade = smoothstep(0.0, 1.0, vReveal);
   float pulseColorMix = smoothstep(0.0, 0.92, syncGate * 0.08 + pulseTrail * 0.22 + pulseHead * 0.28 + pulseAura * 0.24);
   col = mix(col, pulseColor, pulseColorMix);
   col = mix(col, pulseGold, pulseAura * 0.14 + pulseGlow * 0.10);
   col = mix(col, glowColor, halo * 0.18 + soft * 0.08);
   col *= 1.0 + halo * 0.14 + pulseGlow * 0.10;
+  col *= mix(0.88, 1.0, revealFade);
 
   float alpha = (core * 1.02 + soft * 0.40 + halo * 0.22);
   float networkPulse = 0.84 + 0.16 * sin(uTime * 1.08);
@@ -88,10 +93,11 @@ void main() {
     zoomFade *
     uAlphaMul *
     limb *
+    revealFade *
     networkPulse *
     (1.0 + sweepLocal * 0.42 * uFlowStrength) *
     (0.74 + pulseTrail * 0.32 + pulseHead * 0.46 + pulseGate * 0.16);
-  outAlpha += (pulseAura * 0.12 + pulseGlow * 0.22 + halo * 0.10) * zoomFade * uAlphaMul * limb;
+  outAlpha += (pulseAura * 0.12 + pulseGlow * 0.22 + halo * 0.10) * zoomFade * uAlphaMul * limb * revealFade;
 
   gl_FragColor = vec4(col, outAlpha);
 }

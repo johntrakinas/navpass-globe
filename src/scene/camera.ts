@@ -67,7 +67,7 @@ function ensureStyles() {
     #globe-breadcrumbs {
       position: fixed;
       left: 18px;
-      top: 62px;
+      top: 92px;
       z-index: 5;
       display: flex;
       align-items: center;
@@ -292,7 +292,7 @@ function ensureStyles() {
       background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
     }
     @media (max-width: 980px) {
-      #globe-breadcrumbs { left: 14px; top: 24px; max-width: min(420px, calc(100vw - 28px)); }
+      #globe-breadcrumbs { left: 14px; top: 40px; max-width: min(420px, calc(100vw - 28px)); }
       #country-panel { right: 18px !important; bottom: 36px !important; width: min(324px, calc(100vw - 36px)); max-height: 74vh; }
       .panel-tooltip-header { min-height: 148px; }
       .panel-tooltip-headcopy { padding-top: 52px; }

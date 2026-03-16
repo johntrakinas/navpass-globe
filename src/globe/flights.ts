@@ -175,6 +175,12 @@ export type FlightRoutesLayer = {
 }
 
 type KernelTap = { dx: number; dy: number; w: number }
+type RouteScoreBuffers = {
+  density: Float32Array
+  corridorKeep: Float32Array
+  corridorGroup: Float32Array
+  importance: Float32Array
+}
 
 function buildGaussianKernel(radius: number, sigma: number): KernelTap[] {
   const taps: KernelTap[] = []
@@ -198,6 +204,27 @@ function buildGaussianKernel(radius: number, sigma: number): KernelTap[] {
   }
 
   return taps
+}
+
+function scheduleDeferredWork(work: (deadline?: IdleDeadline) => void, delayMs = 0) {
+  const run = () => {
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback((deadline) => work(deadline), { timeout: 180 })
+      return
+    }
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => work(undefined))
+      return
+    }
+    setTimeout(() => work(undefined), 16)
+  }
+
+  if (delayMs > 0 && typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+    window.setTimeout(run, delayMs)
+    return
+  }
+
+  run()
 }
 
 function buildFlightHeatmapTexture(routeData: Route[], width: number, height: number) {
@@ -284,60 +311,64 @@ function buildEmptyHeatTexture(width: number, height: number) {
 }
 
 function buildFlightHeatmapTextureAsync(routeData: Route[], width: number, height: number) {
-  // Default: worker-backed build (prevents main-thread jank on init).
-  if (typeof Worker === 'undefined') {
-    return buildFlightHeatmapTexture(routeData, width, height)
-  }
-
   const tex = buildEmptyHeatTexture(width, height)
 
-  try {
-    const stride = 14 // p0/p1/p2 (9) + curve (3) + traffic (1) + trafficCount (1)
-    const packed = new Float32Array(routeData.length * stride)
-    for (let i = 0; i < routeData.length; i++) {
-      const r = routeData[i]
-      const o = i * stride
-      packed[o + 0] = r.p0x
-      packed[o + 1] = r.p0y
-      packed[o + 2] = r.p0z
-      packed[o + 3] = r.p1x
-      packed[o + 4] = r.p1y
-      packed[o + 5] = r.p1z
-      packed[o + 6] = r.p2x
-      packed[o + 7] = r.p2y
-      packed[o + 8] = r.p2z
-      packed[o + 9] = r.arcHeight
-      packed[o + 10] = r.lateralOffsetRad
-      packed[o + 11] = r.loopSweepRad
-      packed[o + 12] = r.traffic
-      packed[o + 13] = r.trafficCount
-    }
-
-    const worker = new Worker(new URL('../workers/flightHeatmapWorker.ts', import.meta.url), { type: 'module' })
-    worker.onmessage = (ev: MessageEvent<any>) => {
-      const buf: ArrayBuffer | undefined = ev.data?.data
-      if (buf) {
-        const out = new Uint8Array(buf)
-        if ((tex.image as any)?.data && out.length === (tex.image as any).data.length) {
-          ;(tex.image as any).data = out
-          tex.needsUpdate = true
-        }
-      }
-      worker.terminate()
-    }
-    worker.onerror = () => {
-      worker.terminate()
-      // Fallback to synchronous build if the worker fails for any reason.
-      const fallback = buildFlightHeatmapTexture(routeData, width, height)
-      ;(tex.image as any).data = (fallback.image as any).data
-      tex.needsUpdate = true
-    }
-
-    worker.postMessage({ routes: packed, width, height }, [packed.buffer])
-  } catch {
-    // Fallback to synchronous build if worker creation fails (older browsers).
-    return buildFlightHeatmapTexture(routeData, width, height)
+  const applyFallback = () => {
+    const fallback = buildFlightHeatmapTexture(routeData, width, height)
+    ;(tex.image as any).data = (fallback.image as any).data
+    tex.needsUpdate = true
   }
+
+  scheduleDeferredWork(() => {
+    if (typeof Worker === 'undefined') {
+      scheduleDeferredWork(() => applyFallback(), 40)
+      return
+    }
+
+    try {
+      const stride = 14 // p0/p1/p2 (9) + curve (3) + traffic (1) + trafficCount (1)
+      const packed = new Float32Array(routeData.length * stride)
+      for (let i = 0; i < routeData.length; i++) {
+        const r = routeData[i]
+        const o = i * stride
+        packed[o + 0] = r.p0x
+        packed[o + 1] = r.p0y
+        packed[o + 2] = r.p0z
+        packed[o + 3] = r.p1x
+        packed[o + 4] = r.p1y
+        packed[o + 5] = r.p1z
+        packed[o + 6] = r.p2x
+        packed[o + 7] = r.p2y
+        packed[o + 8] = r.p2z
+        packed[o + 9] = r.arcHeight
+        packed[o + 10] = r.lateralOffsetRad
+        packed[o + 11] = r.loopSweepRad
+        packed[o + 12] = r.traffic
+        packed[o + 13] = r.trafficCount
+      }
+
+      const worker = new Worker(new URL('../workers/flightHeatmapWorker.ts', import.meta.url), { type: 'module' })
+      worker.onmessage = (ev: MessageEvent<any>) => {
+        const buf: ArrayBuffer | undefined = ev.data?.data
+        if (buf) {
+          const out = new Uint8Array(buf)
+          if ((tex.image as any)?.data && out.length === (tex.image as any).data.length) {
+            ;(tex.image as any).data = out
+            tex.needsUpdate = true
+          }
+        }
+        worker.terminate()
+      }
+      worker.onerror = () => {
+        worker.terminate()
+        scheduleDeferredWork(() => applyFallback(), 40)
+      }
+
+      worker.postMessage({ routes: packed, width, height }, [packed.buffer])
+    } catch {
+      scheduleDeferredWork(() => applyFallback(), 40)
+    }
+  }, 100)
 
   return tex
 }
@@ -760,6 +791,120 @@ function buildRouteImportanceScores(routeData: Route[]) {
     const normalized = span > 1e-6 ? (rawScores[i] - rawMin) / span : 0.5
     routeData[i].importance01 = THREE.MathUtils.clamp(Math.pow(normalized, 0.82), 0, 1)
   }
+}
+
+function applyRouteScoreBuffers(routeData: Route[], scores: RouteScoreBuffers) {
+  const count = Math.min(
+    routeData.length,
+    scores.density.length,
+    scores.corridorKeep.length,
+    scores.corridorGroup.length,
+    scores.importance.length
+  )
+
+  for (let i = 0; i < count; i++) {
+    const route = routeData[i]
+    route.density01 = scores.density[i]
+    route.corridorKeep01 = scores.corridorKeep[i]
+    route.corridorGroup01 = scores.corridorGroup[i]
+    route.importance01 = scores.importance[i]
+  }
+}
+
+function buildRouteScoresAsync(routeData: Route[], onReady: () => void) {
+  if (routeData.length === 0) {
+    onReady()
+    return
+  }
+
+  const runFallback = () => {
+    scheduleDeferredWork(() => {
+      buildRouteDensityScores(routeData)
+      buildRouteCorridorScores(routeData)
+      buildRouteImportanceScores(routeData)
+      onReady()
+    }, 40)
+  }
+
+  scheduleDeferredWork(() => {
+    if (typeof Worker === 'undefined') {
+      runFallback()
+      return
+    }
+
+    try {
+      const stride = 19
+      const packed = new Float32Array(routeData.length * stride)
+      for (let i = 0; i < routeData.length; i++) {
+        const route = routeData[i]
+        const offset = i * stride
+        packed[offset + 0] = route.p0x
+        packed[offset + 1] = route.p0y
+        packed[offset + 2] = route.p0z
+        packed[offset + 3] = route.p1x
+        packed[offset + 4] = route.p1y
+        packed[offset + 5] = route.p1z
+        packed[offset + 6] = route.p2x
+        packed[offset + 7] = route.p2y
+        packed[offset + 8] = route.p2z
+        packed[offset + 9] = route.fromLat
+        packed[offset + 10] = route.fromLon
+        packed[offset + 11] = route.toLat
+        packed[offset + 12] = route.toLon
+        packed[offset + 13] = route.traffic
+        packed[offset + 14] = route.trafficCount
+        packed[offset + 15] = route.hub
+        packed[offset + 16] = route.altitude01
+        packed[offset + 17] = route.distanceKm
+        packed[offset + 18] = countRouteMetadataSignals(route)
+      }
+
+      const worker = new Worker(new URL('../workers/flightScoresWorker.ts', import.meta.url), { type: 'module' })
+      let handled = false
+
+      const finish = () => {
+        if (handled) return
+        handled = true
+        onReady()
+      }
+
+      worker.onmessage = (ev: MessageEvent<any>) => {
+        const densityBuffer: ArrayBuffer | undefined = ev.data?.density
+        const corridorKeepBuffer: ArrayBuffer | undefined = ev.data?.corridorKeep
+        const corridorGroupBuffer: ArrayBuffer | undefined = ev.data?.corridorGroup
+        const importanceBuffer: ArrayBuffer | undefined = ev.data?.importance
+
+        if (densityBuffer && corridorKeepBuffer && corridorGroupBuffer && importanceBuffer) {
+          applyRouteScoreBuffers(routeData, {
+            density: new Float32Array(densityBuffer),
+            corridorKeep: new Float32Array(corridorKeepBuffer),
+            corridorGroup: new Float32Array(corridorGroupBuffer),
+            importance: new Float32Array(importanceBuffer)
+          })
+          worker.terminate()
+          finish()
+          return
+        } else {
+          worker.terminate()
+          if (handled) return
+          handled = true
+          runFallback()
+          return
+        }
+      }
+
+      worker.onerror = () => {
+        worker.terminate()
+        if (handled) return
+        handled = true
+        runFallback()
+      }
+
+      worker.postMessage({ routes: packed }, [packed.buffer])
+    } catch {
+      runFallback()
+    }
+  }, 110)
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -1400,6 +1545,8 @@ export function createFlightRoutes(
   const currentTimeSeconds = Number.isFinite(Number(resolvedOptions.currentTimeSeconds))
     ? Number(resolvedOptions.currentTimeSeconds)
     : 0
+  const selectedEnrichedFlights = isEnrichedSource ? sourceFlights.slice(0, routeCount) : []
+  const enrichedAirportLookup = isEnrichedSource ? source.airportLookup ?? null : null
 
   const group = new THREE.Group()
   group.name = 'flightRoutes'
@@ -1424,6 +1571,7 @@ export function createFlightRoutes(
     : 96
   const LINE_LOD_FINE_IN = 0.44
   const LINE_LOD_COARSE_OUT = 0.26
+  const PLANE_BUILD_CHUNK_ROUTES = isEnrichedSource ? 720 : 240
 
   const routeData: Route[] = []
   const countryIsoLookup = buildCountryIsoLookup(countriesGeoJSON)
@@ -1447,190 +1595,84 @@ export function createFlightRoutes(
   let airportDegree = new Int32Array(0)
   let maxDegree = 1
   let airportTraffic = new Float32Array(0)
+  const airportIso3Cache = new Map<string, string>()
+  const pathIso3Cache = new Map<string, string>()
+  let routeBuildState: 'idle' | 'building' | 'ready' = isEnrichedSource ? 'idle' : 'ready'
+
+  function getAirportIso3(lat: number, lon: number, code: string | undefined, role: 'orig' | 'dest') {
+    if (!hasCountryLookup) return ''
+    const key = flightAirportKey(code, lat, lon, role)
+    const cached = airportIso3Cache.get(key)
+    if (typeof cached === 'string') return cached
+    const feature = findCountryFeature(countriesGeoJSON, lat, lon)
+    const iso3 = feature ? getISO3FromFeature(feature) : ''
+    airportIso3Cache.set(key, iso3)
+    return iso3
+  }
+
+  function getCountryNameIso3(countryName: string) {
+    const aliases = getCountryNameAliases(countryName)
+    return aliases
+      .map(alias => countryIsoLookup.get(alias))
+      .find((value): value is string => typeof value === 'string' && value.length > 0) ?? ''
+  }
+
+  function getPathPointIso3(lat: number, lon: number) {
+    if (!hasCountryLookup) return ''
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return ''
+    const key = `${lat.toFixed(2)},${lon.toFixed(2)}`
+    const cached = pathIso3Cache.get(key)
+    if (typeof cached === 'string') return cached
+    const feature = findCountryFeature(countriesGeoJSON, lat, lon)
+    const iso3 = feature ? getISO3FromFeature(feature) : ''
+    pathIso3Cache.set(key, iso3)
+    return iso3
+  }
+
+  function collectFlightCountryIso3List(
+    flight: EnrichedFlightRecord,
+    originIso3: string,
+    destIso3: string
+  ) {
+    const seen = new Set<string>()
+    if (originIso3) seen.add(originIso3)
+    if (destIso3) seen.add(destIso3)
+
+    const segs = Array.isArray(flight.segs) ? flight.segs : []
+    let usedSegs = false
+    for (let i = 0; i < segs.length; i++) {
+      const iso3 = getCountryNameIso3(String(segs[i]?.country || ''))
+      if (iso3) {
+        seen.add(iso3)
+        usedSegs = true
+      }
+    }
+
+    if (!usedSegs) {
+      const path = Array.isArray(flight.path) ? flight.path : []
+      if (path.length > 0) {
+        const step = Math.max(1, Math.floor(path.length / 24))
+        for (let i = 0; i < path.length; i += step) {
+          const point = path[i]
+          const lon = Number(point?.[0])
+          const lat = Number(point?.[1])
+          const iso3 = getPathPointIso3(lat, lon)
+          if (iso3) seen.add(iso3)
+        }
+
+        const last = path[path.length - 1]
+        const lastIso3 = getPathPointIso3(Number(last?.[1]), Number(last?.[0]))
+        if (lastIso3) seen.add(lastIso3)
+      }
+
+      const snapIso3 = getPathPointIso3(Number(flight.snap_lat), Number(flight.snap_lon))
+      if (snapIso3) seen.add(snapIso3)
+    }
+
+    return [...seen]
+  }
 
   if (isEnrichedSource) {
-    const selectedFlights = sourceFlights.slice(0, routeCount)
-    const routeOverlapLookup = buildRouteOverlapLookup(selectedFlights)
-    const airportDegree = new Map<string, number>()
-    const airportIso3Cache = new Map<string, string>()
-    const pathIso3Cache = new Map<string, string>()
-
-    function getAirportIso3(lat: number, lon: number, code: string | undefined, role: 'orig' | 'dest') {
-      if (!hasCountryLookup) return ''
-      const key = flightAirportKey(code, lat, lon, role)
-      const cached = airportIso3Cache.get(key)
-      if (typeof cached === 'string') return cached
-      const feature = findCountryFeature(countriesGeoJSON, lat, lon)
-      const iso3 = feature ? getISO3FromFeature(feature) : ''
-      airportIso3Cache.set(key, iso3)
-      return iso3
-    }
-
-    function getCountryNameIso3(countryName: string) {
-      const aliases = getCountryNameAliases(countryName)
-      return aliases
-        .map(alias => countryIsoLookup.get(alias))
-        .find((value): value is string => typeof value === 'string' && value.length > 0) ?? ''
-    }
-
-    function getPathPointIso3(lat: number, lon: number) {
-      if (!hasCountryLookup) return ''
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return ''
-      const key = `${lat.toFixed(2)},${lon.toFixed(2)}`
-      const cached = pathIso3Cache.get(key)
-      if (typeof cached === 'string') return cached
-      const feature = findCountryFeature(countriesGeoJSON, lat, lon)
-      const iso3 = feature ? getISO3FromFeature(feature) : ''
-      pathIso3Cache.set(key, iso3)
-      return iso3
-    }
-
-    function collectFlightCountryIso3List(
-      flight: EnrichedFlightRecord,
-      originIso3: string,
-      destIso3: string
-    ) {
-      const seen = new Set<string>()
-      if (originIso3) seen.add(originIso3)
-      if (destIso3) seen.add(destIso3)
-
-      const segs = Array.isArray(flight.segs) ? flight.segs : []
-      let usedSegs = false
-      for (let i = 0; i < segs.length; i++) {
-        const iso3 = getCountryNameIso3(String(segs[i]?.country || ''))
-        if (iso3) {
-          seen.add(iso3)
-          usedSegs = true
-        }
-      }
-
-      if (!usedSegs) {
-        const path = Array.isArray(flight.path) ? flight.path : []
-        if (path.length > 0) {
-          const step = Math.max(1, Math.floor(path.length / 24))
-          for (let i = 0; i < path.length; i += step) {
-            const point = path[i]
-            const lon = Number(point?.[0])
-            const lat = Number(point?.[1])
-            const iso3 = getPathPointIso3(lat, lon)
-            if (iso3) seen.add(iso3)
-          }
-
-          const last = path[path.length - 1]
-          const lastIso3 = getPathPointIso3(Number(last?.[1]), Number(last?.[0]))
-          if (lastIso3) seen.add(lastIso3)
-        }
-
-        const snapIso3 = getPathPointIso3(Number(flight.snap_lat), Number(flight.snap_lon))
-        if (snapIso3) seen.add(snapIso3)
-      }
-
-      return [...seen]
-    }
-
-    for (let i = 0; i < selectedFlights.length; i++) {
-      const flight = selectedFlights[i]
-      const originKey = flightAirportKey(flight.orig, Number(flight.olat), Number(flight.olon), 'orig')
-      const destKey = flightAirportKey(flight.dest, Number(flight.dlat), Number(flight.dlon), 'dest')
-      airportDegree.set(originKey, (airportDegree.get(originKey) ?? 0) + 1)
-      airportDegree.set(destKey, (airportDegree.get(destKey) ?? 0) + 1)
-    }
-    for (const value of airportDegree.values()) maxDegree = Math.max(maxDegree, value)
-
-    for (let i = 0; i < selectedFlights.length; i++) {
-      const flight = selectedFlights[i]
-      const fromLat = Number(flight.olat)
-      const fromLon = Number(flight.olon)
-      const toLat = Number(flight.dlat)
-      const toLon = Number(flight.dlon)
-      const pathMetrics = buildFlightPathMetrics(flight)
-      const p0 = latLongToVector3(fromLat, fromLon, radius * 1.01)
-      const p2 = latLongToVector3(toLat, toLon, radius * 1.01)
-      const p0Dir = p0.clone().normalize()
-      const p2Dir = p2.clone().normalize()
-
-      const seed = hashString01(
-        `${String(flight.id ?? i)}|${String(flight.cs || '')}|${String(flight.orig || '')}|${String(flight.dest || '')}`
-      )
-      const chord = p0.distanceTo(p2)
-      const arcBoost = THREE.MathUtils.clamp(chord / (radius * 1.35), 0.25, 1.25)
-      const distanceKm = haversineKm(fromLat, fromLon, toLat, toLon)
-      const overlap = routeOverlapLookup.get(flight) ?? { slot: 0, count: 1 }
-      const arcHeight = buildRouteArcHeight(radius, distanceKm)
-      const hintDir = buildControlDirection(p0Dir, p2Dir, pathMetrics, overlap, distanceKm, seed)
-      const controlPoint = buildBezierControlPoint(p0Dir, p2Dir, hintDir, radius, arcBoost, arcHeight)
-      const lateralOffsetRad = buildRouteLateralOffsetRad(overlap, distanceKm)
-      const loopSweepRad = buildRouteLoopSweepRad(distanceKm)
-      const altitude01 = THREE.MathUtils.clamp((arcBoost - 0.25) / (1.25 - 0.25), 0, 1)
-      const routeSpan01 = THREE.MathUtils.clamp((distanceKm - 400) / 9000, 0, 1)
-      const cruiseKmhBase = THREE.MathUtils.lerp(AIRCRAFT_CRUISE_KMH_MIN, AIRCRAFT_CRUISE_KMH_MAX, routeSpan01)
-      const cruiseKmh = cruiseKmhBase * THREE.MathUtils.lerp(0.98, 1.02, seed)
-      const visualDistanceKm = distanceKm * (1.02 + (arcHeight / Math.max(1e-6, radius)) * 0.42)
-      const travelSeconds = THREE.MathUtils.clamp(
-        visualDistanceKm / Math.max(1e-3, cruiseKmh * AIRCRAFT_SIM_HOURS_PER_REAL_SECOND),
-        MIN_ROUTE_TRAVEL_SECONDS,
-        MAX_ROUTE_TRAVEL_SECONDS
-      )
-      const speed = 1 / travelSeconds
-      const progress = estimateFlightProgress(flight, pathMetrics)
-      const phase = ((progress - currentTimeSeconds * speed) % 1 + 1) % 1
-      const originKey = flightAirportKey(flight.orig, fromLat, fromLon, 'orig')
-      const destKey = flightAirportKey(flight.dest, toLat, toLon, 'dest')
-      const hub = THREE.MathUtils.clamp(
-        ((airportDegree.get(originKey) ?? 1) + (airportDegree.get(destKey) ?? 1)) / (2 * maxDegree),
-        0,
-        1
-      )
-      const flightName = String(flight.cs || `${String(flight.orig || 'ORIG')}-${String(flight.dest || 'DEST')}`)
-      const originIso3 = getAirportIso3(fromLat, fromLon, flight.orig, 'orig')
-      const destIso3 = getAirportIso3(toLat, toLon, flight.dest, 'dest')
-      const countryIso3List = collectFlightCountryIso3List(flight, originIso3, destIso3)
-
-      routeData.push({
-        id: routeData.length,
-        p0x: p0.x,
-        p0y: p0.y,
-        p0z: p0.z,
-        p1x: controlPoint.x,
-        p1y: controlPoint.y,
-        p1z: controlPoint.z,
-        p2x: p2.x,
-        p2y: p2.y,
-        p2z: p2.z,
-        speed,
-        phase,
-        seed,
-        size: 2.35 + arcBoost * 0.7,
-        dir: 1,
-        traffic: 1.0,
-        trafficCount: 1,
-        hub,
-        density01: 0,
-        corridorKeep01: 1,
-        corridorGroup01: 0,
-        importance01: 0,
-        arcHeight,
-        lateralOffsetRad,
-        loopSweepRad,
-        altitude01,
-        distanceKm,
-        flightName,
-        fromName: resolveAirportDisplayName(flight.orig, source.airportLookup, 'Origin'),
-        toName: resolveAirportDisplayName(flight.dest, source.airportLookup, 'Destination'),
-        fromLat,
-        fromLon,
-        toLat,
-        toLon,
-        isoA3: originIso3,
-        isoB3: destIso3,
-        countryIso3List,
-        callsign: String(flight.cs || ''),
-        airline: String(flight.air || ''),
-        aircraftType: String(flight.type || ''),
-        registration: String(flight.reg || ''),
-        sourceMode: 'enriched'
-      })
-    }
   } else {
     const { valid, routes } = pickRouteIndices(source, routeCount)
     validAirports = valid
@@ -1756,9 +1798,184 @@ export function createFlightRoutes(
     }
   }
 
-  buildRouteDensityScores(routeData)
-  buildRouteCorridorScores(routeData)
-  buildRouteImportanceScores(routeData)
+  function startEnrichedRouteDataBuild(onReady: () => void) {
+    if (!isEnrichedSource || routeBuildState !== 'idle') return
+    routeBuildState = 'building'
+
+    const routeOverlapLookup = new Map<EnrichedFlightRecord, RouteOverlapInfo>()
+    const airportDegreeMap = new Map<string, number>()
+    const ROUTE_DEGREE_CHUNK = 1200
+    const ROUTE_BUILD_CHUNK = 18
+    let nextDegreeIndex = 0
+    let nextRouteIndex = 0
+
+    const buildRouteChunk = (deadline?: IdleDeadline) => {
+      const chunkDeadline = deadline ? Math.max(1.5, deadline.timeRemaining()) : 4.5
+      const chunkStart = typeof performance !== 'undefined' ? performance.now() : 0
+      let processedRoutes = 0
+
+      while (nextRouteIndex < selectedEnrichedFlights.length) {
+        const flight = selectedEnrichedFlights[nextRouteIndex]
+        const fromLat = Number(flight.olat)
+        const fromLon = Number(flight.olon)
+        const toLat = Number(flight.dlat)
+        const toLon = Number(flight.dlon)
+        const pathMetrics = buildFlightPathMetrics(flight)
+        const p0 = latLongToVector3(fromLat, fromLon, radius * 1.01)
+        const p2 = latLongToVector3(toLat, toLon, radius * 1.01)
+        const p0Dir = p0.clone().normalize()
+        const p2Dir = p2.clone().normalize()
+
+        const seed = hashString01(
+          `${String(flight.id ?? nextRouteIndex)}|${String(flight.cs || '')}|${String(flight.orig || '')}|${String(flight.dest || '')}`
+        )
+        const chord = p0.distanceTo(p2)
+        const arcBoost = THREE.MathUtils.clamp(chord / (radius * 1.35), 0.25, 1.25)
+        const distanceKm = haversineKm(fromLat, fromLon, toLat, toLon)
+        const overlap = routeOverlapLookup.get(flight) ?? { slot: 0, count: 1 }
+        const arcHeight = buildRouteArcHeight(radius, distanceKm)
+        const hintDir = buildControlDirection(p0Dir, p2Dir, pathMetrics, overlap, distanceKm, seed)
+        const controlPoint = buildBezierControlPoint(p0Dir, p2Dir, hintDir, radius, arcBoost, arcHeight)
+        const lateralOffsetRad = buildRouteLateralOffsetRad(overlap, distanceKm)
+        const loopSweepRad = buildRouteLoopSweepRad(distanceKm)
+        const altitude01 = THREE.MathUtils.clamp((arcBoost - 0.25) / (1.25 - 0.25), 0, 1)
+        const routeSpan01 = THREE.MathUtils.clamp((distanceKm - 400) / 9000, 0, 1)
+        const cruiseKmhBase = THREE.MathUtils.lerp(AIRCRAFT_CRUISE_KMH_MIN, AIRCRAFT_CRUISE_KMH_MAX, routeSpan01)
+        const cruiseKmh = cruiseKmhBase * THREE.MathUtils.lerp(0.98, 1.02, seed)
+        const visualDistanceKm = distanceKm * (1.02 + (arcHeight / Math.max(1e-6, radius)) * 0.42)
+        const travelSeconds = THREE.MathUtils.clamp(
+          visualDistanceKm / Math.max(1e-3, cruiseKmh * AIRCRAFT_SIM_HOURS_PER_REAL_SECOND),
+          MIN_ROUTE_TRAVEL_SECONDS,
+          MAX_ROUTE_TRAVEL_SECONDS
+        )
+        const speed = 1 / travelSeconds
+        const progress = estimateFlightProgress(flight, pathMetrics)
+        const phase = ((progress - currentTimeSeconds * speed) % 1 + 1) % 1
+        const originKey = flightAirportKey(flight.orig, fromLat, fromLon, 'orig')
+        const destKey = flightAirportKey(flight.dest, toLat, toLon, 'dest')
+        const hub = THREE.MathUtils.clamp(
+          ((airportDegreeMap.get(originKey) ?? 1) + (airportDegreeMap.get(destKey) ?? 1)) / (2 * maxDegree),
+          0,
+          1
+        )
+        const flightName = String(flight.cs || `${String(flight.orig || 'ORIG')}-${String(flight.dest || 'DEST')}`)
+        const originIso3 = getAirportIso3(fromLat, fromLon, flight.orig, 'orig')
+        const destIso3 = getAirportIso3(toLat, toLon, flight.dest, 'dest')
+        const countryIso3List = collectFlightCountryIso3List(flight, originIso3, destIso3)
+
+        routeData.push({
+          id: routeData.length,
+          p0x: p0.x,
+          p0y: p0.y,
+          p0z: p0.z,
+          p1x: controlPoint.x,
+          p1y: controlPoint.y,
+          p1z: controlPoint.z,
+          p2x: p2.x,
+          p2y: p2.y,
+          p2z: p2.z,
+          speed,
+          phase,
+          seed,
+          size: 2.35 + arcBoost * 0.7,
+          dir: 1,
+          traffic: 1.0,
+          trafficCount: 1,
+          hub,
+          density01: 0,
+          corridorKeep01: 1,
+          corridorGroup01: 0,
+          importance01: 0,
+          arcHeight,
+          lateralOffsetRad,
+          loopSweepRad,
+          altitude01,
+          distanceKm,
+          flightName,
+          fromName: resolveAirportDisplayName(flight.orig, enrichedAirportLookup, 'Origin'),
+          toName: resolveAirportDisplayName(flight.dest, enrichedAirportLookup, 'Destination'),
+          fromLat,
+          fromLon,
+          toLat,
+          toLon,
+          isoA3: originIso3,
+          isoB3: destIso3,
+          countryIso3List,
+          callsign: String(flight.cs || ''),
+          airline: String(flight.air || ''),
+          aircraftType: String(flight.type || ''),
+          registration: String(flight.reg || ''),
+          sourceMode: 'enriched'
+        })
+
+        nextRouteIndex += 1
+        processedRoutes += 1
+
+        const timeSpent =
+          typeof performance !== 'undefined' ? performance.now() - chunkStart : processedRoutes
+        if (
+          processedRoutes >= ROUTE_BUILD_CHUNK ||
+          timeSpent >= chunkDeadline ||
+          (deadline && deadline.timeRemaining() < 1.5)
+        ) {
+          break
+        }
+      }
+
+      if (nextRouteIndex < selectedEnrichedFlights.length) {
+        commitIncrementalFlightBootstrap(nextRouteIndex)
+        scheduleDeferredWork(buildRouteChunk)
+        return
+      }
+
+      commitIncrementalFlightBootstrap(nextRouteIndex)
+      onReady()
+    }
+
+    const buildDegreeChunk = (deadline?: IdleDeadline) => {
+      const chunkDeadline = deadline ? Math.max(1.25, deadline.timeRemaining()) : 4
+      const chunkStart = typeof performance !== 'undefined' ? performance.now() : 0
+      let processed = 0
+
+      while (nextDegreeIndex < selectedEnrichedFlights.length) {
+        const flight = selectedEnrichedFlights[nextDegreeIndex]
+        const originKey = flightAirportKey(flight.orig, Number(flight.olat), Number(flight.olon), 'orig')
+        const destKey = flightAirportKey(flight.dest, Number(flight.dlat), Number(flight.dlon), 'dest')
+        airportDegreeMap.set(originKey, (airportDegreeMap.get(originKey) ?? 0) + 1)
+        airportDegreeMap.set(destKey, (airportDegreeMap.get(destKey) ?? 0) + 1)
+        nextDegreeIndex += 1
+        processed += 1
+
+        const timeSpent = typeof performance !== 'undefined' ? performance.now() - chunkStart : processed
+        if (
+          processed >= ROUTE_DEGREE_CHUNK ||
+          timeSpent >= chunkDeadline ||
+          (deadline && deadline.timeRemaining() < 1.25)
+        ) {
+          break
+        }
+      }
+
+      if (nextDegreeIndex < selectedEnrichedFlights.length) {
+        scheduleDeferredWork(buildDegreeChunk)
+        return
+      }
+
+      maxDegree = 1
+      for (const value of airportDegreeMap.values()) {
+        maxDegree = Math.max(maxDegree, value)
+      }
+      scheduleDeferredWork(buildRouteChunk, 20)
+    }
+
+    scheduleDeferredWork(() => {
+      const overlapLookup = buildRouteOverlapLookup(selectedEnrichedFlights)
+      for (const [flight, overlap] of overlapLookup.entries()) {
+        routeOverlapLookup.set(flight, overlap)
+      }
+      scheduleDeferredWork(buildDegreeChunk, 20)
+    }, 40)
+  }
 
   // ---------------------------
   // Airport hubs (subtle, Google-style)
@@ -1829,9 +2046,16 @@ export function createFlightRoutes(
       uniforms: {
         uTime: { value: 0 },
         uCameraDistance: { value: 25 },
-        uColorMul: { value: new THREE.Color(1, 1, 1) },
+        uColorMul: { value: GOOGLE_COLORS.yellow.clone() },
         uAlphaMul: { value: 0.9 },
-        uSizeMul: { value: scaleThickness(1.0) }
+        uFlowSpeed: { value: 0.054 },
+        uFlowWidth: { value: 0.18 },
+        uFlowStrength: { value: 0.72 },
+        uFlowColor: { value: GOOGLE_COLORS.yellow.clone().lerp(GOOGLE_COLORS.white, 0.16) },
+        uFlowDir: { value: new THREE.Vector3(0.74, 0.18, 0.65).normalize() },
+        uFlowScale: { value: 0.16 },
+        uSizeMul: { value: scaleThickness(1.0) },
+        uRevealProgress: { value: 0.0 }
       }
     })
 
@@ -1881,14 +2105,123 @@ export function createFlightRoutes(
   // ---------------------------
   type LineLodGeometry = {
     geometry: THREE.BufferGeometry
+    positionAttr: THREE.BufferAttribute
+    positionData: Float32Array
+    anim0Attr: THREE.BufferAttribute
+    anim0Data: Float32Array
     focusAttr: THREE.BufferAttribute
     focusData: Float32Array
+    hubAttr: THREE.BufferAttribute
+    hubData: Float32Array
+    altitudeAttr: THREE.BufferAttribute
+    altitudeData: Float32Array
+    densityAttr: THREE.BufferAttribute
+    densityData: Float32Array
+    corridorKeepAttr: THREE.BufferAttribute
+    corridorKeepData: Float32Array
+    corridorGroupAttr: THREE.BufferAttribute
+    corridorGroupData: Float32Array
     vertexCount: number
     verticesPerRoute: number
+    routeCapacity: number
+    committedRouteCount: number
   }
 
-  function buildLineLodGeometry(segmentsPerRoute: number): LineLodGeometry {
-    const lineVertexCount = routeData.length * segmentsPerRoute * 2
+  function markLineAttributeRange(attr: THREE.BufferAttribute, startVertex: number, vertexCount: number) {
+    if (vertexCount <= 0) return
+    if (typeof (attr as any).clearUpdateRanges === 'function') {
+      ;(attr as any).clearUpdateRanges()
+    }
+    if (typeof (attr as any).addUpdateRange === 'function') {
+      ;(attr as any).addUpdateRange(startVertex * attr.itemSize, vertexCount * attr.itemSize)
+    }
+    attr.needsUpdate = true
+  }
+
+  function populateLineLodRoutes(
+    lod: LineLodGeometry,
+    routeStartIndex: number,
+    routeEndIndex: number,
+    focusIso3Value = ''
+  ) {
+    const safeEndIndex = Math.min(routeEndIndex, routeData.length, lod.routeCapacity)
+    if (safeEndIndex <= routeStartIndex) return
+
+    for (let rIndex = routeStartIndex; rIndex < safeEndIndex; rIndex++) {
+      const r = routeData[rIndex]
+      const routeSamples = buildRouteSamplePositions(r, lod.verticesPerRoute * 0.5)
+      const baseVertex = rIndex * lod.verticesPerRoute
+      const focusHit = !focusIso3Value || r.countryIso3List.includes(focusIso3Value) ? 1 : 0
+
+      for (let i = 0; i < lod.verticesPerRoute * 0.5; i++) {
+        const t0 = i / (lod.verticesPerRoute * 0.5)
+        const t1 = (i + 1) / (lod.verticesPerRoute * 0.5)
+        const s0 = i * 3
+        const s1 = (i + 1) * 3
+
+        const vi0 = baseVertex + i * 2
+        const vi1 = vi0 + 1
+
+        lod.positionData[vi0 * 3 + 0] = routeSamples[s0 + 0]
+        lod.positionData[vi0 * 3 + 1] = routeSamples[s0 + 1]
+        lod.positionData[vi0 * 3 + 2] = routeSamples[s0 + 2]
+        const lo0 = vi0 * 4
+        lod.anim0Data[lo0 + 0] = t0
+        lod.anim0Data[lo0 + 1] = r.speed
+        lod.anim0Data[lo0 + 2] = r.phase
+        lod.anim0Data[lo0 + 3] = r.seed
+        lod.focusData[lo0 + 0] = r.traffic
+        lod.focusData[lo0 + 1] = focusHit
+        lod.focusData[lo0 + 2] = r.id
+        lod.focusData[lo0 + 3] = r.dir
+        lod.hubData[vi0] = r.hub
+        lod.altitudeData[vi0] = r.altitude01
+        lod.densityData[vi0] = r.density01
+        lod.corridorKeepData[vi0] = r.corridorKeep01
+        lod.corridorGroupData[vi0] = r.corridorGroup01
+
+        lod.positionData[vi1 * 3 + 0] = routeSamples[s1 + 0]
+        lod.positionData[vi1 * 3 + 1] = routeSamples[s1 + 1]
+        lod.positionData[vi1 * 3 + 2] = routeSamples[s1 + 2]
+        const lo1 = vi1 * 4
+        lod.anim0Data[lo1 + 0] = t1
+        lod.anim0Data[lo1 + 1] = r.speed
+        lod.anim0Data[lo1 + 2] = r.phase
+        lod.anim0Data[lo1 + 3] = r.seed
+        lod.focusData[lo1 + 0] = r.traffic
+        lod.focusData[lo1 + 1] = focusHit
+        lod.focusData[lo1 + 2] = r.id
+        lod.focusData[lo1 + 3] = r.dir
+        lod.hubData[vi1] = r.hub
+        lod.altitudeData[vi1] = r.altitude01
+        lod.densityData[vi1] = r.density01
+        lod.corridorKeepData[vi1] = r.corridorKeep01
+        lod.corridorGroupData[vi1] = r.corridorGroup01
+      }
+    }
+
+    const startVertex = routeStartIndex * lod.verticesPerRoute
+    const vertexCount = (safeEndIndex - routeStartIndex) * lod.verticesPerRoute
+    markLineAttributeRange(lod.positionAttr, startVertex, vertexCount)
+    markLineAttributeRange(lod.anim0Attr, startVertex, vertexCount)
+    markLineAttributeRange(lod.focusAttr, startVertex, vertexCount)
+    markLineAttributeRange(lod.hubAttr, startVertex, vertexCount)
+    markLineAttributeRange(lod.altitudeAttr, startVertex, vertexCount)
+    markLineAttributeRange(lod.densityAttr, startVertex, vertexCount)
+    markLineAttributeRange(lod.corridorKeepAttr, startVertex, vertexCount)
+    markLineAttributeRange(lod.corridorGroupAttr, startVertex, vertexCount)
+
+    lod.committedRouteCount = safeEndIndex
+    lod.geometry.setDrawRange(0, safeEndIndex * lod.verticesPerRoute)
+  }
+
+  function buildLineLodGeometry(
+    segmentsPerRoute: number,
+    routeCapacity = routeData.length,
+    initialRouteCount = routeData.length
+  ): LineLodGeometry {
+    const safeRouteCapacity = Math.max(routeCapacity, initialRouteCount, 1)
+    const lineVertexCount = safeRouteCapacity * segmentsPerRoute * 2
     const linePositions = new Float32Array(lineVertexCount * 3)
     const lineAnim0 = new Float32Array(lineVertexCount * 4) // t, speed, phase, seed
     const lineAnim1 = new Float32Array(lineVertexCount * 4) // traffic, focus, routeId, dir
@@ -1898,88 +2231,86 @@ export function createFlightRoutes(
     const lineCorridorKeep = new Float32Array(lineVertexCount)
     const lineCorridorGroup = new Float32Array(lineVertexCount)
 
-    let v = 0
-    for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
-      const r = routeData[rIndex]
-      const routeSamples = buildRouteSamplePositions(r, segmentsPerRoute)
-
-      for (let i = 0; i < segmentsPerRoute; i++) {
-        const t0 = i / segmentsPerRoute
-        const t1 = (i + 1) / segmentsPerRoute
-        const s0 = i * 3
-        const s1 = (i + 1) * 3
-
-        const vi0 = v
-        const vi1 = v + 1
-
-        // vertex 0
-        linePositions[vi0 * 3 + 0] = routeSamples[s0 + 0]
-        linePositions[vi0 * 3 + 1] = routeSamples[s0 + 1]
-        linePositions[vi0 * 3 + 2] = routeSamples[s0 + 2]
-        const lo0 = vi0 * 4
-        lineAnim0[lo0 + 0] = t0
-        lineAnim0[lo0 + 1] = r.speed
-        lineAnim0[lo0 + 2] = r.phase
-        lineAnim0[lo0 + 3] = r.seed
-        lineAnim1[lo0 + 0] = r.traffic
-        lineAnim1[lo0 + 1] = 1
-        lineAnim1[lo0 + 2] = r.id
-        lineAnim1[lo0 + 3] = r.dir
-        lineHub[vi0] = r.hub
-        lineAltitude[vi0] = r.altitude01
-        lineDensity[vi0] = r.density01
-        lineCorridorKeep[vi0] = r.corridorKeep01
-        lineCorridorGroup[vi0] = r.corridorGroup01
-
-        // vertex 1
-        linePositions[vi1 * 3 + 0] = routeSamples[s1 + 0]
-        linePositions[vi1 * 3 + 1] = routeSamples[s1 + 1]
-        linePositions[vi1 * 3 + 2] = routeSamples[s1 + 2]
-        const lo1 = vi1 * 4
-        lineAnim0[lo1 + 0] = t1
-        lineAnim0[lo1 + 1] = r.speed
-        lineAnim0[lo1 + 2] = r.phase
-        lineAnim0[lo1 + 3] = r.seed
-        lineAnim1[lo1 + 0] = r.traffic
-        lineAnim1[lo1 + 1] = 1
-        lineAnim1[lo1 + 2] = r.id
-        lineAnim1[lo1 + 3] = r.dir
-        lineHub[vi1] = r.hub
-        lineAltitude[vi1] = r.altitude01
-        lineDensity[vi1] = r.density01
-        lineCorridorKeep[vi1] = r.corridorKeep01
-        lineCorridorGroup[vi1] = r.corridorGroup01
-
-        v += 2
-      }
-    }
-
     const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3))
-    geo.setAttribute('aAnim0', new THREE.BufferAttribute(lineAnim0, 4))
+    const positionAttr = new THREE.BufferAttribute(linePositions, 3)
+    positionAttr.setUsage(THREE.DynamicDrawUsage)
+    geo.setAttribute('position', positionAttr)
+    const anim0Attr = new THREE.BufferAttribute(lineAnim0, 4)
+    anim0Attr.setUsage(THREE.DynamicDrawUsage)
+    geo.setAttribute('aAnim0', anim0Attr)
     const anim1Attr = new THREE.BufferAttribute(lineAnim1, 4)
     anim1Attr.setUsage(THREE.DynamicDrawUsage)
     geo.setAttribute('aAnim1', anim1Attr)
-    geo.setAttribute('aHub', new THREE.BufferAttribute(lineHub, 1))
-    geo.setAttribute('aAltitude', new THREE.BufferAttribute(lineAltitude, 1))
-    geo.setAttribute('aDensity', new THREE.BufferAttribute(lineDensity, 1))
-    geo.setAttribute('aCorridorKeep', new THREE.BufferAttribute(lineCorridorKeep, 1))
-    geo.setAttribute('aCorridorGroup', new THREE.BufferAttribute(lineCorridorGroup, 1))
+    const hubAttr = new THREE.BufferAttribute(lineHub, 1)
+    hubAttr.setUsage(THREE.DynamicDrawUsage)
+    geo.setAttribute('aHub', hubAttr)
+    const altitudeAttr = new THREE.BufferAttribute(lineAltitude, 1)
+    altitudeAttr.setUsage(THREE.DynamicDrawUsage)
+    geo.setAttribute('aAltitude', altitudeAttr)
+    const densityAttr = new THREE.BufferAttribute(lineDensity, 1)
+    densityAttr.setUsage(THREE.DynamicDrawUsage)
+    geo.setAttribute('aDensity', densityAttr)
+    const corridorKeepAttr = new THREE.BufferAttribute(lineCorridorKeep, 1)
+    corridorKeepAttr.setUsage(THREE.DynamicDrawUsage)
+    geo.setAttribute('aCorridorKeep', corridorKeepAttr)
+    const corridorGroupAttr = new THREE.BufferAttribute(lineCorridorGroup, 1)
+    corridorGroupAttr.setUsage(THREE.DynamicDrawUsage)
+    geo.setAttribute('aCorridorGroup', corridorGroupAttr)
+    geo.setDrawRange(0, 0)
     geo.computeBoundingSphere()
 
-    return {
+    const lod: LineLodGeometry = {
       geometry: geo,
+      positionAttr,
+      positionData: linePositions,
+      anim0Attr,
+      anim0Data: lineAnim0,
       focusAttr: anim1Attr,
       focusData: lineAnim1,
+      hubAttr,
+      hubData: lineHub,
+      altitudeAttr,
+      altitudeData: lineAltitude,
+      densityAttr,
+      densityData: lineDensity,
+      corridorKeepAttr,
+      corridorKeepData: lineCorridorKeep,
+      corridorGroupAttr,
+      corridorGroupData: lineCorridorGroup,
       vertexCount: lineVertexCount,
-      verticesPerRoute: segmentsPerRoute * 2
+      verticesPerRoute: segmentsPerRoute * 2,
+      routeCapacity: safeRouteCapacity,
+      committedRouteCount: 0
     }
+
+    if (initialRouteCount > 0) {
+      populateLineLodRoutes(lod, 0, initialRouteCount)
+    }
+
+    return lod
   }
 
-  const lineCoarse = buildLineLodGeometry(LINE_SEGMENTS_COARSE)
-  const lineFine = buildLineLodGeometry(LINE_SEGMENTS_FINE)
-  const lineLods: LineLodGeometry[] = [lineCoarse, lineFine]
+  let lineCoarse = buildLineLodGeometry(
+    LINE_SEGMENTS_COARSE,
+    isEnrichedSource ? selectedEnrichedFlights.length : routeData.length,
+    routeData.length
+  )
+  let lineFine: LineLodGeometry | null = null
+  const lineLods: LineLodGeometry[] = [lineCoarse]
   let activeLineLod: 'coarse' | 'fine' = 'coarse'
+  let lineFineBuildState: 'idle' | 'building' | 'ready' = 'idle'
+  let routeScoresBuildState: 'idle' | 'building' | 'ready' = 'idle'
+  const startupRouteCount = Math.max(1, isEnrichedSource ? routeCount : routeData.length)
+  const airportStartupDelaySeconds = 0.18
+  const flightStartupDelaySeconds = 0.42
+  const lineRevealDurationSeconds = THREE.MathUtils.clamp(
+    1.15 + Math.log10(startupRouteCount + 10) * 0.48,
+    1.35,
+    2.4
+  )
+  const planeStartupDelaySeconds = flightStartupDelaySeconds + 0.42
+  let flightStartupElapsedSeconds = 0
+  let flightStartupActive = false
 
   const lineMat = new THREE.ShaderMaterial({
     vertexShader: flightLinesVert,
@@ -2003,6 +2334,8 @@ export function createFlightRoutes(
       uRouteKeep: { value: 1.0 },
       uAltitudeLodMix: { value: 1.0 },
       uRepresentationMix: { value: 0.0 },
+      uStartupReveal: { value: 0.0 },
+      uStartupFade: { value: 0.0 },
       uHoverRouteId: { value: -999 },
       uHoverMix: { value: 0.0 },
       uSelectedRouteId: { value: -999 },
@@ -2015,10 +2348,187 @@ export function createFlightRoutes(
   lines.frustumCulled = false
   group.add(lines)
 
+  function commitLineGeometryProgress(committedRouteCount: number) {
+    const clampedRouteCount = THREE.MathUtils.clamp(committedRouteCount, 0, Math.min(routeData.length, lineCoarse.routeCapacity))
+    if (clampedRouteCount <= lineCoarse.committedRouteCount) return
+    populateLineLodRoutes(lineCoarse, lineCoarse.committedRouteCount, clampedRouteCount, focusIso3)
+  }
+
+  function syncLineScoreAttributes(lod: LineLodGeometry) {
+    for (let routeIndex = 0; routeIndex < routeData.length; routeIndex++) {
+      const route = routeData[routeIndex]
+      const base = routeIndex * lod.verticesPerRoute
+      for (let vertexIndex = 0; vertexIndex < lod.verticesPerRoute; vertexIndex++) {
+        const idx = base + vertexIndex
+        lod.densityData[idx] = route.density01
+        lod.corridorKeepData[idx] = route.corridorKeep01
+        lod.corridorGroupData[idx] = route.corridorGroup01
+      }
+    }
+
+    lod.densityAttr.needsUpdate = true
+    lod.corridorKeepAttr.needsUpdate = true
+    lod.corridorGroupAttr.needsUpdate = true
+  }
+
+  function resetFlightStartupAnimation() {
+    flightStartupElapsedSeconds = 0
+    planeRevealProgress = 0
+    lineMat.uniforms.uStartupReveal.value = 0
+    lineMat.uniforms.uStartupFade.value = 0
+    planeMat.uniforms.uRevealProgress.value = 0
+    planeMat.uniforms.uStartupFade.value = 0
+    if (hubsMat) {
+      hubsMat.uniforms.uRevealProgress.value = 0
+    }
+  }
+
+  function activateFlightStartupAnimation() {
+    if (flightStartupActive) return
+    resetFlightStartupAnimation()
+    flightStartupActive = true
+  }
+
+  function syncPlaneScoreAttributes(routeStartIndex = 0, routeCountToSync = routeData.length - routeStartIndex) {
+    if (!planeAttributeRefs || !planeFocusRouteData || routeCountToSync <= 0) return
+    const routeEndIndex = Math.min(routeData.length, routeStartIndex + routeCountToSync, Math.max(routeStartIndex, planeBuiltRouteCount))
+    if (routeEndIndex <= routeStartIndex) return
+
+    const densityArray = planeAttributeRefs.density.array as Float32Array
+    const corridorKeepArray = planeAttributeRefs.corridorKeep.array as Float32Array
+    const corridorGroupArray = planeAttributeRefs.corridorGroup.array as Float32Array
+    const revealPriorityArray = planeAttributeRefs.revealPriority.array as Float32Array
+
+    for (let routeIndex = routeStartIndex; routeIndex < routeEndIndex; routeIndex++) {
+      const route = routeData[routeIndex]
+      const base = routeIndex * MAX_PLANES_PER_ROUTE
+      for (let planeIndex = 0; planeIndex < MAX_PLANES_PER_ROUTE; planeIndex++) {
+        const idx = base + planeIndex
+        const enabled = planeIndex < route.trafficCount ? 1 : 0
+        densityArray[idx] = route.density01
+        corridorKeepArray[idx] = route.corridorKeep01
+        corridorGroupArray[idx] = route.corridorGroup01
+        revealPriorityArray[idx] = computePlaneRevealPriority(route, planeIndex, enabled)
+      }
+    }
+
+    const startPlaneIndex = routeStartIndex * MAX_PLANES_PER_ROUTE
+    const planeSpan = (routeEndIndex - routeStartIndex) * MAX_PLANES_PER_ROUTE
+    markPlaneAttributeRange(planeAttributeRefs.density, startPlaneIndex, planeSpan)
+    markPlaneAttributeRange(planeAttributeRefs.corridorKeep, startPlaneIndex, planeSpan)
+    markPlaneAttributeRange(planeAttributeRefs.corridorGroup, startPlaneIndex, planeSpan)
+    markPlaneAttributeRange(planeAttributeRefs.revealPriority, startPlaneIndex, planeSpan)
+  }
+
+  function commitPlaneGeometryProgress(committedRouteCount: number) {
+    if (!planeAttributeRefs) return
+    const clampedRouteCount = THREE.MathUtils.clamp(committedRouteCount, 0, routeData.length)
+    if (clampedRouteCount <= planeBuiltRouteCount) return
+
+    const startPlaneIndex = planeBuiltRouteCount * MAX_PLANES_PER_ROUTE
+    const committedPlaneCount = clampedRouteCount * MAX_PLANES_PER_ROUTE
+    const deltaPlaneCount = committedPlaneCount - startPlaneIndex
+
+    markPlaneAttributeRange(planeAttributeRefs.position, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.p0, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.p1, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.p2, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.curve, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.animA, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.animB, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.focusRoute, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.altitude, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.hub, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.density, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.corridorKeep, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.corridorGroup, startPlaneIndex, deltaPlaneCount)
+    markPlaneAttributeRange(planeAttributeRefs.revealPriority, startPlaneIndex, deltaPlaneCount)
+
+    planeGeo.setDrawRange(0, committedPlaneCount)
+    planeBuiltRouteCount = clampedRouteCount
+    planeGeometryVisible = planeBuiltRouteCount > 0
+    if (planeGeometryVisible) {
+      planes.visible = visualizationMode !== 'legacy' && SHOW_ROUTE_PLANES
+    }
+  }
+
+  function rebuildHeatTextureFromRoutes() {
+    const nextHeatTexture = buildFlightHeatmapTextureAsync(routeData, 512, 256)
+    const previousHeatTexture = heatMat.uniforms.uHeat.value as THREE.Texture | null
+    heatMat.uniforms.uHeat.value = nextHeatTexture
+    if (previousHeatTexture && previousHeatTexture !== nextHeatTexture) {
+      previousHeatTexture.dispose()
+    }
+  }
+
+  function applyFocusMaskToLineLod(lod: LineLodGeometry) {
+    if (!focusIso3) {
+      for (let i = 0; i < lod.vertexCount; i++) {
+        lod.focusData[i * 4 + 1] = 1
+      }
+    } else {
+      for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
+        const r = routeData[rIndex]
+        const hit = r.countryIso3List.includes(focusIso3) ? 1 : 0
+        const base = rIndex * lod.verticesPerRoute
+        for (let j = 0; j < lod.verticesPerRoute; j++) {
+          lod.focusData[(base + j) * 4 + 1] = hit
+        }
+      }
+    }
+
+    lod.focusAttr.needsUpdate = true
+  }
+
+  function ensureFineLineLod() {
+    if (lineFineBuildState !== 'idle' || routeData.length === 0) return
+    if (isEnrichedSource && routeBuildState !== 'ready') return
+    lineFineBuildState = 'building'
+    scheduleDeferredWork(() => {
+      const built = buildLineLodGeometry(LINE_SEGMENTS_FINE)
+      lineFine = built
+      lineLods.push(built)
+      applyFocusMaskToLineLod(built)
+      lineFineBuildState = 'ready'
+      if (activeLineLod === 'fine') {
+        lines.geometry = built.geometry
+      }
+    }, 120)
+  }
+
+  function startRouteScoreBuild() {
+    if (routeScoresBuildState !== 'idle' || routeData.length === 0) return
+    routeScoresBuildState = 'building'
+
+    buildRouteScoresAsync(routeData, () => {
+      for (let lodIndex = 0; lodIndex < lineLods.length; lodIndex++) {
+        syncLineScoreAttributes(lineLods[lodIndex])
+      }
+      routeScoresBuildState = 'ready'
+      if (planeBuildState !== 'idle') {
+        syncPlaneScoreAttributes()
+      }
+    })
+  }
+
   function setActiveLineLod(next: 'coarse' | 'fine') {
-    if (activeLineLod === next) return
+    if (routeData.length === 0) {
+      activeLineLod = next
+      lines.geometry = lineCoarse.geometry
+      return
+    }
+    if (activeLineLod === next && (next !== 'fine' || lineFine)) return
     activeLineLod = next
-    lines.geometry = next === 'fine' ? lineFine.geometry : lineCoarse.geometry
+    if (next === 'fine') {
+      if (lineFine) {
+        lines.geometry = lineFine.geometry
+      } else {
+        lines.geometry = lineCoarse.geometry
+        ensureFineLineLod()
+      }
+      return
+    }
+    lines.geometry = lineCoarse.geometry
   }
 
   // ---------------------------
@@ -2026,27 +2536,31 @@ export function createFlightRoutes(
   // ---------------------------
   const planeGeo = new THREE.BufferGeometry()
   const MAX_PLANES_PER_ROUTE = TRAFFIC_LEVELS
-  const planeCount = routeData.length * MAX_PLANES_PER_ROUTE
-
-  // Dummy position for Points geometry.
-  // Actual animated position is computed in the vertex shader from spherical route params.
-  const planePositions = new Float32Array(planeCount * 3)
-
-  const planeP0 = new Float32Array(planeCount * 3)
-  const planeP1 = new Float32Array(planeCount * 3)
-  const planeP2 = new Float32Array(planeCount * 3)
-  const planeCurve = new Float32Array(planeCount * 3)
-  const planeAnimA = new Float32Array(planeCount * 4) // speed, phase, offset, dir
-  const planeAnimB = new Float32Array(planeCount * 4) // size, seed, traffic, enable
-  const planeFocusRoute = new Float32Array(planeCount * 2) // focus, routeId
-  const planeAltitude = new Float32Array(planeCount)
-  const planeHub = new Float32Array(planeCount)
-  const planeDensity = new Float32Array(planeCount)
-  const planeCorridorKeep = new Float32Array(planeCount)
-  const planeCorridorGroup = new Float32Array(planeCount)
-  const planeRevealPriority = new Float32Array(planeCount)
+  let planeCount = Math.max(1, routeData.length * MAX_PLANES_PER_ROUTE)
+  let planeFocusRouteAttr: THREE.BufferAttribute | null = null
+  let planeFocusRouteData: Float32Array | null = null
+  let planeAttributeRefs: {
+    position: THREE.BufferAttribute
+    p0: THREE.BufferAttribute
+    p1: THREE.BufferAttribute
+    p2: THREE.BufferAttribute
+    curve: THREE.BufferAttribute
+    animA: THREE.BufferAttribute
+    animB: THREE.BufferAttribute
+    focusRoute: THREE.BufferAttribute
+    altitude: THREE.BufferAttribute
+    hub: THREE.BufferAttribute
+    density: THREE.BufferAttribute
+    corridorKeep: THREE.BufferAttribute
+    corridorGroup: THREE.BufferAttribute
+    revealPriority: THREE.BufferAttribute
+  } | null = null
+  let planeGeometryReady = false
+  let planeGeometryVisible = false
+  let planeBuildState: 'idle' | 'building' | 'ready' = 'idle'
+  let planeBuiltRouteCount = 0
   const planeRevealDurationSeconds = THREE.MathUtils.clamp(
-    6.8 + Math.sqrt(Math.max(1, routeData.length)) * 0.055,
+    6.8 + Math.sqrt(startupRouteCount) * 0.055,
     7.5,
     13.5
   )
@@ -2056,89 +2570,139 @@ export function createFlightRoutes(
     return v - Math.floor(v)
   }
 
-  for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
-    const r = routeData[rIndex]
-    const base = rIndex * MAX_PLANES_PER_ROUTE
-
-    for (let j = 0; j < MAX_PLANES_PER_ROUTE; j++) {
-      const idx = base + j
-
-      // dummy position
-      planePositions[idx * 3 + 0] = r.p0x
-      planePositions[idx * 3 + 1] = r.p0y
-      planePositions[idx * 3 + 2] = r.p0z
-
-      // Route params: start point, Bezier control point, end point, curve terms.
-      planeP0[idx * 3 + 0] = r.p0x
-      planeP0[idx * 3 + 1] = r.p0y
-      planeP0[idx * 3 + 2] = r.p0z
-      planeP1[idx * 3 + 0] = r.p1x
-      planeP1[idx * 3 + 1] = r.p1y
-      planeP1[idx * 3 + 2] = r.p1z
-      planeP2[idx * 3 + 0] = r.p2x
-      planeP2[idx * 3 + 1] = r.p2y
-      planeP2[idx * 3 + 2] = r.p2z
-      planeCurve[idx * 3 + 0] = r.arcHeight
-      planeCurve[idx * 3 + 1] = r.lateralOffsetRad
-      planeCurve[idx * 3 + 2] = r.loopSweepRad
-
-      const po = idx * 4
-      planeAnimA[po + 0] = r.speed
-      planeAnimA[po + 1] = r.phase
-      planeAnimA[po + 3] = r.dir
-
-      const enabled = j < r.trafficCount ? 1 : 0
-      planeAnimB[po + 3] = enabled
-
-      // Spread planes along the route; add a small deterministic jitter.
-      const denom = Math.max(1, r.trafficCount)
-      const baseOffset = j === 0 ? 0 : j / denom
-      const jitter = j === 0 ? 0 : (fract01(r.seed * 17.0 + j * 3.1) - 0.5) * 0.06
-      planeAnimA[po + 2] = fract01(baseOffset + jitter)
-
-      // Subtle variety and traffic scaling.
-      const sizeJitter = 0.94 - j * 0.06 + (fract01(r.seed * 11.0 + j * 1.7) - 0.5) * 0.08
-      planeAnimB[po + 0] = r.size * sizeJitter
-      planeAnimB[po + 1] = fract01(r.seed + j * 0.23)
-      planeAnimB[po + 2] = r.traffic
-      const ps = idx * 2
-      planeFocusRoute[ps + 0] = 1
-      planeFocusRoute[ps + 1] = r.id
-      planeAltitude[idx] = r.altitude01
-      planeHub[idx] = r.hub
-      planeDensity[idx] = r.density01
-      planeCorridorKeep[idx] = r.corridorKeep01
-      planeCorridorGroup[idx] = r.corridorGroup01
-      const enabledPlaneRank = j < r.trafficCount ? j / Math.max(1, r.trafficCount - 1) : 1
-      const revealNoise = (fract01(r.seed * 29.0 + j * 4.7) - 0.5) * 0.04
-      planeRevealPriority[idx] =
-        enabled > 0
-          ? THREE.MathUtils.clamp(
-              (1 - r.importance01) * 0.88 + enabledPlaneRank * 0.18 + revealNoise,
-              0,
-              1
-            )
-          : 1
+  function markPlaneAttributeRange(attr: THREE.BufferAttribute, startItem: number, itemCount: number) {
+    if (itemCount <= 0) return
+    if (typeof (attr as any).clearUpdateRanges === 'function') {
+      ;(attr as any).clearUpdateRanges()
     }
+    if (typeof (attr as any).addUpdateRange === 'function') {
+      ;(attr as any).addUpdateRange(startItem * attr.itemSize, itemCount * attr.itemSize)
+    }
+    attr.needsUpdate = true
   }
 
-  planeGeo.setAttribute('position', new THREE.BufferAttribute(planePositions, 3))
-  planeGeo.setAttribute('aP0', new THREE.BufferAttribute(planeP0, 3))
-  planeGeo.setAttribute('aP1', new THREE.BufferAttribute(planeP1, 3))
-  planeGeo.setAttribute('aP2', new THREE.BufferAttribute(planeP2, 3))
-  planeGeo.setAttribute('aCurve', new THREE.BufferAttribute(planeCurve, 3))
-  planeGeo.setAttribute('aAnimA', new THREE.BufferAttribute(planeAnimA, 4))
-  planeGeo.setAttribute('aAnimB', new THREE.BufferAttribute(planeAnimB, 4))
-  const planeFocusRouteAttr = new THREE.BufferAttribute(planeFocusRoute, 2)
-  planeFocusRouteAttr.setUsage(THREE.DynamicDrawUsage)
-  planeGeo.setAttribute('aFocusRoute', planeFocusRouteAttr)
-  planeGeo.setAttribute('aAltitude', new THREE.BufferAttribute(planeAltitude, 1))
-  planeGeo.setAttribute('aHub', new THREE.BufferAttribute(planeHub, 1))
-  planeGeo.setAttribute('aDensity', new THREE.BufferAttribute(planeDensity, 1))
-  planeGeo.setAttribute('aCorridorKeep', new THREE.BufferAttribute(planeCorridorKeep, 1))
-  planeGeo.setAttribute('aCorridorGroup', new THREE.BufferAttribute(planeCorridorGroup, 1))
-  planeGeo.setAttribute('aRevealPriority', new THREE.BufferAttribute(planeRevealPriority, 1))
-  planeGeo.computeBoundingSphere()
+  function getPlaneBaseImportance(route: Route) {
+    if (routeScoresBuildState === 'ready') {
+      return route.importance01
+    }
+
+    const traffic01 = THREE.MathUtils.clamp((route.traffic - 0.68) / (1.34 - 0.68), 0, 1)
+    return THREE.MathUtils.clamp(
+      route.hub * 0.34 +
+      traffic01 * 0.28 +
+      route.altitude01 * 0.14 +
+      (1 - route.seed) * 0.16 +
+      THREE.MathUtils.clamp((route.distanceKm - 350) / 9000, 0, 1) * 0.08,
+      0,
+      1
+    )
+  }
+
+  function computePlaneRevealPriority(route: Route, planeIndex: number, enabled: number) {
+    if (enabled <= 0) return 1
+    const enabledPlaneRank = planeIndex < route.trafficCount ? planeIndex / Math.max(1, route.trafficCount - 1) : 1
+    const revealNoise = (fract01(route.seed * 29.0 + planeIndex * 4.7) - 0.5) * 0.04
+    return THREE.MathUtils.clamp(
+      (1 - getPlaneBaseImportance(route)) * 0.88 + enabledPlaneRank * 0.18 + revealNoise,
+      0,
+      1
+    )
+  }
+
+  function setPlaneGeometryAttributes(attrs: {
+    position: Float32Array
+    p0: Float32Array
+    p1: Float32Array
+    p2: Float32Array
+    curve: Float32Array
+    animA: Float32Array
+    animB: Float32Array
+    focusRoute: Float32Array
+    altitude: Float32Array
+    hub: Float32Array
+    density: Float32Array
+    corridorKeep: Float32Array
+    corridorGroup: Float32Array
+    revealPriority: Float32Array
+  }) {
+    const positionAttr = new THREE.BufferAttribute(attrs.position, 3)
+    positionAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('position', positionAttr)
+    const p0Attr = new THREE.BufferAttribute(attrs.p0, 3)
+    p0Attr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aP0', p0Attr)
+    const p1Attr = new THREE.BufferAttribute(attrs.p1, 3)
+    p1Attr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aP1', p1Attr)
+    const p2Attr = new THREE.BufferAttribute(attrs.p2, 3)
+    p2Attr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aP2', p2Attr)
+    const curveAttr = new THREE.BufferAttribute(attrs.curve, 3)
+    curveAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aCurve', curveAttr)
+    const animAAttr = new THREE.BufferAttribute(attrs.animA, 4)
+    animAAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aAnimA', animAAttr)
+    const animBAttr = new THREE.BufferAttribute(attrs.animB, 4)
+    animBAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aAnimB', animBAttr)
+    planeFocusRouteAttr = new THREE.BufferAttribute(attrs.focusRoute, 2)
+    planeFocusRouteAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aFocusRoute', planeFocusRouteAttr)
+    const altitudeAttr = new THREE.BufferAttribute(attrs.altitude, 1)
+    altitudeAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aAltitude', altitudeAttr)
+    const hubAttr = new THREE.BufferAttribute(attrs.hub, 1)
+    hubAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aHub', hubAttr)
+    const densityAttr = new THREE.BufferAttribute(attrs.density, 1)
+    densityAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aDensity', densityAttr)
+    const corridorKeepAttr = new THREE.BufferAttribute(attrs.corridorKeep, 1)
+    corridorKeepAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aCorridorKeep', corridorKeepAttr)
+    const corridorGroupAttr = new THREE.BufferAttribute(attrs.corridorGroup, 1)
+    corridorGroupAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aCorridorGroup', corridorGroupAttr)
+    const revealPriorityAttr = new THREE.BufferAttribute(attrs.revealPriority, 1)
+    revealPriorityAttr.setUsage(THREE.DynamicDrawUsage)
+    planeGeo.setAttribute('aRevealPriority', revealPriorityAttr)
+    planeFocusRouteData = attrs.focusRoute
+    planeAttributeRefs = {
+      position: positionAttr,
+      p0: p0Attr,
+      p1: p1Attr,
+      p2: p2Attr,
+      curve: curveAttr,
+      animA: animAAttr,
+      animB: animBAttr,
+      focusRoute: planeFocusRouteAttr,
+      altitude: altitudeAttr,
+      hub: hubAttr,
+      density: densityAttr,
+      corridorKeep: corridorKeepAttr,
+      corridorGroup: corridorGroupAttr,
+      revealPriority: revealPriorityAttr
+    }
+    planeGeo.computeBoundingSphere()
+  }
+
+  setPlaneGeometryAttributes({
+    position: new Float32Array(3),
+    p0: new Float32Array(3),
+    p1: new Float32Array(3),
+    p2: new Float32Array(3),
+    curve: new Float32Array(3),
+    animA: new Float32Array(4),
+    animB: new Float32Array([0, 0, 0, 0]),
+    focusRoute: new Float32Array([1, -999]),
+    altitude: new Float32Array(1),
+    hub: new Float32Array(1),
+    density: new Float32Array(1),
+    corridorKeep: new Float32Array(1),
+    corridorGroup: new Float32Array(1),
+    revealPriority: new Float32Array([1])
+  })
 
   const planeMat = new THREE.ShaderMaterial({
     vertexShader: flightPlanesVert,
@@ -2161,6 +2725,7 @@ export function createFlightRoutes(
       uAltitudeLodMix: { value: 1.0 },
       uRepresentationMix: { value: 0.0 },
       uRevealProgress: { value: 0.0 },
+      uStartupFade: { value: 0.0 },
       uHoverRouteId: { value: -999 },
       uHoverMix: { value: 0.0 },
       uSelectedRouteId: { value: -999 },
@@ -2172,8 +2737,160 @@ export function createFlightRoutes(
   const planes = new THREE.Points(planeGeo, planeMat)
   planes.renderOrder = 6
   planes.frustumCulled = false
-  planes.visible = SHOW_ROUTE_PLANES
+  planes.visible = false
   group.add(planes)
+
+  function finalizePlaneGeometry(attrs: {
+    position: Float32Array
+    p0: Float32Array
+    p1: Float32Array
+    p2: Float32Array
+    curve: Float32Array
+    animA: Float32Array
+    animB: Float32Array
+    focusRoute: Float32Array
+    altitude: Float32Array
+    hub: Float32Array
+    density: Float32Array
+    corridorKeep: Float32Array
+    corridorGroup: Float32Array
+    revealPriority: Float32Array
+  }) {
+    if (planeFocusRouteData !== attrs.focusRoute) {
+      setPlaneGeometryAttributes(attrs)
+    }
+    planeGeo.setDrawRange(0, routeData.length * MAX_PLANES_PER_ROUTE)
+    planeGeometryReady = true
+    planeGeometryVisible = routeData.length > 0
+    planeBuildState = 'ready'
+    planeBuiltRouteCount = routeData.length
+    applyFocusMask()
+    planes.visible = visualizationMode !== 'legacy' && SHOW_ROUTE_PLANES
+  }
+
+  function startPlaneGeometryBuild() {
+    if (planeBuildState !== 'idle') return
+    planeBuildState = 'building'
+    const planeRouteCapacity = isEnrichedSource ? Math.max(1, selectedEnrichedFlights.length) : Math.max(1, routeData.length)
+    planeCount = planeRouteCapacity * MAX_PLANES_PER_ROUTE
+    planeBuiltRouteCount = 0
+    planeGeometryVisible = false
+
+    const attrs = {
+      position: new Float32Array(planeCount * 3),
+      p0: new Float32Array(planeCount * 3),
+      p1: new Float32Array(planeCount * 3),
+      p2: new Float32Array(planeCount * 3),
+      curve: new Float32Array(planeCount * 3),
+      animA: new Float32Array(planeCount * 4),
+      animB: new Float32Array(planeCount * 4),
+      focusRoute: new Float32Array(planeCount * 2),
+      altitude: new Float32Array(planeCount),
+      hub: new Float32Array(planeCount),
+      density: new Float32Array(planeCount),
+      corridorKeep: new Float32Array(planeCount),
+      corridorGroup: new Float32Array(planeCount),
+      revealPriority: new Float32Array(planeCount)
+    }
+
+    setPlaneGeometryAttributes(attrs)
+    planeGeo.setDrawRange(0, 0)
+    applyFocusMask()
+
+    let nextRouteIndex = 0
+
+    const fillChunk = (deadline?: IdleDeadline) => {
+      const chunkDeadline = deadline ? Math.max(1.25, deadline.timeRemaining()) : 4
+      const chunkStart = typeof performance !== 'undefined' ? performance.now() : 0
+      let processedRoutes = 0
+
+      while (nextRouteIndex < routeData.length) {
+        const r = routeData[nextRouteIndex]
+        const base = nextRouteIndex * MAX_PLANES_PER_ROUTE
+
+        for (let j = 0; j < MAX_PLANES_PER_ROUTE; j++) {
+          const idx = base + j
+
+          attrs.position[idx * 3 + 0] = r.p0x
+          attrs.position[idx * 3 + 1] = r.p0y
+          attrs.position[idx * 3 + 2] = r.p0z
+
+          attrs.p0[idx * 3 + 0] = r.p0x
+          attrs.p0[idx * 3 + 1] = r.p0y
+          attrs.p0[idx * 3 + 2] = r.p0z
+          attrs.p1[idx * 3 + 0] = r.p1x
+          attrs.p1[idx * 3 + 1] = r.p1y
+          attrs.p1[idx * 3 + 2] = r.p1z
+          attrs.p2[idx * 3 + 0] = r.p2x
+          attrs.p2[idx * 3 + 1] = r.p2y
+          attrs.p2[idx * 3 + 2] = r.p2z
+          attrs.curve[idx * 3 + 0] = r.arcHeight
+          attrs.curve[idx * 3 + 1] = r.lateralOffsetRad
+          attrs.curve[idx * 3 + 2] = r.loopSweepRad
+
+          const po = idx * 4
+          attrs.animA[po + 0] = r.speed
+          attrs.animA[po + 1] = r.phase
+          attrs.animA[po + 3] = r.dir
+
+          const enabled = j < r.trafficCount ? 1 : 0
+          attrs.animB[po + 3] = enabled
+
+          const denom = Math.max(1, r.trafficCount)
+          const baseOffset = j === 0 ? 0 : j / denom
+          const jitter = j === 0 ? 0 : (fract01(r.seed * 17.0 + j * 3.1) - 0.5) * 0.06
+          attrs.animA[po + 2] = fract01(baseOffset + jitter)
+
+          const sizeJitter = 0.94 - j * 0.06 + (fract01(r.seed * 11.0 + j * 1.7) - 0.5) * 0.08
+          attrs.animB[po + 0] = r.size * sizeJitter
+          attrs.animB[po + 1] = fract01(r.seed + j * 0.23)
+          attrs.animB[po + 2] = r.traffic
+
+          const ps = idx * 2
+          attrs.focusRoute[ps + 0] = 1
+          attrs.focusRoute[ps + 1] = r.id
+          attrs.altitude[idx] = r.altitude01
+          attrs.hub[idx] = r.hub
+          attrs.density[idx] = r.density01
+          attrs.corridorKeep[idx] = r.corridorKeep01
+          attrs.corridorGroup[idx] = r.corridorGroup01
+
+          attrs.revealPriority[idx] = computePlaneRevealPriority(r, j, enabled)
+        }
+
+        nextRouteIndex += 1
+        processedRoutes += 1
+
+        const timeSpent =
+          typeof performance !== 'undefined' ? performance.now() - chunkStart : processedRoutes
+        if (
+          processedRoutes >= PLANE_BUILD_CHUNK_ROUTES ||
+          timeSpent >= chunkDeadline ||
+          (deadline && deadline.timeRemaining() < 1.25)
+        ) {
+          break
+        }
+      }
+
+      if (nextRouteIndex > planeBuiltRouteCount) {
+        commitPlaneGeometryProgress(nextRouteIndex)
+      }
+
+      if (nextRouteIndex < routeData.length) {
+        scheduleDeferredWork(fillChunk)
+        return
+      }
+
+      if (routeBuildState !== 'ready') {
+        scheduleDeferredWork(fillChunk, 24)
+        return
+      }
+
+      finalizePlaneGeometry(attrs)
+    }
+
+    scheduleDeferredWork(fillChunk, 36)
+  }
 
   // ---------------------------
   // Endpoints (hover/selected)
@@ -2270,16 +2987,31 @@ export function createFlightRoutes(
   let visualizationMode: FlightVisualizationMode = 'reengineered'
 
   const routesByCountry = new Map<string, number[]>()
-  for (let i = 0; i < routeData.length; i++) {
-    const r = routeData[i]
-    for (let j = 0; j < r.countryIso3List.length; j++) {
-      const iso3 = r.countryIso3List[j]
-      if (!iso3) continue
-      const list = routesByCountry.get(iso3) ?? []
-      list.push(i)
-      routesByCountry.set(iso3, list)
+
+  function rebuildRoutesByCountryIndex() {
+    routesByCountry.clear()
+    for (let i = 0; i < routeData.length; i++) {
+      const r = routeData[i]
+      for (let j = 0; j < r.countryIso3List.length; j++) {
+        const iso3 = r.countryIso3List[j]
+        if (!iso3) continue
+        const list = routesByCountry.get(iso3) ?? []
+        list.push(i)
+        routesByCountry.set(iso3, list)
+      }
     }
   }
+
+  function commitIncrementalFlightBootstrap(committedRouteCount: number) {
+    if (committedRouteCount <= 0) return
+    commitLineGeometryProgress(committedRouteCount)
+    activateFlightStartupAnimation()
+    if (planeBuildState === 'idle') {
+      startPlaneGeometryBuild()
+    }
+  }
+
+  rebuildRoutesByCountryIndex()
 
   function setEndpointPositions(kind: 'hover' | 'selected', routeId: number) {
     const r = routeData[routeId]
@@ -2322,29 +3054,16 @@ export function createFlightRoutes(
 
   function applyFocusMask() {
     for (let lodIndex = 0; lodIndex < lineLods.length; lodIndex++) {
-      const lod = lineLods[lodIndex]
+      applyFocusMaskToLineLod(lineLods[lodIndex])
+    }
 
-      if (!focusIso3) {
-        for (let i = 0; i < lod.vertexCount; i++) {
-          lod.focusData[i * 4 + 1] = 1
-        }
-      } else {
-        for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
-          const r = routeData[rIndex]
-          const hit = r.countryIso3List.includes(focusIso3) ? 1 : 0
-          const base = rIndex * lod.verticesPerRoute
-          for (let j = 0; j < lod.verticesPerRoute; j++) {
-            lod.focusData[(base + j) * 4 + 1] = hit
-          }
-        }
-      }
-
-      lod.focusAttr.needsUpdate = true
+    if (!planeFocusRouteData || !planeFocusRouteAttr) {
+      return
     }
 
     if (!focusIso3) {
       for (let i = 0; i < planeCount; i++) {
-        planeFocusRoute[i * 2 + 0] = 1
+        planeFocusRouteData[i * 2 + 0] = 1
       }
     } else {
       for (let rIndex = 0; rIndex < routeData.length; rIndex++) {
@@ -2352,7 +3071,7 @@ export function createFlightRoutes(
         const hit = r.countryIso3List.includes(focusIso3) ? 1 : 0
         const base = rIndex * MAX_PLANES_PER_ROUTE
         for (let j = 0; j < MAX_PLANES_PER_ROUTE; j++) {
-          planeFocusRoute[(base + j) * 2 + 0] = hit
+          planeFocusRouteData[(base + j) * 2 + 0] = hit
         }
       }
     }
@@ -2477,23 +3196,56 @@ export function createFlightRoutes(
     }
   }
 
+  function distributeDomesticFlights(incoming: number, outgoing: number, domestic: number) {
+    const safeIncoming = Math.max(0, Math.round(incoming))
+    const safeOutgoing = Math.max(0, Math.round(outgoing))
+    const safeDomestic = Math.max(0, Math.round(domestic))
+    const domesticIncoming = Math.floor(safeDomestic * 0.5)
+    const domesticOutgoing = safeDomestic - domesticIncoming
+
+    return {
+      incoming: safeIncoming + domesticIncoming,
+      outgoing: safeOutgoing + domesticOutgoing
+    }
+  }
+
   function getCountryFlightStats(iso3: string, timeSeconds: number): CountryFlightStats {
     const key = (iso3 || '').trim()
     const enrichedStats = countryStatsByIso3.get(key)
     if (enrichedStats) {
-      const now = Math.max(0, Math.round(Number(enrichedStats.in_air ?? 0)))
-      const incoming = Math.max(0, Math.round(Number(enrichedStats.arr ?? 0)))
-      const outgoing = Math.max(0, Math.round(Number(enrichedStats.dep ?? 0)))
+      const domestic = Math.max(0, Math.round(Number(enrichedStats.dom ?? 0)))
       const over = Math.max(0, Math.round(Number(enrichedStats.over ?? 0)))
+      const dayDomestic = Math.max(0, Math.round(Number(enrichedStats.day_dom ?? 0)))
+      const flowNow = distributeDomesticFlights(enrichedStats.arr ?? 0, enrichedStats.dep ?? 0, domestic)
+      const flowDay = distributeDomesticFlights(
+        enrichedStats.day_arr ?? 0,
+        enrichedStats.day_dep ?? 0,
+        dayDomestic
+      )
+      const now = Math.max(
+        0,
+        Math.round(
+          Number.isFinite(Number(enrichedStats.in_air))
+            ? Number(enrichedStats.in_air)
+            : flowNow.incoming + flowNow.outgoing + over
+        )
+      )
       return {
         now,
         tenMinAgo: now,
-        routes: over,
-        incoming,
-        outgoing,
-        dayTotal: Math.max(0, Math.round(Number(enrichedStats.day_total ?? 0))),
-        dayIncoming: Math.max(0, Math.round(Number(enrichedStats.day_arr ?? 0))),
-        dayOutgoing: Math.max(0, Math.round(Number(enrichedStats.day_dep ?? 0))),
+        routes: now,
+        incoming: flowNow.incoming,
+        outgoing: flowNow.outgoing,
+        dayTotal: Math.max(
+          0,
+          Math.round(
+            Number.isFinite(Number(enrichedStats.day_total))
+              ? Number(enrichedStats.day_total)
+              : flowDay.incoming + flowDay.outgoing + Math.max(0, Math.round(Number(enrichedStats.day_over ?? 0)))
+          )
+        ),
+        dayIncoming: flowDay.incoming,
+        dayOutgoing: flowDay.outgoing,
         over
       }
     }
@@ -2529,11 +3281,28 @@ export function createFlightRoutes(
       return
     }
 
-    planes.visible = SHOW_ROUTE_PLANES
+    planes.visible = SHOW_ROUTE_PLANES && (planeGeometryReady || planeGeometryVisible)
   }
 
   // Update positions + uniforms.
   function update(deltaSeconds: number, timeSeconds: number, cameraDistance: number) {
+    if (flightStartupActive) {
+      flightStartupElapsedSeconds += deltaSeconds
+    }
+    const airportStartupT = THREE.MathUtils.clamp(
+      (flightStartupElapsedSeconds - airportStartupDelaySeconds) / Math.max(0.95, lineRevealDurationSeconds * 0.58),
+      0,
+      1
+    )
+    const airportStartupReveal = THREE.MathUtils.smoothstep(airportStartupT, 0, 1)
+    const lineStartupT = THREE.MathUtils.clamp(
+      (flightStartupElapsedSeconds - flightStartupDelaySeconds) / lineRevealDurationSeconds,
+      0,
+      1
+    )
+    const lineStartupReveal = THREE.MathUtils.smoothstep(lineStartupT, 0, 1)
+    const lineStartupFade = THREE.MathUtils.smoothstep(lineStartupT, 0, 1)
+
     // smooth focus crossfade
     const k = 1.0 - Math.exp(-deltaSeconds * 4.2)
     focusMix += (focusTarget - focusMix) * k
@@ -2553,13 +3322,21 @@ export function createFlightRoutes(
     lineMat.uniforms.uHoverMix.value = hoverMix
     lineMat.uniforms.uSelectedRouteId.value = selectedRouteId
     lineMat.uniforms.uSelectedMix.value = selectedMix
+    lineMat.uniforms.uStartupReveal.value = lineStartupReveal
+    lineMat.uniforms.uStartupFade.value = lineStartupFade
 
     planeMat.uniforms.uHoverRouteId.value = hoverRouteId
     planeMat.uniforms.uHoverMix.value = hoverMix
     planeMat.uniforms.uSelectedRouteId.value = selectedRouteId
     planeMat.uniforms.uSelectedMix.value = selectedMix
-    planeRevealProgress = Math.min(1, planeRevealProgress + deltaSeconds / planeRevealDurationSeconds)
+    const planeRevealT = THREE.MathUtils.clamp(
+      (flightStartupElapsedSeconds - planeStartupDelaySeconds) / planeRevealDurationSeconds,
+      0,
+      1
+    )
+    planeRevealProgress = THREE.MathUtils.smoothstep(planeRevealT, 0, 1)
     planeMat.uniforms.uRevealProgress.value = planeRevealProgress
+    planeMat.uniforms.uStartupFade.value = THREE.MathUtils.smoothstep(planeRevealT, 0, 1)
 
     endpointsMat.uniforms.uTime.value = timeSeconds
     endpointsMat.uniforms.uCameraDistance.value = cameraDistance
@@ -2584,13 +3361,14 @@ export function createFlightRoutes(
     if (hubsMat) {
       hubsMat.uniforms.uTime.value = timeSeconds
       hubsMat.uniforms.uCameraDistance.value = cameraDistance
+      hubsMat.uniforms.uRevealProgress.value = airportStartupReveal
 
       const zoom = THREE.MathUtils.clamp((32 - cameraDistance) / 16, 0, 1)
       const zoomOut = 1.0 - zoom
       const base = THREE.MathUtils.lerp(0.68, 1.12, zoomOut)
       const focusFade = THREE.MathUtils.lerp(1.0, 0.72, focusMix)
       const selectedFade = THREE.MathUtils.lerp(1.0, 0.82, selectedMix)
-      hubsMat.uniforms.uAlphaMul.value = base * focusFade * selectedFade
+      hubsMat.uniforms.uAlphaMul.value = base * focusFade * selectedFade * airportStartupReveal
     }
 
     // uniforms
@@ -2652,7 +3430,7 @@ export function createFlightRoutes(
     planeMat.uniforms.uPlaneDensity.value = planeDensity
     planeMat.uniforms.uAltitudeLodMix.value = altitudeLodMix
     planeMat.uniforms.uRepresentationMix.value = representationMix
-    planes.visible = isLegacyMode ? false : SHOW_ROUTE_PLANES
+    planes.visible = isLegacyMode ? false : SHOW_ROUTE_PLANES && (planeGeometryReady || planeGeometryVisible)
 
     // Heatmap: stronger when zoomed out; slightly reduced during country focus or route selection.
     const kHeat = 1.0 - Math.exp(-deltaSeconds * 3.6)
@@ -2665,7 +3443,7 @@ export function createFlightRoutes(
     const baseHeatOpacity = THREE.MathUtils.lerp(0.08, 0.24, zoomOut)
     const focusFade = THREE.MathUtils.lerp(1.0, 0.55, focusMix)
     const selectedFade = THREE.MathUtils.lerp(1.0, 0.72, selectedMix)
-    heatMat.uniforms.uOpacity.value = baseHeatOpacity * focusFade * selectedFade * heatMix
+    heatMat.uniforms.uOpacity.value = baseHeatOpacity * focusFade * selectedFade * heatMix * lineStartupReveal
 
     const hoverBoost = THREE.MathUtils.lerp(1.0, 1.08, hoverMix * (1.0 - selectedMix * 0.35))
     const selectedBoost = THREE.MathUtils.lerp(1.0, 1.88, selectedMix)
@@ -2700,6 +3478,26 @@ export function createFlightRoutes(
       )
       planeMat.uniforms.uAlpha.value = THREE.MathUtils.lerp(0.38, 0.94, representationMix) * THREE.MathUtils.lerp(1.0, 1.18, Math.max(hoverMix, selectedMix))
     }
+  }
+
+  if (isEnrichedSource) {
+    startEnrichedRouteDataBuild(() => {
+      rebuildHeatTextureFromRoutes()
+      routeScoresBuildState = 'idle'
+      routeBuildState = 'ready'
+      if (!flightStartupActive) {
+        activateFlightStartupAnimation()
+      }
+      if (planeBuildState === 'idle') {
+        startPlaneGeometryBuild()
+      }
+      startRouteScoreBuild()
+    })
+  } else {
+    routeBuildState = 'ready'
+    activateFlightStartupAnimation()
+    startPlaneGeometryBuild()
+    startRouteScoreBuild()
   }
 
   return {
