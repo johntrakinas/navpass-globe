@@ -326,6 +326,8 @@ export type GlobeOptions = {
   initialIntroAnimationEnabled?: boolean
   disableScrollZoom?: boolean
   showBreadcrumbs?: boolean
+  breadcrumbOffsetLeft?: number
+  breadcrumbOffsetTop?: number
   showZoomControls?: boolean
   countryClickZoomLevel?: number
   countryClickZoomDuration?: number
@@ -368,7 +370,12 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   const showZoomControls = options.showZoomControls !== false
   const showCountryCardCloseButton = options.showCountryCardCloseButton !== false
   ensureCountryPanelScaffold()
-  configureGlobeUi({ showBreadcrumbs, showCountryCardCloseButton })
+  configureGlobeUi({
+    showBreadcrumbs,
+    showCountryCardCloseButton,
+    breadcrumbOffsetLeft: options.breadcrumbOffsetLeft,
+    breadcrumbOffsetTop: options.breadcrumbOffsetTop
+  })
   setGlobeBreadcrumbs(getBaseBreadcrumbs())
   const assetBaseUrl = (options.assetBaseUrl ?? '').replace(/\/+$/, '')
   const resolveAssetPath = (assetPath: string) => {

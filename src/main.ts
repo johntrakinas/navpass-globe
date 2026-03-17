@@ -266,6 +266,8 @@ const options: GlobeOptions = {
   initialIntroAnimationEnabled: parseBooleanParam(params, 'introAnimation'),
   disableScrollZoom: parseBooleanParam(params, 'disableScrollZoom') ?? parseBooleanParam(params, 'disableScroll'),
   showBreadcrumbs: parseBooleanParam(params, 'showBreadcrumbs') ?? true,
+  breadcrumbOffsetLeft: parseNumberParam(params, 'breadcrumbOffsetLeft'),
+  breadcrumbOffsetTop: parseNumberParam(params, 'breadcrumbOffsetTop'),
   showZoomControls: parseBooleanParam(params, 'showZoomControls') ?? true,
   countryClickZoomLevel: parseNumberParam(params, 'countryClickZoomLevel'),
   countryClickZoomDuration: parseNumberParam(params, 'countryClickZoomDuration'),

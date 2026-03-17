@@ -55,6 +55,8 @@ Append query params to the iframe URL:
 - `assetBaseUrl=/globe-assets`
 - `heatmap=true|false`
 - `flightMode=legacy|reengineered`
+- `breadcrumbOffsetLeft=60`
+- `breadcrumbOffsetTop=92`
 - `minZoomDistance=17`
 - `maxZoomDistance=32`
 - `bgColor=#091320` (or `0x091320`) for background/globe

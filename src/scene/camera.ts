@@ -3,6 +3,9 @@ const PANEL_ID = 'country-panel'
 const FOCUS_DIM_ID = 'focus-dim'
 const BREADCRUMBS_ID = 'globe-breadcrumbs'
 const STYLE_ID = 'navpass-country-panel-style'
+const FONT_LINK_ID = 'navpass-country-panel-fonts'
+const DEFAULT_BREADCRUMB_OFFSET_LEFT = 60
+const DEFAULT_BREADCRUMB_OFFSET_TOP = 92
 
 export type GlobeBreadcrumbItem = {
   id: string
@@ -11,18 +14,40 @@ export type GlobeBreadcrumbItem = {
 
 let showBreadcrumbs = true
 let showCountryCardCloseButton = true
+let breadcrumbOffsetLeft = DEFAULT_BREADCRUMB_OFFSET_LEFT
+let breadcrumbOffsetTop = DEFAULT_BREADCRUMB_OFFSET_TOP
 let currentBreadcrumbs: GlobeBreadcrumbItem[] = [
   { id: 'home', label: 'Home' },
   { id: 'map', label: 'Map' }
 ]
 
+function ensureCountryPanelFonts() {
+  if (document.getElementById(FONT_LINK_ID)) return
+  const fontLink = document.createElement('link')
+  fontLink.id = FONT_LINK_ID
+  fontLink.rel = 'stylesheet'
+  fontLink.href =
+    'https://fonts.googleapis.com/css2?family=Quattrocento+Sans:wght@400;700&display=swap'
+  document.head.appendChild(fontLink)
+}
+
 function ensureStyles() {
+  ensureCountryPanelFonts()
   if (document.getElementById(STYLE_ID)) return
 
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
-    #globe-ui { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+    #globe-ui {
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      pointer-events: none;
+      --globe-breadcrumb-left: ${DEFAULT_BREADCRUMB_OFFSET_LEFT}px;
+      --globe-breadcrumb-top: ${DEFAULT_BREADCRUMB_OFFSET_TOP}px;
+      --globe-breadcrumb-left-compact: 20px;
+      --globe-breadcrumb-top-compact: 40px;
+    }
     #country-panel,
     #country-panel *,
     #country-panel *::before,
@@ -66,8 +91,8 @@ function ensureStyles() {
     }
     #globe-breadcrumbs {
       position: fixed;
-      left: 18px;
-      top: 92px;
+      left: var(--globe-breadcrumb-left);
+      top: var(--globe-breadcrumb-top);
       z-index: 5;
       display: flex;
       align-items: center;
@@ -117,13 +142,40 @@ function ensureStyles() {
     .panel-tooltip-live { margin-top: 8px; display: flex; align-items: center; gap: 8px; font: 13px/1.1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: rgba(255, 255, 255, 0.52); }
     .panel-tooltip-live-dot { width: 8px; height: 8px; border-radius: 999px; background: #ecb200; }
     .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: rgba(255, 255, 255, 0.82); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; z-index: 3; pointer-events: auto; }
-    .panel-tooltip--country { background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.12), transparent 42%), linear-gradient(180deg, #10233f, #0d1c30 66%); }
+    .panel-tooltip-flagbox { width: clamp(92px, 22vw, 122px); flex: 0 0 clamp(92px, 22vw, 122px); border-left: 1px solid rgba(255, 255, 255, 0.1); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: min(80px, 72%) auto; opacity: 0.95; }
+    .panel-tooltip-flagbox--empty { background: rgba(255, 255, 255, 0.04); }
+    .panel-tooltip-dual { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+    .panel-tooltip-primary { padding: 18px 20px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)); }
+    .panel-tooltip-primary-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
+    .panel-tooltip-primary-value { margin-top: 10px; font-family: "Optima","Times New Roman",serif; font-size: clamp(34px, 5vw, 52px); line-height: 0.95; color: #fff; word-break: break-word; }
+    .panel-tooltip-primary-sub { margin-top: 8px; font: 13px/1.3 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.38); }
+    .panel-tooltip-stat { padding: 16px 18px 14px; }
+    .panel-tooltip-stat:first-child { border-right: 1px solid rgba(255, 255, 255, 0.12); }
+    .panel-tooltip-stat-head { display: flex; align-items: center; gap: 8px; }
+    .panel-tooltip-stat-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }
+    .panel-tooltip-stat-label { font: 14px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
+    .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: clamp(28px, 4.4vw, 42px); line-height: 1; color: #fff; }
+    .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.32); }
+    .panel-tooltip-total-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
+    .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: clamp(32px, 4.6vw, 42px); line-height: 1; color: #fff; }
+    .panel-tooltip-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px 20px; background: rgba(255, 255, 255, 0.05); }
+    .panel-tooltip-footer-note { font: 13px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
+    .panel-tooltip-more { min-height: 44px; min-width: 110px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 14px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 18px; display: grid; place-items: center; text-transform: uppercase; letter-spacing: 0.9px; }
+    .panel-tooltip--country {
+      background: linear-gradient(180deg, #102038 0%, #142640 100%);
+      color: rgba(255, 255, 255, 0.96);
+      font-family: "Quattrocento Sans","Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+    }
+    .panel-tooltip--country * {
+      font-family: inherit;
+    }
     .panel-tooltip-header--country {
       min-height: 142px;
       display: block;
-      background-image:
-        linear-gradient(180deg, rgba(9, 18, 31, 0.72), rgba(9, 18, 31, 0.98)),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 62%);
+      background:
+        radial-gradient(circle at 84% 24%, rgba(70, 137, 226, 0.14), transparent 30%),
+        linear-gradient(180deg, rgba(18, 35, 60, 0.98), rgba(16, 32, 56, 0.98));
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       background-position: center;
       background-repeat: no-repeat;
       background-size: cover;
@@ -152,16 +204,27 @@ function ensureStyles() {
     }
     .panel-tooltip--country .panel-tooltip-live {
       display: inline-flex;
+      align-items: center;
+      gap: 8px;
       width: fit-content;
       margin-top: 0;
       padding: 0;
       border: 0;
       border-radius: 0;
       background: transparent;
-      color: rgba(255, 255, 255, 0.56);
+      color: rgba(185, 193, 208, 0.78);
       backdrop-filter: none;
       font-size: 10px;
-      letter-spacing: 0.9px;
+      font-weight: 400;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+    .panel-tooltip--country .panel-tooltip-live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #f4b400;
+      box-shadow: none;
     }
     .panel-tooltip-country-code {
       flex: 0 0 auto;
@@ -175,7 +238,8 @@ function ensureStyles() {
       border-radius: 999px;
       background: rgba(7, 15, 26, 0.3);
       color: rgba(255, 255, 255, 0.96);
-      font: 700 10px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+      font-size: 10px;
+      font-weight: 700;
       letter-spacing: 1px;
       text-transform: uppercase;
       backdrop-filter: blur(10px);
@@ -185,16 +249,14 @@ function ensureStyles() {
       width: 46px;
       height: 46px;
       border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      border: 0;
       background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
         var(--country-flag-bg, rgba(255, 255, 255, 0.04));
       background-position: center;
       background-repeat: no-repeat;
       background-size: cover;
-      box-shadow:
-        0 10px 26px -16px rgba(0, 0, 0, 0.52),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      box-shadow: 0 18px 30px -22px rgba(0, 0, 0, 0.68);
     }
     .panel-tooltip-country-flag--empty {
       background:
@@ -204,8 +266,13 @@ function ensureStyles() {
     .panel-tooltip-title--country {
       margin-top: 0;
       max-width: 100%;
+      color: #ffffff;
+      font-family: "Optima","Palatino Linotype","Book Antiqua","Times New Roman",serif;
       font-size: clamp(22px, 2.35vw, 38px);
-      text-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+      font-weight: 400;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      text-shadow: none;
     }
     .panel-tooltip-country-subtitle {
       display: none;
@@ -213,33 +280,23 @@ function ensureStyles() {
     .panel-tooltip--country .panel-tooltip-close {
       left: auto;
       right: 18px;
-      top: 14px;
+      top: 12px;
       width: 20px;
       height: 20px;
       border: 0;
       border-radius: 0;
       background: transparent;
       backdrop-filter: none;
+      color: rgba(255, 255, 255, 0.9);
       font-size: 18px;
+      font-weight: 400;
     }
-    .panel-tooltip-flagbox { width: clamp(92px, 22vw, 122px); flex: 0 0 clamp(92px, 22vw, 122px); border-left: 1px solid rgba(255, 255, 255, 0.1); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: min(80px, 72%) auto; opacity: 0.95; }
-    .panel-tooltip-flagbox--empty { background: rgba(255, 255, 255, 0.04); }
-    .panel-tooltip-dual { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
-    .panel-tooltip-primary { padding: 18px 20px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)); }
-    .panel-tooltip-primary-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
-    .panel-tooltip-primary-value { margin-top: 10px; font-family: "Optima","Times New Roman",serif; font-size: clamp(34px, 5vw, 52px); line-height: 0.95; color: #fff; word-break: break-word; }
-    .panel-tooltip-primary-sub { margin-top: 8px; font: 13px/1.3 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.38); }
-    .panel-tooltip-stat { padding: 16px 18px 14px; }
-    .panel-tooltip-stat:first-child { border-right: 1px solid rgba(255, 255, 255, 0.12); }
-    .panel-tooltip-stat-label { font: 14px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
-    .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: clamp(28px, 4.4vw, 42px); line-height: 1; color: #fff; }
-    .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.32); }
     .panel-tooltip--country .panel-tooltip-dual {
       gap: 0;
       padding: 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      border-bottom: 0;
-      background: rgba(255, 255, 255, 0.015);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: #12253f;
     }
     .panel-tooltip--country .panel-tooltip-stat {
       min-height: 92px;
@@ -250,39 +307,58 @@ function ensureStyles() {
       box-shadow: none;
     }
     .panel-tooltip--country .panel-tooltip-stat:first-child {
-      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      border-right: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .panel-tooltip--country .panel-tooltip-stat-head {
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .panel-tooltip--country .panel-tooltip-stat-icon {
+      color: rgba(189, 198, 211, 0.78);
+      font-size: 16px;
+      line-height: 1;
+      transform: translateY(-1px);
     }
     .panel-tooltip--country .panel-tooltip-stat-label {
-      color: rgba(255, 255, 255, 0.54);
+      color: rgba(185, 193, 208, 0.8);
       font-size: 11px;
-      letter-spacing: 1.1px;
+      font-weight: 400;
+      letter-spacing: 0.1em;
+    }
+    .panel-tooltip--country .panel-tooltip-stat-value {
+      margin-top: 0;
+      color: #ffffff;
+      font-size: clamp(28px, 4.4vw, 42px);
+      font-weight: 400;
+      line-height: 1;
     }
     .panel-tooltip--country .panel-tooltip-stat-sub {
-      color: rgba(255, 255, 255, 0.44);
+      color: rgba(185, 193, 208, 0.5);
       margin-top: 6px;
       font-size: 11px;
+      line-height: 1.2;
     }
-    .panel-tooltip-total-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
-    .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: clamp(32px, 4.6vw, 42px); line-height: 1; color: #fff; }
-    .panel-tooltip-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px 20px; background: rgba(255, 255, 255, 0.05); }
-    .panel-tooltip-footer-note { font: 13px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
-    .panel-tooltip-more { min-height: 44px; min-width: 110px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 14px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 18px; display: grid; place-items: center; text-transform: uppercase; letter-spacing: 0.9px; }
     .panel-tooltip--country .panel-tooltip-footer {
       display: block;
       margin: 0;
-      margin-top: 0;
       padding: 16px 16px 18px;
       border: 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 0;
-      background: rgba(255, 255, 255, 0.045);
+      background: linear-gradient(180deg, rgba(32, 50, 78, 0.88), rgba(34, 55, 86, 0.96));
     }
     .panel-tooltip--country .panel-tooltip-total-label {
-      color: rgba(255, 255, 255, 0.5);
+      color: rgba(185, 193, 208, 0.76);
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0.09em;
     }
     .panel-tooltip--country .panel-tooltip-total-value {
       margin-top: 8px;
+      color: #ffffff;
+      font-family: inherit;
       font-size: clamp(34px, 4vw, 44px);
+      font-weight: 700;
+      line-height: 1;
     }
     .panel-tooltip--country .panel-tooltip-total {
       width: 100%;
@@ -292,12 +368,28 @@ function ensureStyles() {
       background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
     }
     @media (max-width: 980px) {
-      #globe-breadcrumbs { left: 14px; top: 40px; max-width: min(420px, calc(100vw - 28px)); }
+      #globe-breadcrumbs {
+        left: var(--globe-breadcrumb-left-compact);
+        top: var(--globe-breadcrumb-top-compact);
+        max-width: min(420px, calc(100vw - 28px));
+      }
       #country-panel { right: 18px !important; bottom: 36px !important; width: min(324px, calc(100vw - 36px)); max-height: 74vh; }
       .panel-tooltip-header { min-height: 148px; }
       .panel-tooltip-headcopy { padding-top: 52px; }
       .panel-tooltip-header--country { min-height: 132px; }
       .panel-tooltip-headcopy--country { min-height: 132px; padding: 38px 16px 16px; }
+      .panel-tooltip-country-heading { gap: 10px; }
+      .panel-tooltip-title--country { font-size: clamp(22px, 2.35vw, 36px); }
+      .panel-tooltip-country-flag { width: 46px; height: 46px; }
+      .panel-tooltip--country .panel-tooltip-live { font-size: 10px; }
+      .panel-tooltip--country .panel-tooltip-stat { min-height: 92px; padding: 16px 16px 14px; }
+      .panel-tooltip--country .panel-tooltip-stat-head { margin-bottom: 8px; }
+      .panel-tooltip--country .panel-tooltip-stat-label { font-size: 11px; }
+      .panel-tooltip--country .panel-tooltip-stat-value { font-size: clamp(28px, 4vw, 40px); }
+      .panel-tooltip--country .panel-tooltip-stat-sub { margin-top: 6px; font-size: 11px; }
+      .panel-tooltip--country .panel-tooltip-footer { padding: 16px 16px 18px; }
+      .panel-tooltip--country .panel-tooltip-total-label { font-size: 13px; }
+      .panel-tooltip--country .panel-tooltip-total-value { font-size: clamp(34px, 4vw, 42px); }
     }
     @media (max-width: 720px) {
       #globe-breadcrumbs {
@@ -334,7 +426,9 @@ function ensureStyles() {
       .panel-tooltip-footer { padding: 12px 16px; }
       .panel-tooltip-header--country {
         min-height: 0;
-        background-image: linear-gradient(180deg, rgba(17, 36, 60, 0.98), rgba(16, 32, 56, 0.96));
+        background:
+          radial-gradient(circle at 84% 18%, rgba(70, 137, 226, 0.12), transparent 26%),
+          linear-gradient(180deg, rgba(17, 36, 60, 0.98), rgba(16, 32, 56, 0.96));
       }
       .panel-tooltip-headcopy--country { min-height: 0; padding: 18px 14px 12px; }
       .panel-tooltip-country-topline { align-items: center; gap: 12px; }
@@ -342,23 +436,26 @@ function ensureStyles() {
       .panel-tooltip-country-flag {
         width: 40px;
         height: 40px;
-        border-color: rgba(255, 255, 255, 0.12);
         box-shadow: none;
       }
       .panel-tooltip-title--country {
         max-width: 100%;
-        font-family: "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+        font-family: "Optima","Palatino Linotype","Book Antiqua","Times New Roman",serif;
         font-size: 16px;
-        font-weight: 500;
+        font-weight: 400;
         line-height: 1.2;
         letter-spacing: 0;
         text-shadow: none;
       }
-      .panel-tooltip-live-dot { width: 6px; height: 6px; }
       .panel-tooltip--country .panel-tooltip-live {
+        gap: 6px;
         font-size: 10px;
-        letter-spacing: 0.72px;
-        color: rgba(255, 255, 255, 0.42);
+        letter-spacing: 0.072em;
+        color: rgba(185, 193, 208, 0.74);
+      }
+      .panel-tooltip--country .panel-tooltip-live-dot {
+        width: 6px;
+        height: 6px;
       }
       .panel-tooltip--country .panel-tooltip-close {
         display: none;
@@ -369,37 +466,44 @@ function ensureStyles() {
         gap: 0;
         padding: 0;
         border-top-color: rgba(255, 255, 255, 0.1);
-        background: rgba(255, 255, 255, 0.02);
+        border-bottom-color: rgba(255, 255, 255, 0.1);
+        background: #12253f;
       }
       .panel-tooltip--country .panel-tooltip-stat { min-height: 84px; padding: 14px 14px 12px; border-radius: 0; }
       .panel-tooltip--country .panel-tooltip-stat:first-child { border-bottom: 0; }
+      .panel-tooltip--country .panel-tooltip-stat-head { gap: 8px; margin-bottom: 10px; }
+      .panel-tooltip--country .panel-tooltip-stat-icon { font-size: 16px; }
       .panel-tooltip--country .panel-tooltip-stat-label {
         font-size: 10px;
-        letter-spacing: 1.2px;
-        color: rgba(255, 255, 255, 0.46);
+        letter-spacing: 0.12em;
+        color: rgba(185, 193, 208, 0.72);
       }
       .panel-tooltip--country .panel-tooltip-stat-value {
-        margin-top: 10px;
-        font-family: "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+        margin-top: 0;
+        font-family: inherit;
         font-size: 17px;
         font-weight: 400;
         line-height: 1.05;
       }
-      .panel-tooltip--country .panel-tooltip-stat-sub { margin-top: 4px; font-size: 11px; line-height: 1.15; }
+      .panel-tooltip--country .panel-tooltip-stat-sub {
+        margin-top: 4px;
+        font-size: 11px;
+        line-height: 1.15;
+        color: rgba(185, 193, 208, 0.54);
+      }
       .panel-tooltip--country .panel-tooltip-footer {
         margin: 0;
         padding: 12px 14px 14px;
-        border-top-color: rgba(255, 255, 255, 0.1);
-        background: rgba(255, 255, 255, 0.08);
+        background: linear-gradient(180deg, rgba(32, 50, 78, 0.88), rgba(34, 55, 86, 0.96));
       }
       .panel-tooltip--country .panel-tooltip-total-label {
         font-size: 10px;
-        letter-spacing: 1px;
-        color: rgba(255, 255, 255, 0.44);
+        letter-spacing: 0.1em;
+        color: rgba(185, 193, 208, 0.72);
       }
       .panel-tooltip--country .panel-tooltip-total-value {
         margin-top: 8px;
-        font-family: "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+        font-family: inherit;
         font-size: 17px;
         font-weight: 600;
         line-height: 1.05;
@@ -448,6 +552,20 @@ function getOrCreateUiRoot() {
   return uiRoot
 }
 
+function sanitizeOffset(value: number | undefined, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : fallback
+}
+
+function applyUiLayoutVars() {
+  const uiRoot = getOrCreateUiRoot()
+  const compactLeft = Math.max(14, breadcrumbOffsetLeft - 8)
+  const compactTop = Math.max(40, breadcrumbOffsetTop - 52)
+  uiRoot.style.setProperty('--globe-breadcrumb-left', `${breadcrumbOffsetLeft}px`)
+  uiRoot.style.setProperty('--globe-breadcrumb-top', `${breadcrumbOffsetTop}px`)
+  uiRoot.style.setProperty('--globe-breadcrumb-left-compact', `${compactLeft}px`)
+  uiRoot.style.setProperty('--globe-breadcrumb-top-compact', `${compactTop}px`)
+}
+
 function getOrCreateBreadcrumbs() {
   const uiRoot = getOrCreateUiRoot()
   let breadcrumbs = document.getElementById(BREADCRUMBS_ID) as HTMLDivElement | null
@@ -484,6 +602,7 @@ function getOrCreateFocusDim() {
 export function ensureCountryPanelScaffold() {
   ensureStyles()
   getOrCreateUiRoot()
+  applyUiLayoutVars()
   getOrCreateBreadcrumbs()
   getOrCreatePanel()
   getOrCreateFocusDim()
@@ -521,9 +640,13 @@ function renderBreadcrumbs() {
 export function configureGlobeUi(options: {
   showBreadcrumbs?: boolean
   showCountryCardCloseButton?: boolean
+  breadcrumbOffsetLeft?: number
+  breadcrumbOffsetTop?: number
 } = {}) {
   showBreadcrumbs = options.showBreadcrumbs !== false
   showCountryCardCloseButton = options.showCountryCardCloseButton !== false
+  breadcrumbOffsetLeft = sanitizeOffset(options.breadcrumbOffsetLeft, DEFAULT_BREADCRUMB_OFFSET_LEFT)
+  breadcrumbOffsetTop = sanitizeOffset(options.breadcrumbOffsetTop, DEFAULT_BREADCRUMB_OFFSET_TOP)
   ensureCountryPanelScaffold()
   renderBreadcrumbs()
 }
@@ -641,7 +764,6 @@ export function showCountryPanel(
   const iso2 = getCountryIso2(props)
 
   const flightsNow = Number.isFinite(flights?.now) ? Number(flights?.now) : null
-  const routesNow = Number.isFinite(flights?.routes) ? Number(flights?.routes) : null
   const incomingFlights = Number.isFinite(flights?.incoming) ? Number(flights?.incoming) : null
   const outgoingFlights = Number.isFinite(flights?.outgoing) ? Number(flights?.outgoing) : null
   const dayTotalFlights = Number.isFinite(flights?.dayTotal) ? Number(flights?.dayTotal) : null
@@ -649,9 +771,14 @@ export function showCountryPanel(
   const totalFlightsLabel = formatInt(flightsNow)
   const incomingFlightsLabel = formatInt(incomingFlights)
   const outgoingFlightsLabel = formatInt(outgoingFlights)
-  const routesNowLabel = formatInt(routesNow)
   const dayTotalFlightsLabel = formatInt(dayTotalFlights)
   const overFlightsLabel = formatInt(overFlights)
+  const totalFlightsOverCountryLabel =
+    dayTotalFlights !== null
+      ? dayTotalFlightsLabel
+      : overFlights !== null
+        ? overFlightsLabel
+        : totalFlightsLabel
 
   const flagUrl =
     iso2 && typeof iso2 === 'string' && iso2.length === 2 && iso2 !== '-99'
@@ -682,35 +809,32 @@ export function showCountryPanel(
             </div>
             <div class="${flagBubbleClass}" aria-hidden="true"></div>
           </div>
-          <div class="panel-tooltip-country-subtitle">Flag-layered header with live traffic summary</div>
         </div>
       </div>
 
       <div class="panel-tooltip-dual">
         <div class="panel-tooltip-stat">
-          <div class="panel-tooltip-stat-label">Incoming</div>
+          <div class="panel-tooltip-stat-head">
+            <span class="panel-tooltip-stat-icon" aria-hidden="true">↙</span>
+            <div class="panel-tooltip-stat-label">Incoming</div>
+          </div>
           <div class="panel-tooltip-stat-value">${escapeHtml(incomingFlightsLabel)}</div>
-          <div class="panel-tooltip-stat-sub">${
-            dayTotalFlights !== null
-              ? `${escapeHtml(dayTotalFlightsLabel)} in 24h`
-              : `${escapeHtml(routesNowLabel)} Routes Active`
-          }</div>
+          <div class="panel-tooltip-stat-sub">Routes Active</div>
         </div>
         <div class="panel-tooltip-stat">
-          <div class="panel-tooltip-stat-label">Outgoing</div>
+          <div class="panel-tooltip-stat-head">
+            <span class="panel-tooltip-stat-icon" aria-hidden="true">↗</span>
+            <div class="panel-tooltip-stat-label">Outgoing</div>
+          </div>
           <div class="panel-tooltip-stat-value">${escapeHtml(outgoingFlightsLabel)}</div>
-          <div class="panel-tooltip-stat-sub">${
-            overFlights !== null
-              ? `${escapeHtml(overFlightsLabel)} overflying now`
-              : 'Flights departing now'
-          }</div>
+          <div class="panel-tooltip-stat-sub">Routes Active</div>
         </div>
       </div>
 
       <div class="panel-tooltip-footer">
         <div class="panel-tooltip-total">
           <div class="panel-tooltip-total-label">TOTAL FLIGHTS OVER COUNTRY</div>
-          <div class="panel-tooltip-total-value">${escapeHtml(totalFlightsLabel)}</div>
+          <div class="panel-tooltip-total-value">${escapeHtml(totalFlightsOverCountryLabel)}</div>
         </div>
       </div>
     </div>
