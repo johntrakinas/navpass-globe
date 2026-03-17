@@ -73,7 +73,7 @@ If your globe URL is under a subpath, use that full URL in `src`.
 - `flightMode=legacy|reengineered`
 - `introAnimation=true|false` (default `true`)
 - `showBreadcrumbs=true|false` (default `true`)
-- `breadcrumbOffsetLeft=60` (optional breadcrumb left offset in px)
+- `breadcrumbOffsetLeft=50` (optional breadcrumb left offset in px)
 - `breadcrumbOffsetTop=92` (optional breadcrumb top offset in px)
 - `showZoomControls=true|false` (default `true`)
 - `showCountryCardCloseButton=true|false` (default `true`)
@@ -113,7 +113,7 @@ When using the package directly, the same controls are available through `GlobeO
 ```ts
 globe({
   showBreadcrumbs: true,
-  breadcrumbOffsetLeft: 60,
+  breadcrumbOffsetLeft: 50,
   breadcrumbOffsetTop: 92,
   showZoomControls: false,
   showCountryCardCloseButton: false,

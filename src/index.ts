@@ -464,6 +464,10 @@ let innerSphereMesh: THREE.Mesh | null = null
 let depthMaskMesh: THREE.Mesh | null = null
 let lastHoverKey = ''
 const tooltip = createTooltip(document.body)
+const DEFAULT_TOOLTIP_FONT =
+  '12px system-ui, -apple-system, Segoe UI, Roboto, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
+const FLIGHT_TOOLTIP_FONT_FAMILY = "'Quattrocento Sans','Segoe UI',Tahoma,Geneva,Verdana,sans-serif"
+const COUNTRY_TOOLTIP_TITLE_FONT_FAMILY = "'Optima','Times New Roman',serif"
 const countrySearch = document.getElementById('country-search') as HTMLFormElement | null
 const countrySearchInput = document.getElementById('country-search-input') as HTMLInputElement | null
 const countrySearchButton = document.getElementById('country-search-button') as HTMLButtonElement | null
@@ -485,6 +489,47 @@ let countrySearchSuggestions: CountrySearchEntry[] = []
 let countrySearchActiveIndex = -1
 let countrySearchResultsHeading = ''
 let recentCountrySearchIso3 = loadRecentCountrySearches()
+
+function applyDefaultTooltipChrome() {
+  const { style } = tooltip.el
+  style.padding = '6px 10px'
+  style.borderRadius = '10px'
+  style.background = 'var(--tooltip-bg, rgba(6, 18, 38, 0.88))'
+  style.border = '1px solid var(--tooltip-border, rgba(255, 255, 255, 0.22))'
+  style.color = 'var(--tooltip-text, rgba(255, 255, 255, 0.95))'
+  style.font = DEFAULT_TOOLTIP_FONT
+  style.letterSpacing = '0.2px'
+  style.backdropFilter = 'blur(6px)'
+  style.boxShadow = 'none'
+}
+
+function applyFlightTooltipChrome() {
+  const { style } = tooltip.el
+  style.padding = '0'
+  style.borderRadius = '0'
+  style.background = 'transparent'
+  style.border = '0'
+  style.color = '#fff'
+  style.font = `14px ${FLIGHT_TOOLTIP_FONT_FAMILY}`
+  style.letterSpacing = '0'
+  style.backdropFilter = 'none'
+  style.boxShadow = '0 16px 34px rgba(3, 10, 22, 0.32)'
+}
+
+function applyCountryTooltipChrome() {
+  const { style } = tooltip.el
+  style.padding = '0'
+  style.borderRadius = '0'
+  style.background = 'transparent'
+  style.border = '0'
+  style.color = '#fff'
+  style.font = `14px ${FLIGHT_TOOLTIP_FONT_FAMILY}`
+  style.letterSpacing = '0'
+  style.backdropFilter = 'none'
+  style.boxShadow = '0 16px 34px rgba(3, 10, 22, 0.28)'
+}
+
+applyDefaultTooltipChrome()
 
 function isCountrySearchEnabled() {
   return countrySearchMobileQuery.matches
@@ -1783,6 +1828,7 @@ function clearSelectionUIState() {
   clearHoverRouteCouplingCountry()
   hideCountryPanel()
   hideFocusDim()
+  applyDefaultTooltipChrome()
   tooltip.hide()
   lastHoverKey = ''
   clearHoverHighlight(globeGroup)
@@ -1825,11 +1871,12 @@ function getFeatureLabel(feature: any) {
   )
 }
 
-function getFeatureMeta(feature: any) {
+function getFeatureMetaParts(feature: any) {
   const props = feature.properties || {}
-  const iso = getISO3(props) || '—'
-  const continent = props.CONTINENT || '—'
-  return `${iso} • ${continent}`
+  return {
+    iso3: getISO3(props) || '—',
+    continent: String(props.CONTINENT || '—').toUpperCase()
+  }
 }
 
 function escapeHtml(value: string) {
@@ -1869,30 +1916,179 @@ function compactAirportName(name: string) {
     .trim()
 }
 
+function deriveAirportCodeFromName(name: string) {
+  const cleaned = compactAirportName(name).toUpperCase()
+  const directMatch = cleaned.match(/\b[A-Z0-9]{3,4}\b/)
+  if (directMatch) return directMatch[0]
+
+  const stopWords = new Set(['INTL', 'INTERNATIONAL', 'REGIONAL', 'MUNICIPAL', 'CITY', 'PORT', 'THE'])
+  const tokens = cleaned
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(token => !stopWords.has(token))
+
+  if (tokens.length >= 3) return `${tokens[0][0]}${tokens[1][0]}${tokens[2][0]}`
+  if (tokens.length === 2) {
+    const merged = `${tokens[0][0]}${tokens[1].slice(0, 2)}`
+    return merged.length >= 3 ? merged : merged.padEnd(3, 'X')
+  }
+  if (tokens.length === 1 && tokens[0].length >= 3) return tokens[0].slice(0, 4)
+
+  const compact = cleaned.replace(/[^A-Z0-9]/g, '')
+  const source = (compact || 'AIR').slice(0, 4)
+  return source.length >= 3 ? source : source.padEnd(3, 'X')
+}
+
+function resolveAirportTooltipCode(code: unknown, fallbackName: string) {
+  const normalized = String(code || '').trim().toUpperCase()
+  if (/^[A-Z0-9]{3,4}$/.test(normalized)) return normalized
+  return deriveAirportCodeFromName(fallbackName)
+}
+
 function showFlightTooltip(routeId: number, x: number, y: number) {
   if (!flightRoutes) return
   const info = flightRoutes.getRouteInfo(routeId)
   if (!info) return
 
   const isForward = Number(info.dir) >= 0
-  const from = compactAirportName(isForward ? info.fromName : info.toName)
-  const to = compactAirportName(isForward ? info.toName : info.fromName)
-  const flightName = String(info.callsign || info.flightName || `${from}-${to}`)
+  const fromName = compactAirportName(isForward ? info.fromName : info.toName)
+  const toName = compactAirportName(isForward ? info.toName : info.fromName)
+  const fromCode = resolveAirportTooltipCode(isForward ? info.fromCode : info.toCode, fromName)
+  const toCode = resolveAirportTooltipCode(isForward ? info.toCode : info.fromCode, toName)
+  const flightLabel = String(info.callsign || info.registration || `${fromCode}${toCode}`).trim().toUpperCase()
   const distanceKm = Number(info.distanceKm)
-  const kmText = Number.isFinite(distanceKm) ? `${Math.round(distanceKm).toLocaleString('en-US')} km` : '— km'
-  const metaParts = [
-    String(info.aircraftType || '').trim(),
-    String(info.airline || '').trim(),
-    kmText
-  ].filter(part => part.length > 0)
+  const distanceLabel = Number.isFinite(distanceKm) ? `${Math.round(distanceKm).toLocaleString('en-US')} KM` : '— KM'
 
+  applyFlightTooltipChrome()
   const html = `
-    <div style="display:flex;flex-direction:column;gap:2px;min-width:160px;">
-      <div style="font-size:12px;line-height:1.1;">${escapeHtml(from)} → ${escapeHtml(to)}</div>
-      <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml([flightName, ...metaParts].join(' • '))}</div>
+    <div
+      title="${escapeHtml(`${fromName} to ${toName}`)}"
+      style="
+        box-sizing:border-box;
+        width:min(208px, calc(100vw - 16px));
+        padding:10px 11px 9px;
+        background:#0d1c30;
+        border:1px solid rgba(204,183,97,0.72);
+        color:#f7f8fb;
+        font-family:${FLIGHT_TOOLTIP_FONT_FAMILY};
+      "
+    >
+      <div
+        style="
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+          align-items:center;
+          column-gap:8px;
+        "
+      >
+        <div style="font-size:clamp(16px, 1.75vw, 20px);line-height:1;font-weight:700;letter-spacing:0.95px;text-transform:uppercase;">${escapeHtml(fromCode)}</div>
+        <div style="font-size:clamp(18px, 2vw, 24px);line-height:0.9;font-weight:400;color:rgba(255,255,255,0.96);">→</div>
+        <div style="font-size:clamp(16px, 1.75vw, 20px);line-height:1;font-weight:700;letter-spacing:0.95px;text-transform:uppercase;">${escapeHtml(toCode)}</div>
+      </div>
+      <div
+        style="
+          margin-top:6px;
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto;
+          align-items:center;
+          gap:6px;
+          color:rgba(255,255,255,0.62);
+          font-size:clamp(8px, 0.8vw, 10px);
+          letter-spacing:0.58px;
+          text-transform:uppercase;
+        "
+      >
+        <div style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(flightLabel)}</div>
+        <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+          <span style="width:5px;height:5px;border-radius:999px;background:rgba(255,255,255,0.62);display:inline-block;flex:0 0 auto;"></span>
+          <span>${escapeHtml(distanceLabel)}</span>
+        </div>
+      </div>
     </div>
   `
   tooltip.showHTML(html, x, y)
+}
+
+function showCountryTooltip(feature: any, x: number, y: number) {
+  const name = getFeatureLabel(feature)
+  const iso2 = getISO2(feature.properties)
+  const flagUrl = isoToFlagUrl(iso2)
+  const meta = getFeatureMetaParts(feature)
+  const hasFlag = Boolean(iso2)
+
+  applyCountryTooltipChrome()
+  const html = `
+    <div
+      style="
+        box-sizing:border-box;
+        width:min(208px, calc(100vw - 16px));
+        padding:10px 12px 10px;
+        background:#0d1c30;
+        border:1px solid rgba(204,183,97,0.72);
+        color:#f7f8fb;
+        font-family:${FLIGHT_TOOLTIP_FONT_FAMILY};
+      "
+    >
+      <div
+        style="
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto;
+          align-items:center;
+          gap:9px;
+        "
+      >
+        <div style="min-width:0;">
+          <div
+            style="
+              font-family:${COUNTRY_TOOLTIP_TITLE_FONT_FAMILY};
+              font-size:clamp(16px, 1.75vw, 20px);
+              line-height:1;
+              letter-spacing:0.2px;
+              color:#f7f8fb;
+              white-space:nowrap;
+              overflow:hidden;
+              text-overflow:ellipsis;
+            "
+          >${escapeHtml(name)}</div>
+          <div
+            style="
+              margin-top:6px;
+              display:flex;
+              align-items:center;
+              gap:6px;
+              color:rgba(255,255,255,0.56);
+              font-size:clamp(8px, 0.8vw, 10px);
+              letter-spacing:0.62px;
+              text-transform:uppercase;
+              white-space:nowrap;
+              overflow:hidden;
+              text-overflow:ellipsis;
+            "
+          >
+            <span>${escapeHtml(meta.iso3)}</span>
+            <span style="width:5px;height:5px;border-radius:999px;background:rgba(255,255,255,0.56);display:inline-block;flex:0 0 auto;"></span>
+            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(meta.continent)}</span>
+          </div>
+        </div>
+        ${
+          hasFlag
+            ? `<img src="${flagUrl}" alt="" style="width:32px;height:32px;border-radius:999px;display:block;object-fit:cover;flex:0 0 auto;" onerror="this.style.display='none'">`
+            : `<div style="width:32px;height:32px;border-radius:999px;display:block;flex:0 0 auto;background:rgba(255,255,255,0.08);"></div>`
+        }
+      </div>
+    </div>
+  `
+  tooltip.showHTML(html, x, y)
+}
+
+function applyFlightHover(routeId: number, clientX: number, clientY: number) {
+  clearHoverRouteCouplingCountry()
+  clearHoverHighlight(globeGroup)
+  lastHoverKey = ''
+  flightRoutes?.setHoverRoute(routeId)
+  renderer.domElement.style.cursor = 'pointer'
+  showFlightTooltip(routeId, clientX, clientY)
 }
 
 function selectFlightRoute(routeId: number, clientX: number, clientY: number) {
@@ -1965,7 +2161,7 @@ function getFlightHit(clientX: number, clientY: number, lineThreshold = FLIGHT_C
     0.2
   )
   ;(raycaster.params.Line as any).threshold = adaptiveThreshold
-  const lineHit = raycaster.intersectObject(flightRoutes.lines, false)[0]
+  const lineHit = raycaster.intersectObject(flightRoutes.hitLines ?? flightRoutes.lines, false)[0]
   if (lineHit && lineHit.index !== undefined && lineHit.index !== null) {
     if (!Number.isFinite(sphereDist) || lineHit.distance <= sphereDist + 1e-4) {
       const geo = (lineHit.object as any).geometry as THREE.BufferGeometry | undefined
@@ -2110,6 +2306,7 @@ function clearHoverInteractionState() {
   clearHoverRouteCouplingCountry()
   flightRoutes?.setHoverRoute(null)
   clearHoverHighlight(globeGroup)
+  applyDefaultTooltipChrome()
   tooltip.hide()
   lastHoverKey = ''
   renderer.domElement.style.cursor = 'default'
@@ -2150,6 +2347,7 @@ function onPointerHover(e: PointerEvent) {
     if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
       clearHoverRouteCouplingCountry()
       clearHoverHighlight(globeGroup)
+      applyDefaultTooltipChrome()
       tooltip.hide()
       lastHoverKey = ''
       renderer.domElement.style.cursor = 'default'
@@ -2165,37 +2363,13 @@ function onPointerHover(e: PointerEvent) {
     setHoverRouteCouplingCountry(iso3)
 
     renderer.domElement.style.cursor = 'pointer'
-    const name = getFeatureLabel(feature)
-    const iso2 = getISO2(feature.properties)
-    const flagUrl = isoToFlagUrl(iso2)
-    const meta = getFeatureMeta(feature)
-
-    if (iso2) {
-      const html = `
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="display:flex;flex-direction:column;gap:2px;">
-            <div style="font-size:12px;line-height:1.1;">${escapeHtml(name)}</div>
-            <div style="font-size:10px;opacity:.7;letter-spacing:.6px;text-transform:uppercase;">${escapeHtml(meta)}</div>
-          </div>
-          <img src="${flagUrl}" alt="" style="height:28px;width:auto;border-radius:2px;display:block;" onerror="this.style.display='none'">
-        </div>
-      `
-      tooltip.showHTML(html, e.clientX, e.clientY)
-      return
-    }
-
-    tooltip.show(name, e.clientX, e.clientY)
+    showCountryTooltip(feature, e.clientX, e.clientY)
     return
   }
 
   const flightHit = getFlightHit(e.clientX, e.clientY, FLIGHT_HOVER_THRESHOLD)
   if (flightHit) {
-    clearHoverRouteCouplingCountry()
-    clearHoverHighlight(globeGroup)
-    lastHoverKey = ''
-    flightRoutes?.setHoverRoute(flightHit.routeId)
-    renderer.domElement.style.cursor = 'pointer'
-    showFlightTooltip(flightHit.routeId, e.clientX, e.clientY)
+    applyFlightHover(flightHit.routeId, e.clientX, e.clientY)
     return
   }
 

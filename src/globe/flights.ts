@@ -113,7 +113,9 @@ type Route = {
   altitude01: number
   distanceKm: number
   flightName: string
+  fromCode: string
   fromName: string
+  toCode: string
   toName: string
   fromLat: number
   fromLon: number
@@ -162,6 +164,7 @@ export type CreateFlightRoutesOptions = {
 export type FlightRoutesLayer = {
   group: THREE.Group
   lines: THREE.LineSegments
+  hitLines?: THREE.LineSegments
   planes: THREE.Points
   materials: FlightRouteMaterials
   update: (deltaSeconds: number, timeSeconds: number, cameraDistance: number) => void
@@ -1106,6 +1109,62 @@ function resolveAirportDisplayName(
   return String(meta?.name || normalized || fallback)
 }
 
+function deriveAirportDisplayCode(label: string, fallback = 'AIR') {
+  const normalized = String(label || '').trim().toUpperCase()
+  const directMatch = normalized.match(/\b[A-Z0-9]{3,4}\b/)
+  if (directMatch) return directMatch[0]
+
+  const stopWords = new Set([
+    'AIRPORT',
+    'INTERNATIONAL',
+    'INTL',
+    'REGIONAL',
+    'MUNICIPAL',
+    'AIRFIELD',
+    'AERODROME',
+    'CITY',
+    'PORT',
+    'THE'
+  ])
+  const tokens = normalized
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(token => !stopWords.has(token))
+
+  if (tokens.length >= 3) {
+    return `${tokens[0][0]}${tokens[1][0]}${tokens[2][0]}`
+  }
+  if (tokens.length === 2) {
+    const merged = `${tokens[0][0]}${tokens[1].slice(0, 2)}`
+    return merged.length >= 3 ? merged : merged.padEnd(3, 'X')
+  }
+  if (tokens.length === 1 && tokens[0].length >= 3) {
+    return tokens[0].slice(0, 4)
+  }
+
+  const compact = normalized.replace(/[^A-Z0-9]/g, '')
+  const source = (compact || String(fallback || '').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'AIR').slice(0, 4)
+  return source.length >= 3 ? source : source.padEnd(3, 'X')
+}
+
+function resolveAirportDisplayCode(
+  code: string | undefined,
+  airportLookup?: Record<string, EnrichedAirportMeta> | null,
+  fallbackLabel = 'Airport'
+) {
+  const normalized = String(code || '').trim().toUpperCase()
+  const meta = normalized ? airportLookup?.[normalized] : null
+  const candidates = [meta?.iata, meta?.code, normalized, meta?.icao]
+
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim().toUpperCase()
+    if (/^[A-Z0-9]{3,4}$/.test(value)) return value
+  }
+
+  return deriveAirportDisplayCode(String(meta?.name || fallbackLabel || normalized || 'AIR'))
+}
+
 function normalizeWrappedLongitude(lon: number) {
   return THREE.MathUtils.euclideanModulo(lon + 180, 360) - 180
 }
@@ -1569,6 +1628,7 @@ export function createFlightRoutes(
   const LINE_SEGMENTS_FINE = isEnrichedSource
     ? (routeCount > 14000 ? 32 : routeCount > 6000 ? 56 : 96)
     : 96
+  const LINE_SEGMENTS_HIT = LINE_SEGMENTS_FINE
   const LINE_LOD_FINE_IN = 0.44
   const LINE_LOD_COARSE_OUT = 0.26
   const PLANE_BUILD_CHUNK_ROUTES = isEnrichedSource ? 720 : 240
@@ -1780,7 +1840,9 @@ export function createFlightRoutes(
         altitude01,
         distanceKm,
         flightName: buildFlightName(String(a.name || 'Origin'), String(b.name || 'Destination')),
+        fromCode: deriveAirportDisplayCode(String(a.name || 'Origin')),
         fromName: String(a.name || 'Origin'),
+        toCode: deriveAirportDisplayCode(String(b.name || 'Destination')),
         toName: String(b.name || 'Destination'),
         fromLat: Number(a.latitude),
         fromLon: Number(a.longitude),
@@ -1892,7 +1954,9 @@ export function createFlightRoutes(
           altitude01,
           distanceKm,
           flightName,
+          fromCode: resolveAirportDisplayCode(flight.orig, enrichedAirportLookup, String(flight.orig || 'Origin')),
           fromName: resolveAirportDisplayName(flight.orig, enrichedAirportLookup, 'Origin'),
+          toCode: resolveAirportDisplayCode(flight.dest, enrichedAirportLookup, String(flight.dest || 'Destination')),
           toName: resolveAirportDisplayName(flight.dest, enrichedAirportLookup, 'Destination'),
           fromLat,
           fromLon,
@@ -2127,6 +2191,17 @@ export function createFlightRoutes(
     committedRouteCount: number
   }
 
+  type RouteHitGeometry = {
+    geometry: THREE.BufferGeometry
+    positionAttr: THREE.BufferAttribute
+    positionData: Float32Array
+    routeIdAttr: THREE.BufferAttribute
+    routeIdData: Float32Array
+    verticesPerRoute: number
+    routeCapacity: number
+    committedRouteCount: number
+  }
+
   function markLineAttributeRange(attr: THREE.BufferAttribute, startVertex: number, vertexCount: number) {
     if (vertexCount <= 0) return
     if (typeof (attr as any).clearUpdateRanges === 'function') {
@@ -2213,6 +2288,49 @@ export function createFlightRoutes(
 
     lod.committedRouteCount = safeEndIndex
     lod.geometry.setDrawRange(0, safeEndIndex * lod.verticesPerRoute)
+    lod.geometry.computeBoundingSphere()
+  }
+
+  function populateRouteHitGeometry(
+    hit: RouteHitGeometry,
+    routeStartIndex: number,
+    routeEndIndex: number
+  ) {
+    const safeEndIndex = Math.min(routeEndIndex, routeData.length, hit.routeCapacity)
+    if (safeEndIndex <= routeStartIndex) return
+
+    for (let rIndex = routeStartIndex; rIndex < safeEndIndex; rIndex++) {
+      const r = routeData[rIndex]
+      const routeSamples = buildRouteSamplePositions(r, hit.verticesPerRoute * 0.5)
+      const baseVertex = rIndex * hit.verticesPerRoute
+
+      for (let i = 0; i < hit.verticesPerRoute * 0.5; i++) {
+        const s0 = i * 3
+        const s1 = (i + 1) * 3
+
+        const vi0 = baseVertex + i * 2
+        const vi1 = vi0 + 1
+
+        hit.positionData[vi0 * 3 + 0] = routeSamples[s0 + 0]
+        hit.positionData[vi0 * 3 + 1] = routeSamples[s0 + 1]
+        hit.positionData[vi0 * 3 + 2] = routeSamples[s0 + 2]
+        hit.routeIdData[vi0] = r.id
+
+        hit.positionData[vi1 * 3 + 0] = routeSamples[s1 + 0]
+        hit.positionData[vi1 * 3 + 1] = routeSamples[s1 + 1]
+        hit.positionData[vi1 * 3 + 2] = routeSamples[s1 + 2]
+        hit.routeIdData[vi1] = r.id
+      }
+    }
+
+    const startVertex = routeStartIndex * hit.verticesPerRoute
+    const vertexCount = (safeEndIndex - routeStartIndex) * hit.verticesPerRoute
+    markLineAttributeRange(hit.positionAttr, startVertex, vertexCount)
+    markLineAttributeRange(hit.routeIdAttr, startVertex, vertexCount)
+
+    hit.committedRouteCount = safeEndIndex
+    hit.geometry.setDrawRange(0, safeEndIndex * hit.verticesPerRoute)
+    hit.geometry.computeBoundingSphere()
   }
 
   function buildLineLodGeometry(
@@ -2290,8 +2408,51 @@ export function createFlightRoutes(
     return lod
   }
 
+  function buildRouteHitGeometry(
+    segmentsPerRoute: number,
+    routeCapacity = routeData.length,
+    initialRouteCount = routeData.length
+  ): RouteHitGeometry {
+    const safeRouteCapacity = Math.max(routeCapacity, initialRouteCount, 1)
+    const vertexCount = safeRouteCapacity * segmentsPerRoute * 2
+    const positionData = new Float32Array(vertexCount * 3)
+    const routeIdData = new Float32Array(vertexCount)
+
+    const geometry = new THREE.BufferGeometry()
+    const positionAttr = new THREE.BufferAttribute(positionData, 3)
+    positionAttr.setUsage(THREE.DynamicDrawUsage)
+    geometry.setAttribute('position', positionAttr)
+    const routeIdAttr = new THREE.BufferAttribute(routeIdData, 1)
+    routeIdAttr.setUsage(THREE.DynamicDrawUsage)
+    geometry.setAttribute('aRouteId', routeIdAttr)
+    geometry.setDrawRange(0, 0)
+    geometry.computeBoundingSphere()
+
+    const hit: RouteHitGeometry = {
+      geometry,
+      positionAttr,
+      positionData,
+      routeIdAttr,
+      routeIdData,
+      verticesPerRoute: segmentsPerRoute * 2,
+      routeCapacity: safeRouteCapacity,
+      committedRouteCount: 0
+    }
+
+    if (initialRouteCount > 0) {
+      populateRouteHitGeometry(hit, 0, initialRouteCount)
+    }
+
+    return hit
+  }
+
   let lineCoarse = buildLineLodGeometry(
     LINE_SEGMENTS_COARSE,
+    isEnrichedSource ? selectedEnrichedFlights.length : routeData.length,
+    routeData.length
+  )
+  const hitTestGeometry = buildRouteHitGeometry(
+    LINE_SEGMENTS_HIT,
     isEnrichedSource ? selectedEnrichedFlights.length : routeData.length,
     routeData.length
   )
@@ -2348,10 +2509,24 @@ export function createFlightRoutes(
   lines.frustumCulled = false
   group.add(lines)
 
+  const hitLines = new THREE.LineSegments(
+    hitTestGeometry.geometry,
+    new THREE.LineBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false
+    })
+  )
+  hitLines.name = 'flightRouteHitLines'
+  hitLines.frustumCulled = false
+  hitLines.visible = false
+  group.add(hitLines)
+
   function commitLineGeometryProgress(committedRouteCount: number) {
     const clampedRouteCount = THREE.MathUtils.clamp(committedRouteCount, 0, Math.min(routeData.length, lineCoarse.routeCapacity))
     if (clampedRouteCount <= lineCoarse.committedRouteCount) return
     populateLineLodRoutes(lineCoarse, lineCoarse.committedRouteCount, clampedRouteCount, focusIso3)
+    populateRouteHitGeometry(hitTestGeometry, hitTestGeometry.committedRouteCount, clampedRouteCount)
   }
 
   function syncLineScoreAttributes(lod: LineLodGeometry) {
@@ -3130,7 +3305,9 @@ export function createFlightRoutes(
 
     return {
       id: r.id,
+      fromCode: r.fromCode,
       fromName: r.fromName,
+      toCode: r.toCode,
       toName: r.toName,
       fromLat: r.fromLat,
       fromLon: r.fromLon,
@@ -3511,6 +3688,7 @@ export function createFlightRoutes(
     setHeatmapEnabled,
     setVisualizationMode,
     lines,
+    hitLines,
     planes,
     materials: {
       line: lineMat,

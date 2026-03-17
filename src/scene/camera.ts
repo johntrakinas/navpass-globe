@@ -4,7 +4,7 @@ const FOCUS_DIM_ID = 'focus-dim'
 const BREADCRUMBS_ID = 'globe-breadcrumbs'
 const STYLE_ID = 'navpass-country-panel-style'
 const FONT_LINK_ID = 'navpass-country-panel-fonts'
-const DEFAULT_BREADCRUMB_OFFSET_LEFT = 60
+const DEFAULT_BREADCRUMB_OFFSET_LEFT = 50
 const DEFAULT_BREADCRUMB_OFFSET_TOP = 92
 
 export type GlobeBreadcrumbItem = {

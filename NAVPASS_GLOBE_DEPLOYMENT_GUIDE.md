@@ -55,7 +55,7 @@ Append query params to the iframe URL:
 - `assetBaseUrl=/globe-assets`
 - `heatmap=true|false`
 - `flightMode=legacy|reengineered`
-- `breadcrumbOffsetLeft=60`
+- `breadcrumbOffsetLeft=50`
 - `breadcrumbOffsetTop=92`
 - `minZoomDistance=17`
 - `maxZoomDistance=32`
