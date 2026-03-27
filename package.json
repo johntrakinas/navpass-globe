@@ -27,13 +27,17 @@
     "build": "npm run typecheck && vite build",
     "build:lib": "npm run typecheck && vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "tsx --test src/__tests__/globeConnections.test.ts",
+    "test:watch": "tsx --test --watch src/__tests__/globeConnections.test.ts"
   },
   "devDependencies": {
     "@types/three": "^0.182.0",
     "three": "^0.182.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.3",
-    "vite": "npm:rolldown-vite@7.2.5"
+    "vite": "npm:rolldown-vite@7.2.5",
+    "vitest": "^2.1.9"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.2.5"

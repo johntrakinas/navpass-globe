@@ -214,6 +214,9 @@ export function clearHighlight(parent: THREE.Object3D) {
     if (obj instanceof THREE.Line) {
       obj.geometry.dispose()
     }
+    if (obj instanceof THREE.Mesh) {
+      obj.geometry.dispose()
+    }
   })
   for (const mat of currentMats) {
     mat.dispose()
@@ -236,6 +239,7 @@ export function updateCountryHighlight(timeSeconds: number) {
     mat.uniforms.uPulse.value = pulse * (thickness > 0.003 ? 0.72 : 1.0)
     mat.uniforms.uOpacity.value = alpha * baseOpacity
   }
+
 }
 
 export function configureCountryHighlightPalette(theme: CountryHighlightPaletteTheme = {}) {

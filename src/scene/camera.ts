@@ -21,14 +21,9 @@ let currentBreadcrumbs: GlobeBreadcrumbItem[] = [
   { id: 'map', label: 'Map' }
 ]
 
+// Verdana Pro and Optima are system fonts — no external stylesheet needed.
 function ensureCountryPanelFonts() {
-  if (document.getElementById(FONT_LINK_ID)) return
-  const fontLink = document.createElement('link')
-  fontLink.id = FONT_LINK_ID
-  fontLink.rel = 'stylesheet'
-  fontLink.href =
-    'https://fonts.googleapis.com/css2?family=Quattrocento+Sans:wght@400;700&display=swap'
-  document.head.appendChild(fontLink)
+  void FONT_LINK_ID  // ID constant kept for future use; nothing to inject.
 }
 
 function ensureStyles() {
@@ -47,6 +42,11 @@ function ensureStyles() {
       --globe-breadcrumb-top: ${DEFAULT_BREADCRUMB_OFFSET_TOP}px;
       --globe-breadcrumb-left-compact: 20px;
       --globe-breadcrumb-top-compact: 40px;
+      /* Theming tokens — override via configureGlobeUi or ?accentColor / ?cardBorderColor / ?cardBorderWidth */
+      --np-accent: #ecb200;
+      --np-accent-glow: rgba(236, 178, 0, 0.68);
+      --np-border-color: rgba(255, 255, 255, 0.08);
+      --np-border-width: 1px;
     }
     #country-panel,
     #country-panel *,
@@ -63,7 +63,7 @@ function ensureStyles() {
       overflow: hidden;
       padding: 1px;
       margin: 0;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: var(--np-border-width) solid var(--np-border-color);
       background: #0d1c30;
       color: #ffffff;
       box-shadow: 0 24px 52px -18px rgba(0, 0, 0, 0.58);
@@ -75,10 +75,10 @@ function ensureStyles() {
     }
     #country-panel.is-visible { opacity: 1; transform: translateY(0); }
     #country-panel.is-visible:hover {
-      border-color: rgba(255, 208, 66, 0.92);
+      border-color: var(--np-accent);
       box-shadow:
         0 28px 56px -16px rgba(0, 0, 0, 0.6),
-        0 0 56px -12px rgba(236, 178, 0, 0.68);
+        0 0 56px -12px var(--np-accent-glow);
     }
     #focus-dim {
       position: fixed;
@@ -110,7 +110,7 @@ function ensureStyles() {
     .globe-breadcrumb__button,
     .globe-breadcrumb__current {
       color: rgba(255, 255, 255, 0.92);
-      font: 500 12px/1.15 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+      font: 500 12px/1.15 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif;
       letter-spacing: 0.01em;
       text-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
       white-space: nowrap;
@@ -126,11 +126,11 @@ function ensureStyles() {
       color: #ffffff;
     }
     .globe-breadcrumb__current {
-      color: #ecb200;
+      color: var(--np-accent);
     }
     .globe-breadcrumb__separator {
       color: rgba(255, 255, 255, 0.64);
-      font: 500 16px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+      font: 500 16px/1 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif;
       user-select: none;
     }
     .panel-tooltip,
@@ -138,33 +138,33 @@ function ensureStyles() {
     .panel-tooltip { display: flex; flex-direction: column; width: 100%; background: #0d1c30; color: #fff; }
     .panel-tooltip-header { position: relative; display: flex; min-height: 162px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); overflow: hidden; }
     .panel-tooltip-headcopy { flex: 1; min-width: 0; padding: 58px 20px 18px; }
-    .panel-tooltip-title { font-family: "Optima","Times New Roman",serif; font-size: clamp(32px, 4vw, 42px); line-height: 1.05; letter-spacing: -0.7px; text-wrap: balance; }
-    .panel-tooltip-live { margin-top: 8px; display: flex; align-items: center; gap: 8px; font: 13px/1.1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: rgba(255, 255, 255, 0.52); }
-    .panel-tooltip-live-dot { width: 8px; height: 8px; border-radius: 999px; background: #ecb200; }
+    .panel-tooltip-title { font-family: "Optima","Palatino Linotype","Book Antiqua",Georgia,serif; font-size: clamp(32px, 4vw, 42px); line-height: 1.05; letter-spacing: -0.7px; text-wrap: balance; }
+    .panel-tooltip-live { margin-top: 8px; display: flex; align-items: center; gap: 8px; font: 13px/1.1 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: rgba(255, 255, 255, 0.52); }
+    .panel-tooltip-live-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--np-accent); }
     .panel-tooltip-close { position: absolute; left: 12px; top: 12px; width: 24px; height: 24px; border: 0; background: transparent; color: rgba(255, 255, 255, 0.82); font-size: 28px; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; z-index: 3; pointer-events: auto; }
     .panel-tooltip-flagbox { width: clamp(92px, 22vw, 122px); flex: 0 0 clamp(92px, 22vw, 122px); border-left: 1px solid rgba(255, 255, 255, 0.1); background-image: var(--flag-bg); background-position: center; background-repeat: no-repeat; background-size: min(80px, 72%) auto; opacity: 0.95; }
     .panel-tooltip-flagbox--empty { background: rgba(255, 255, 255, 0.04); }
     .panel-tooltip-dual { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
     .panel-tooltip-primary { padding: 18px 20px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)); }
-    .panel-tooltip-primary-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
-    .panel-tooltip-primary-value { margin-top: 10px; font-family: "Optima","Times New Roman",serif; font-size: clamp(34px, 5vw, 52px); line-height: 0.95; color: #fff; word-break: break-word; }
-    .panel-tooltip-primary-sub { margin-top: 8px; font: 13px/1.3 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.38); }
+    .panel-tooltip-primary-label { font: 13px/1 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
+    .panel-tooltip-primary-value { margin-top: 10px; font-family: "Optima","Palatino Linotype","Book Antiqua",Georgia,serif; font-size: clamp(34px, 5vw, 52px); line-height: 0.95; color: #fff; word-break: break-word; }
+    .panel-tooltip-primary-sub { margin-top: 8px; font: 13px/1.3 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; color: rgba(255, 255, 255, 0.38); }
     .panel-tooltip-stat { padding: 16px 18px 14px; }
     .panel-tooltip-stat:first-child { border-right: 1px solid rgba(255, 255, 255, 0.12); }
     .panel-tooltip-stat-head { display: flex; align-items: center; gap: 8px; }
     .panel-tooltip-stat-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }
-    .panel-tooltip-stat-label { font: 14px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
-    .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Times New Roman",serif; font-size: clamp(28px, 4.4vw, 42px); line-height: 1; color: #fff; }
-    .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color: rgba(255, 255, 255, 0.32); }
-    .panel-tooltip-total-label { font: 13px/1 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
-    .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Times New Roman",serif; font-size: clamp(32px, 4.6vw, 42px); line-height: 1; color: #fff; }
+    .panel-tooltip-stat-label { font: 14px/1 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(255, 255, 255, 0.48); }
+    .panel-tooltip-stat-value { margin-top: 8px; font-family: "Optima","Palatino Linotype","Book Antiqua",Georgia,serif; font-size: clamp(28px, 4.4vw, 42px); line-height: 1; color: #fff; }
+    .panel-tooltip-stat-sub { margin-top: 6px; font: 14px/1.2 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; color: rgba(255, 255, 255, 0.32); }
+    .panel-tooltip-total-label { font: 13px/1 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
+    .panel-tooltip-total-value { margin-top: 6px; font-family: "Optima","Palatino Linotype","Book Antiqua",Georgia,serif; font-size: clamp(32px, 4.6vw, 42px); line-height: 1; color: #fff; }
     .panel-tooltip-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px 20px; background: rgba(255, 255, 255, 0.05); }
-    .panel-tooltip-footer-note { font: 13px/1.2 "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
-    .panel-tooltip-more { min-height: 44px; min-width: 110px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 14px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif; padding: 0 18px; display: grid; place-items: center; text-transform: uppercase; letter-spacing: 0.9px; }
+    .panel-tooltip-footer-note { font: 13px/1.2 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
+    .panel-tooltip-more { min-height: 44px; min-width: 110px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 14px "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; padding: 0 18px; display: grid; place-items: center; text-transform: uppercase; letter-spacing: 0.9px; }
     .panel-tooltip--country {
       background: linear-gradient(180deg, #102038 0%, #142640 100%);
       color: rgba(255, 255, 255, 0.96);
-      font-family: "Quattrocento Sans","Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+      font-family: "Verdana Pro",Verdana,"Trebuchet MS",sans-serif;
     }
     .panel-tooltip--country * {
       font-family: inherit;
@@ -223,7 +223,7 @@ function ensureStyles() {
       width: 8px;
       height: 8px;
       border-radius: 999px;
-      background: #f4b400;
+      background: var(--np-accent);
       box-shadow: none;
     }
     .panel-tooltip-country-code {
@@ -458,7 +458,11 @@ function ensureStyles() {
         height: 6px;
       }
       .panel-tooltip--country .panel-tooltip-close {
-        display: none;
+        right: 14px;
+        top: 14px;
+        width: 36px;
+        height: 36px;
+        font-size: 22px;
       }
       .panel-tooltip-country-subtitle { display: none; }
       .panel-tooltip--country .panel-tooltip-dual {
@@ -637,17 +641,47 @@ function renderBreadcrumbs() {
     .join('')
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function applyCardThemeVars(options: {
+  cardBorderColor?: string
+  cardBorderWidth?: number
+  accentColor?: string
+}) {
+  const root = document.getElementById(UI_ROOT_ID)
+  if (!root) return
+  if (options.accentColor) {
+    root.style.setProperty('--np-accent', options.accentColor)
+    root.style.setProperty('--np-accent-glow', hexToRgba(options.accentColor, 0.68))
+  }
+  if (options.cardBorderColor) {
+    root.style.setProperty('--np-border-color', options.cardBorderColor)
+  }
+  if (options.cardBorderWidth !== undefined && Number.isFinite(options.cardBorderWidth)) {
+    root.style.setProperty('--np-border-width', `${Math.max(0, options.cardBorderWidth)}px`)
+  }
+}
+
 export function configureGlobeUi(options: {
   showBreadcrumbs?: boolean
   showCountryCardCloseButton?: boolean
   breadcrumbOffsetLeft?: number
   breadcrumbOffsetTop?: number
+  cardBorderColor?: string
+  cardBorderWidth?: number
+  accentColor?: string
 } = {}) {
   showBreadcrumbs = options.showBreadcrumbs !== false
   showCountryCardCloseButton = options.showCountryCardCloseButton !== false
   breadcrumbOffsetLeft = sanitizeOffset(options.breadcrumbOffsetLeft, DEFAULT_BREADCRUMB_OFFSET_LEFT)
   breadcrumbOffsetTop = sanitizeOffset(options.breadcrumbOffsetTop, DEFAULT_BREADCRUMB_OFFSET_TOP)
   ensureCountryPanelScaffold()
+  applyCardThemeVars(options)
   renderBreadcrumbs()
 }
 
@@ -724,6 +758,8 @@ type CountryFlightStats = {
   dayIncoming?: number
   dayOutgoing?: number
   over?: number
+  /** Number of airports physically located in this country. */
+  airports?: number
 }
 
 export type CountryPanelMode = 'selected' | 'hover'
@@ -763,22 +799,18 @@ export function showCountryPanel(
 
   const iso2 = getCountryIso2(props)
 
-  const flightsNow = Number.isFinite(flights?.now) ? Number(flights?.now) : null
   const incomingFlights = Number.isFinite(flights?.incoming) ? Number(flights?.incoming) : null
   const outgoingFlights = Number.isFinite(flights?.outgoing) ? Number(flights?.outgoing) : null
-  const dayTotalFlights = Number.isFinite(flights?.dayTotal) ? Number(flights?.dayTotal) : null
   const overFlights = Number.isFinite(flights?.over) ? Number(flights?.over) : null
-  const totalFlightsLabel = formatInt(flightsNow)
   const incomingFlightsLabel = formatInt(incomingFlights)
   const outgoingFlightsLabel = formatInt(outgoingFlights)
-  const dayTotalFlightsLabel = formatInt(dayTotalFlights)
-  const overFlightsLabel = formatInt(overFlights)
-  const totalFlightsOverCountryLabel =
-    dayTotalFlights !== null
-      ? dayTotalFlightsLabel
-      : overFlights !== null
-        ? overFlightsLabel
-        : totalFlightsLabel
+  // "TOTAL FLIGHTS OVER COUNTRY" = all routes touching the country's airspace:
+  // arrivals + departures + transiting overflights.
+  const totalFlightsOverCountry =
+    incomingFlights !== null || outgoingFlights !== null || overFlights !== null
+      ? (incomingFlights ?? 0) + (outgoingFlights ?? 0) + (overFlights ?? 0)
+      : null
+  const totalFlightsOverCountryLabel = formatInt(totalFlightsOverCountry)
 
   const flagUrl =
     iso2 && typeof iso2 === 'string' && iso2.length === 2 && iso2 !== '-99'
@@ -788,7 +820,7 @@ export function showCountryPanel(
   const closeButton = isHoverMode || !showCountryCardCloseButton
     ? ''
     : '<button type="button" class="panel-tooltip-close" aria-label="Close">×</button>'
-  const liveLabel = isHoverMode ? 'HOVER PREVIEW' : `LAST UPDATED ON: ${formatPanelUpdateDate()}`
+  const liveLabel = isHoverMode ? 'HOVER PREVIEW' : `AIRSPACE ON: ${formatPanelUpdateDate()}`
   const countryCardStyle = flagUrl ? ` style="--country-flag-bg:url('${flagUrl}')"` : ''
   const flagBubbleClass = flagUrl
     ? 'panel-tooltip-country-flag'

@@ -24,6 +24,9 @@ uniform float uPower;
 uniform float uDistanceFade;
 uniform float uAngleFade;
 uniform vec3 uCameraPos;
+// Multiplicative tint applied to the final layer color.
+// vec3(1,1,1) = no change; set to any hue to recolor the glow at runtime.
+uniform vec3 uGlowColor;
 
 varying vec3 vNormal;
 varying vec3 vWorldPosition;
@@ -36,6 +39,14 @@ void main() {
 
   vec3 color = mix(uCoreColor, uRimColor, clamp(pow(rim, 0.52), 0.0, 1.0));
   color = mix(color, uRimColor, halo * 0.32);
+
+  // Chromatic limb brightening: the very outer edge gains an extra glow
+  // ring, simulating atmospheric scattering at the horizon.
+  float limb = pow(fresnel, max(0.5, uPower * 0.25));
+  color += uRimColor * limb * 0.18;
+
+  // Apply runtime glow tint — multiplicative so white is a no-op.
+  color *= uGlowColor;
 
   float alpha = rim * uIntensity * uDistanceFade * uAngleFade;
   alpha *= 0.86 + 0.22 * halo;
@@ -69,7 +80,8 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
         uPower: { value: options.power },
         uDistanceFade: { value: 1.0 },
         uAngleFade: { value: 1.0 },
-        uCameraPos: { value: new THREE.Vector3() }
+        uCameraPos: { value: new THREE.Vector3() },
+        uGlowColor: { value: new THREE.Color(1, 1, 1) }
       },
       transparent: true,
       depthWrite: false,
@@ -151,9 +163,29 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
     void dir
   }
 
+  /**
+   * Recolor the entire atmosphere glow at runtime.
+   *
+   * The color is applied as a multiplicative tint over each layer's computed
+   * rim/core colors, so the soft Fresnel falloff shape is preserved.
+   *
+   * @example
+   * // Warm amber glow
+   * atmosphere.setGlowColor(new THREE.Color('#FF9F40'))
+   *
+   * // Reset to neutral (white = no tint)
+   * atmosphere.setGlowColor(new THREE.Color(1, 1, 1))
+   */
+  function setGlowColor(color: THREE.Color) {
+    ;(innerLayer.material.uniforms.uGlowColor.value as THREE.Color).copy(color)
+    ;(outerLayer.material.uniforms.uGlowColor.value as THREE.Color).copy(color)
+    ;(subsurfaceLayer.material.uniforms.uGlowColor.value as THREE.Color).copy(color)
+  }
+
   return {
     group,
     setLightDir,
+    setGlowColor,
     materials: {
       inner: innerLayer.material,
       outer: outerLayer.material,

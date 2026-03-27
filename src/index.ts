@@ -1,10 +1,5 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
-import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 
 import { createDepthMaskSphere } from './globe/depthMask'
 import { createLanguagePoints } from './globe/languagePoints'
@@ -42,6 +37,7 @@ import { createLandWaterLayer } from './globe/landWater'
 
 import { createStarfieldShader } from './background/starfieldShaders'
 import { createTooltip } from './ui/tooltip'
+import { createAnimatedCards } from './ui/animatedCards'
 import {
   setHoverHighlight,
   clearHoverHighlight,
@@ -50,7 +46,6 @@ import {
   configureHoverHighlightColors,
   setHoverBorderLineWidth
 } from './globe/hoverHighlight'
-import { VignetteGrainShader } from './postprocess/vignetteGrain'
 import { scaleThickness } from './globe/thicknessScale'
 import { inflateAirportsDataset } from './globe/syntheticAirports'
 
@@ -83,6 +78,13 @@ export type GlobeAtmosphereTheme = {
   outerRim: THREE.ColorRepresentation
   subsurfaceCore: THREE.ColorRepresentation
   subsurfaceRim: THREE.ColorRepresentation
+  /**
+   * Optional multiplicative tint applied to all atmosphere layers at once.
+   * White (`#ffffff`) is a no-op and leaves layer colors unchanged.
+   * Set to any hue (e.g. `#FF9F40` for amber) to recolor the entire glow.
+   * Can be updated at runtime via `GlobeInstance.setTheme()`.
+   */
+  glowColor?: THREE.ColorRepresentation
 }
 
 export type GlobeLightingTheme = {
@@ -337,6 +339,82 @@ export type GlobeOptions = {
   routeCount?: number
   planesPerRoute?: number
   planeDensityScale?: number
+  animatedCards?: boolean
+  disableMapInteraction?: boolean
+  searchBarX?: number
+  searchBarY?: number
+  showSearchBarMobile?: boolean
+  /**
+   * When `true` (default), loads `airports.json` which contains the full airport dataset.
+   * Set to `false` to fall back to the legacy `airports_points.json`.
+   * Overridden entirely by `airportsDataFile` when that option is provided.
+   */
+  useFullAirportsDataset?: boolean
+  /**
+   * Caps the number of airport points rendered. When omitted all airports are rendered.
+   * Applies after the file is loaded; the cap does not affect the per-country count aggregation.
+   */
+  airportRenderLimit?: number
+  /**
+   * Override the airports data filename loaded from the `data/` directory.
+   * Takes precedence over `useFullAirportsDataset`. The file must be an array of objects
+   * with `latitude` and `longitude` fields (optionally `iso3` for faster country lookup).
+   */
+  airportsDataFile?: string
+  /**
+   * Override the flights/routes data filename loaded from the `data/` directory.
+   * Defaults to `flights_enriched.json`.
+   */
+  routesDataFile?: string
+  /**
+   * When `true` (default), scrolling while a country card is open closes the card
+   * and resets the camera to the default zoom distance.
+   * Set to `false` (or `?scrollResetsView=0`) to disable this behaviour entirely.
+   * Zoom is unaffected — this only controls the card-close+reset side effect.
+   */
+  scrollResetsView?: boolean
+  /**
+   * Directional light intensity applied to the globe surface via the lighting shell.
+   * `0` (default) disables the lighting effect. Values in the range 0.3–1.0 give
+   * a subtle-to-strong one-sided illumination (lit face vs dark face).
+   */
+  lightIntensity?: number
+  /**
+   * Hex color string for the directional light's illuminated-side tint.
+   * Defaults to the theme `lighting.day` color when not provided.
+   */
+  lightColor?: string
+  /** X component of the directional light vector in world space. Default: camera-facing. */
+  lightX?: number
+  /** Y component of the directional light vector in world space. Default: camera-facing. */
+  lightY?: number
+  /** Z component of the directional light vector in world space. Default: camera-facing. */
+  lightZ?: number
+  /**
+   * Half-intensity radius of the soft light blob (0.01–1.0).
+   * Defines the angular distance from center at which brightness drops to 50%.
+   * `0.05` = small tight circle; `0.35` = medium blob (default); `0.8` = near-full-globe wash.
+   */
+  lightRadius?: number
+  /**
+   * Hex color string for the country card's outer border.
+   * Accepts `#RRGGBB`, `#RGB`, or `0xRRGGBB` notation.
+   * Also accepts `rgba(...)` for semi-transparent borders.
+   * Defaults to `rgba(255, 255, 255, 0.08)`.
+   */
+  cardBorderColor?: string
+  /**
+   * Width in pixels of the country card's outer border.
+   * `0` removes the border entirely. Defaults to `1`.
+   */
+  cardBorderWidth?: number
+  /**
+   * Hex color string applied to all UI accent elements:
+   * the live-status dot on the country card, the active breadcrumb label,
+   * and the card hover glow border.
+   * Defaults to `#ECB200` (gold).
+   */
+  accentColor?: string
   theme?: GlobeTheme
 }
 
@@ -367,14 +445,17 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
 
   const mountTarget = options.mountTarget ?? document.body
   const showBreadcrumbs = options.showBreadcrumbs !== false
-  const showZoomControls = options.showZoomControls !== false
+  const showZoomControls = options.showZoomControls === true
   const showCountryCardCloseButton = options.showCountryCardCloseButton !== false
   ensureCountryPanelScaffold()
   configureGlobeUi({
     showBreadcrumbs,
     showCountryCardCloseButton,
     breadcrumbOffsetLeft: options.breadcrumbOffsetLeft,
-    breadcrumbOffsetTop: options.breadcrumbOffsetTop
+    breadcrumbOffsetTop: options.breadcrumbOffsetTop,
+    cardBorderColor: options.cardBorderColor,
+    cardBorderWidth: options.cardBorderWidth,
+    accentColor: options.accentColor
   })
   setGlobeBreadcrumbs(getBaseBreadcrumbs())
   const assetBaseUrl = (options.assetBaseUrl ?? '').replace(/\/+$/, '')
@@ -412,6 +493,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   const SHOW_AIRPORT_POINTS = true
   const SHOW_NIGHT_LIGHTS = false
   const disableScrollZoom = options.disableScrollZoom === true
+  const scrollResetsView = options.scrollResetsView !== false
   const requestedRouteCount = Number(options.routeCount)
   const FLIGHT_ROUTE_TARGET = Number.isFinite(requestedRouteCount)
     ? THREE.MathUtils.clamp(Math.round(requestedRouteCount), 1, 30000)
@@ -428,6 +510,10 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     0.2,
     2.5
   )
+  const ANIMATED_CARDS_ENABLED = options.animatedCards === true
+  const animatedCards = ANIMATED_CARDS_ENABLED
+    ? createAnimatedCards(mountTarget)
+    : null
   let countriesGeoJSON: any = null
 
 let triGrid: ReturnType<typeof createAdaptiveTriGrid> | null = null
@@ -435,7 +521,7 @@ let latLonGrid: ReturnType<typeof createAdaptiveLatLonGrid> | null = null
 let countriesLines: ReturnType<typeof createCountries> | null = null
 let languagePoints: { points: THREE.Points; material: THREE.ShaderMaterial } | null = null
 let lightingShell:
-  | { group: THREE.Group; nightMaterial: THREE.ShaderMaterial; dayMaterial: THREE.ShaderMaterial }
+  | { group: THREE.Group; nightMaterial: THREE.ShaderMaterial; dayMaterial: THREE.ShaderMaterial; nightMesh: THREE.Mesh; dayMesh: THREE.Mesh }
   | null = null
 let nightLights:
   | {
@@ -445,17 +531,7 @@ let nightLights:
     }
   | null = null
 let landWater: ReturnType<typeof createLandWaterLayer> | null = null
-let atmosphere:
-  | {
-      group: THREE.Group
-      setLightDir: (dir: THREE.Vector3) => void
-      materials: {
-        inner: THREE.ShaderMaterial
-        outer: THREE.ShaderMaterial
-        subsurface: THREE.ShaderMaterial
-      }
-    }
-  | null = null
+let atmosphere: ReturnType<typeof createAtmosphere> | null = null
 let flightRoutes: FlightRoutesLayer | null = null
 let selectedFlightRouteId: number | null = null
 let isCountrySelected = false
@@ -466,7 +542,7 @@ let lastHoverKey = ''
 const tooltip = createTooltip(document.body)
 const DEFAULT_TOOLTIP_FONT =
   '12px system-ui, -apple-system, Segoe UI, Roboto, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
-const FLIGHT_TOOLTIP_FONT_FAMILY = "'Quattrocento Sans','Segoe UI',Tahoma,Geneva,Verdana,sans-serif"
+const FLIGHT_TOOLTIP_FONT_FAMILY = "'Verdana Pro',Verdana,'Trebuchet MS',sans-serif"
 const COUNTRY_TOOLTIP_TITLE_FONT_FAMILY = "'Optima','Times New Roman',serif"
 const countrySearch = document.getElementById('country-search') as HTMLFormElement | null
 const countrySearchInput = document.getElementById('country-search-input') as HTMLInputElement | null
@@ -627,8 +703,15 @@ function clearCountrySearchSuggestions() {
   countrySearch?.classList.remove('has-results')
 }
 
+const showSearchBarMobile = options.showSearchBarMobile !== false
+
 function applyCountrySearchVisibility() {
   if (!countrySearch) return
+  if (!showSearchBarMobile && countrySearchMobileQuery.matches) {
+    countrySearch.style.display = 'none'
+    clearCountrySearchSuggestions()
+    return
+  }
   const enabled = isCountrySearchEnabled()
   countrySearch.style.display = enabled ? '' : 'none'
   if (!enabled) {
@@ -942,51 +1025,48 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.debug.checkShaderErrors = true
 mountTarget.appendChild(renderer.domElement)
 
-/**
- * Postprocessing (subtle Google-Research polish)
- */
-// IMPORTANT:
-// We tried a postprocess chain (bloom + FXAA + vignette/grain), but it can easily
-// make thin country borders look "washed"/grainy depending on display/pixel ratio.
-// Keeping it OFF for now preserves the crisp Google-Research look we had before.
-const ENABLE_POSTPROCESS = false
-
-let composer: EffectComposer | null = null
-let bloomPass: UnrealBloomPass | null = null
-let fxaaPass: ShaderPass | null = null
-let vignettePass: ShaderPass | null = null
-
-if (ENABLE_POSTPROCESS) {
-  composer = new EffectComposer(renderer)
-  composer.addPass(new RenderPass(scene, camera))
-
-  bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.18, 0.85, 0.92)
-  bloomPass.strength = 0.16
-  bloomPass.radius = 0.78
-  bloomPass.threshold = 0.82
-  composer.addPass(bloomPass)
-
-  fxaaPass = new ShaderPass(FXAAShader)
-  composer.addPass(fxaaPass)
-
-  vignettePass = new ShaderPass(VignetteGrainShader as any)
-  vignettePass.material.uniforms.uVignette.value = 0.16
-  vignettePass.material.uniforms.uVignetteSoftness.value = 0.66
-  vignettePass.material.uniforms.uGrain.value = 0.0
-  composer.addPass(vignettePass)
+if (options.disableMapInteraction === true) {
+  renderer.domElement.style.pointerEvents = 'none'
 }
 
-function updatePostprocessSize() {
-  if (!composer || !fxaaPass || !bloomPass) return
-  const pr = renderer.getPixelRatio()
-  composer.setPixelRatio(pr)
-  if (fxaaPass.material.uniforms?.resolution) {
-    fxaaPass.material.uniforms.resolution.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr))
+if (countrySearch) {
+  if (typeof options.searchBarX === 'number') {
+    countrySearch.style.left = `${options.searchBarX}px`
+    countrySearch.style.right = 'auto'
   }
-  composer.setSize(innerWidth, innerHeight)
-  // bloom pass size is handled via composer.setSize(effectiveWidth/effectiveHeight)
+  if (typeof options.searchBarY === 'number') {
+    countrySearch.style.top = `${options.searchBarY}px`
+  }
 }
-updatePostprocessSize()
+
+/**
+ * Directional lighting
+ * Opt-in via `options.lightIntensity` (default 0 = off).
+ * When enabled, the lighting shell renders a one-sided illumination over the globe.
+ */
+const requestedLightIntensity = Number(options.lightIntensity)
+const USER_LIGHT_INTENSITY = Number.isFinite(requestedLightIntensity) && requestedLightIntensity > 0
+  ? THREE.MathUtils.clamp(requestedLightIntensity, 0.01, 2.0)
+  : 0.15  // default: subtle front-facing blue wash
+const USER_LIGHT_ENABLED = USER_LIGHT_INTENSITY > 0
+
+// When lightX/Y/Z are all provided, use a fixed direction; otherwise use the default (0, 0, 1).
+const _rawLX = Number(options.lightX)
+const _rawLY = Number(options.lightY)
+const _rawLZ = Number(options.lightZ)
+const USER_LIGHT_DIR: THREE.Vector3 =
+  Number.isFinite(_rawLX) && Number.isFinite(_rawLY) && Number.isFinite(_rawLZ)
+    ? new THREE.Vector3(_rawLX, _rawLY, _rawLZ).normalize()
+    : new THREE.Vector3(0, 0, 1)  // default: straight toward the camera (+Z)
+
+// `lightRadius` is the half-intensity radius: the angular distance (0–1, where 1 = globe edge)
+// at which brightness drops to 50%. Formula: k = ln(2) / r² so the mapping is physically grounded.
+// lightRadius=0.5 → half the globe lit at ≥50%; lightRadius=0.05 → tight small circle.
+const _rawRadius = Number(options.lightRadius)
+const USER_LIGHT_RADIUS = Number.isFinite(_rawRadius)
+  ? THREE.MathUtils.clamp(_rawRadius, 0.01, 1.0)
+  : 0.10  // default: tight soft circle
+const USER_GAUSSIAN_FALLOFF = 0.693 / (USER_LIGHT_RADIUS * USER_LIGHT_RADIUS)
 
 const initialHeatmapEnabled = options.initialHeatmapEnabled ?? false
 const initialFlightVisualizationMode: FlightVisualizationMode = options.initialFlightVisualizationMode ?? 'reengineered'
@@ -1049,8 +1129,6 @@ let visualTriOpacityMul = 1
 let visualTriShimmerMul = 1
 let visualLatLonOpacityMul = 1
 let visualLatLonShimmerMul = 1
-let visualLightingShadowMul = 1
-let visualLightingDayMul = 1
 let visualStarOpacityFar = DRAMATIC_VISUAL_PRESET.starOpacityFar
 let visualStarOpacityNear = DRAMATIC_VISUAL_PRESET.starOpacityNear
 
@@ -1068,9 +1146,14 @@ function applyVisualPreset() {
     depthMaskMesh.material.color.set(theme.scene.depthMask)
   }
   if (lightingShell) {
-    lightingShell.group.visible = false
+    lightingShell.group.visible = USER_LIGHT_ENABLED
+    // In spotlight mode, only the day (additive) mesh is shown — the night mesh would tint
+    // the whole globe with a shadow color, which is not wanted for a flashlight effect.
+    lightingShell.nightMesh.visible = false
+    lightingShell.dayMesh.visible = USER_LIGHT_ENABLED
     setUniformColor(lightingShell.nightMaterial.uniforms as any, 'uShadowColor', theme.lighting.shadow)
-    setUniformColor(lightingShell.dayMaterial.uniforms as any, 'uDayColor', theme.lighting.day)
+    const dayColor = options.lightColor ?? '#007AF5'
+    setUniformColor(lightingShell.dayMaterial.uniforms as any, 'uDayColor', dayColor)
   }
 
   if (landWater) {
@@ -1168,14 +1251,18 @@ function applyVisualPreset() {
     setUniformColor(outerUniforms, 'uRimColor', theme.atmosphere.outerRim)
     setUniformColor(subsurfaceUniforms, 'uCoreColor', theme.atmosphere.subsurfaceCore)
     setUniformColor(subsurfaceUniforms, 'uRimColor', theme.atmosphere.subsurfaceRim)
+    if (theme.atmosphere.glowColor != null) {
+      atmosphere.setGlowColor(new THREE.Color(theme.atmosphere.glowColor))
+    } else {
+      // Reset to neutral when glowColor is removed from the theme.
+      atmosphere.setGlowColor(new THREE.Color(1, 1, 1))
+    }
   }
 
   visualTriOpacityMul = cfg.triGridOpacityMul
   visualTriShimmerMul = cfg.triGridShimmerMul
   visualLatLonOpacityMul = cfg.latLonGridOpacityMul
   visualLatLonShimmerMul = cfg.latLonGridShimmerMul
-  visualLightingShadowMul = cfg.shadowMul
-  visualLightingDayMul = cfg.dayMul
   visualStarOpacityFar = cfg.starOpacityFar
   visualStarOpacityNear = cfg.starOpacityNear
 }
@@ -1219,7 +1306,14 @@ const requestedCountryClickZoomDuration = Number(options.countryClickZoomDuratio
 const countryClickZoomDuration = Number.isFinite(requestedCountryClickZoomDuration)
   ? THREE.MathUtils.clamp(Math.round(requestedCountryClickZoomDuration), 120, 8000)
   : null
-const MOBILE_FIXED_ZOOM_DISTANCE = THREE.MathUtils.clamp(21.4, minZoomDistance, maxZoomDistance)
+function getMobileZoomDistance() {
+  const aspect = Math.max(0.1, innerWidth / innerHeight)
+  const vFovHalfRad = THREE.MathUtils.degToRad(camera.fov / 2)
+  const hFovHalfRad = Math.atan(Math.tan(vFovHalfRad) * aspect)
+  const minFovHalfRad = Math.min(vFovHalfRad, hFovHalfRad)
+  const needed = (GLOBE_RADIUS / Math.sin(minFovHalfRad)) * 1.15
+  return Math.max(needed, minZoomDistance)
+}
 
 function isMobileZoomLocked() {
   return countrySearchMobileQuery.matches
@@ -1253,14 +1347,14 @@ function setCameraDistance(distance: number) {
 function zoomTo(distance: number, durationMs = 900) {
   if (isMobileZoomLocked()) {
     zoomAnim = null
-    setCameraDistance(MOBILE_FIXED_ZOOM_DISTANCE)
+    setCameraDistance(getMobileZoomDistance())
     return
   }
   zoomAnim = {
     t0: performance.now(),
     dur: durationMs,
-    from: camera.position.length(),
-    to: distance
+    from: THREE.MathUtils.clamp(camera.position.length(), minZoomDistance, maxZoomDistance),
+    to: THREE.MathUtils.clamp(distance, minZoomDistance, maxZoomDistance)
   }
 }
 
@@ -1273,21 +1367,24 @@ controls.addEventListener('start', () => {
 const railZoomIn = document.getElementById('rail-zoom-in') as HTMLButtonElement | null
 const railZoomOut = document.getElementById('rail-zoom-out') as HTMLButtonElement | null
 const leftRail = document.getElementById('left-rail') as HTMLElement | null
+if (!showZoomControls && leftRail) {
+  leftRail.remove()
+}
 
 function applyResponsiveZoomMode() {
   const locked = isMobileZoomLocked()
-  const effectiveZoomDistance = locked ? MOBILE_FIXED_ZOOM_DISTANCE : camera.position.length()
+  const mobileZoomDist = getMobileZoomDistance()
+  const effectiveZoomDistance = locked ? mobileZoomDist : camera.position.length()
 
   controls.enableZoom = !disableScrollZoom && !locked
-  controls.minDistance = locked ? MOBILE_FIXED_ZOOM_DISTANCE : minZoomDistance
-  controls.maxDistance = locked ? MOBILE_FIXED_ZOOM_DISTANCE : maxZoomDistance
+  controls.minDistance = locked ? mobileZoomDist : minZoomDistance
+  controls.maxDistance = locked ? mobileZoomDist : maxZoomDistance
   setCameraDistance(effectiveZoomDistance)
   controls.update()
 
-  if (leftRail) {
-    const showRail = showZoomControls && !locked
-    leftRail.style.display = showRail ? '' : 'none'
-    leftRail.setAttribute('aria-hidden', showRail ? 'false' : 'true')
+  if (showZoomControls && leftRail) {
+    leftRail.style.display = locked ? 'none' : ''
+    leftRail.setAttribute('aria-hidden', locked ? 'true' : 'false')
   }
 }
 
@@ -1359,6 +1456,7 @@ let hoveredCountryRouteFocusIso3: string | null = null
 
 function markUserInteracted() {
   hasUserInteracted = true
+  animatedCards?.stop()
 }
 
 function clampDragDelta(deltaRad: number) {
@@ -1385,6 +1483,7 @@ function isEventOverUI(target: EventTarget | null) {
 }
 
 function onPointerDown(e: PointerEvent) {
+  if (isMobileZoomLocked()) return
   if (e.button !== 0) return
   if (activePointerId !== null) return
   markUserInteracted()
@@ -1518,7 +1617,7 @@ function onPointerUp(e: PointerEvent) {
         selectFlightRoute(flightHit.routeId, e.clientX, e.clientY)
         return
       }
-      clearHoverHighlight(globeGroup)
+      clearHighlight(globeGroup)
       tooltip.hide()
       lastHoverKey = ''
       return
@@ -1721,6 +1820,71 @@ async function parseJsonResponse<T>(responsePromise: Promise<Response>, errorLab
   return response.json() as Promise<T>
 }
 
+/**
+ * Counts airports per country from the airports dataset.
+ * Each airport entry must have `latitude` and `longitude`.
+ * If the entry already has `iso3` (string) it is used directly; otherwise a point-in-polygon
+ * lookup against the GeoJSON is performed.
+ *
+ * Logs a summary and warns about any entries with invalid coordinates or unresolvable countries.
+ */
+function buildAirportCountByIso3(
+  airports: any[],
+  countriesGeoJSON: any
+): Map<string, number> {
+  const counts = new Map<string, number>()
+  if (!Array.isArray(airports) || airports.length === 0) return counts
+
+  let invalidCoords = 0
+  let missingCode = 0
+
+  for (const ap of airports) {
+    const lat = Number(ap.latitude ?? ap.lat)
+    const lon = Number(ap.longitude ?? ap.lon ?? ap.lng)
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) ||
+        lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      invalidCoords++
+      continue
+    }
+
+    // Fast path: use pre-supplied ISO3 if present (airports.json uses iso_3_code)
+    const rawIso3 = ap.iso3 ?? ap.iso_3_code
+    let iso3 = typeof rawIso3 === 'string' ? rawIso3.trim() : ''
+
+    // Slower path: geo lookup
+    if (!iso3 && countriesGeoJSON) {
+      const feature = findCountryFeature(countriesGeoJSON, lat, lon)
+      if (feature) {
+        const props = feature.properties || {}
+        const candidates = [props.ISO_A3, props.ADM0_A3, props.BRK_A3, props.SU_A3]
+        iso3 = candidates.find((v): v is string =>
+          typeof v === 'string' && v.length > 0 && v !== '-99'
+        ) ?? ''
+      }
+    }
+
+    if (!iso3) {
+      missingCode++
+      continue
+    }
+
+    counts.set(iso3, (counts.get(iso3) ?? 0) + 1)
+  }
+
+  const resolved = airports.length - invalidCoords - missingCode
+  console.info(
+    `[airports] per-country aggregation: total=${airports.length} resolved=${resolved} invalid_coords=${invalidCoords} no_country=${missingCode} countries=${counts.size}`
+  )
+  if (invalidCoords > 0 || missingCode > 0) {
+    console.warn(
+      `[airports] data quality: ${invalidCoords} entries with invalid coordinates, ${missingCode} with no matching country`
+    )
+  }
+
+  return counts
+}
+
 async function parseEnrichedFlightsResponse(
   responsePromise: Promise<Response>,
   errorLabel: string,
@@ -1831,8 +1995,7 @@ function clearSelectionUIState() {
   applyDefaultTooltipChrome()
   tooltip.hide()
   lastHoverKey = ''
-  clearHoverHighlight(globeGroup)
-  fadeOutHover(globeGroup)
+  clearHighlight(globeGroup)
 
   selectedFlightRouteId = null
   flightRoutes?.setSelectedRoute(null)
@@ -1842,7 +2005,8 @@ function clearSelectionUIState() {
   isCountrySelected = false
   selectedCountryIso3 = null
   flightRoutes?.setFocusCountry(null)
-  clearHighlight(globeGroup)
+  clearHoverHighlight(globeGroup)
+  fadeOutHover(globeGroup)
   setGlobeBreadcrumbs(getBaseBreadcrumbs())
 }
 
@@ -2084,7 +2248,7 @@ function showCountryTooltip(feature: any, x: number, y: number) {
 
 function applyFlightHover(routeId: number, clientX: number, clientY: number) {
   clearHoverRouteCouplingCountry()
-  clearHoverHighlight(globeGroup)
+  clearHighlight(globeGroup)
   lastHoverKey = ''
   flightRoutes?.setHoverRoute(routeId)
   renderer.domElement.style.cursor = 'pointer'
@@ -2229,9 +2393,9 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
     return
   }
   clearHoverRouteCouplingCountry()
-  fadeOutHover(globeGroup)
+  clearHighlight(globeGroup)
   tooltip.hide()
-  highlightCountryFromFeature(feature, globeGroup, GLOBE_RADIUS)
+  setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
   rememberRecentCountry(feature)
   isCountrySelected = true
   selectedCountryIso3 = iso3 || null
@@ -2305,7 +2469,7 @@ function pickCountryAt(clientX: number, clientY: number, options: { allowOceanCl
 function clearHoverInteractionState() {
   clearHoverRouteCouplingCountry()
   flightRoutes?.setHoverRoute(null)
-  clearHoverHighlight(globeGroup)
+  clearHighlight(globeGroup)
   applyDefaultTooltipChrome()
   tooltip.hide()
   lastHoverKey = ''
@@ -2346,7 +2510,7 @@ function onPointerHover(e: PointerEvent) {
     const iso3 = getISO3(feature.properties)
     if (isCountrySelected && selectedCountryIso3 && iso3 === selectedCountryIso3) {
       clearHoverRouteCouplingCountry()
-      clearHoverHighlight(globeGroup)
+      clearHighlight(globeGroup)
       applyDefaultTooltipChrome()
       tooltip.hide()
       lastHoverKey = ''
@@ -2358,7 +2522,7 @@ function onPointerHover(e: PointerEvent) {
     const key = feature.properties?.ISO_A3 || feature.properties?.ADMIN || feature.properties?.NAME || 'country'
     if (key !== lastHoverKey) {
       lastHoverKey = key
-      setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
+      highlightCountryFromFeature(feature, globeGroup, GLOBE_RADIUS)
     }
     setHoverRouteCouplingCountry(iso3)
 
@@ -2515,16 +2679,17 @@ function animate() {
       // “corta” quando ficar imperceptível (evita drift infinito)
       if (Math.abs(velYaw) < 0.00001) velYaw = 0
       if (Math.abs(velPitch) < 0.00001) velPitch = 0
-    } else if (!hasUserInteracted && !isCountrySelected && selectedFlightRouteId === null) {
-      // Idle rotation until first user interaction.
+    } else if ((!hasUserInteracted || isMobileZoomLocked()) && !isCountrySelected && selectedFlightRouteId === null) {
+      // Desktop: spin until first user interaction.
+      // Mobile: always spin when nothing is selected (resumes after card is closed).
       yawAccum += AUTO_ROTATE_SPEED * deltaSeconds
       applyYawPitchToGlobe()
     }
   }
 
-  // Sun direction (Earth-fixed): update a few times per second, then rotate with the globe
-  // so day/night remains anchored to geography even though we rotate the globe (camera is fixed).
-  if (lightingShell || atmosphere) {
+  // Solar direction — used by atmosphere glow and night lights.
+  // The lighting shell in spotlight mode uses camera direction instead (handled below).
+  if (atmosphere || nightLights) {
     if (nowMs - _lastSunUpdateMs > 1500) {
       _sunLocalDir.copy(getSunDirectionUTC(new Date()))
       _lastSunUpdateMs = nowMs
@@ -2532,31 +2697,11 @@ function animate() {
     _sunWorldDir.copy(_sunLocalDir).applyQuaternion(globeGroup.quaternion)
   }
 
-  if (lightingShell) {
-    const sun = _sunWorldDir
-    const zoom01 = getCameraZoom01(cameraDistance)
-    const strength = THREE.MathUtils.lerp(0.12, 0.22, zoom01)
-    const softness = THREE.MathUtils.lerp(0.34, 0.22, zoom01)
-    lightingShell.nightMaterial.uniforms.uLightDir.value.copy(sun)
-    lightingShell.nightMaterial.uniforms.uShadowStrength.value = strength * visualLightingShadowMul
-    lightingShell.nightMaterial.uniforms.uTerminatorSoftness.value = softness
-
-    const baseDayStrength = THREE.MathUtils.lerp(0.058, 0.102, zoom01)
-    const dayPulse = 0.93 + 0.07 * Math.sin(now * 0.35)
-    const dayStrength = baseDayStrength * dayPulse
-    lightingShell.dayMaterial.uniforms.uLightDir.value.copy(sun)
-    lightingShell.dayMaterial.uniforms.uDayStrength.value = dayStrength * visualLightingDayMul
-    if ((lightingShell.dayMaterial.uniforms as any).uSunSpecStrength) {
-      ;(lightingShell.dayMaterial.uniforms as any).uSunSpecStrength.value =
-        THREE.MathUtils.lerp(0.14, 0.32, zoom01) * visualLightingDayMul
-    }
-    if ((lightingShell.dayMaterial.uniforms as any).uSunHaloStrength) {
-      ;(lightingShell.dayMaterial.uniforms as any).uSunHaloStrength.value =
-        THREE.MathUtils.lerp(0.024, 0.062, zoom01) * visualLightingDayMul
-    }
-    if ((lightingShell.dayMaterial.uniforms as any).uSunSpecPower) {
-      ;(lightingShell.dayMaterial.uniforms as any).uSunSpecPower.value = THREE.MathUtils.lerp(44, 68, zoom01)
-    }
+  if (lightingShell && USER_LIGHT_ENABLED) {
+    // Gaussian soft light — no hotspot, smooth wide blob facing the camera.
+    lightingShell.dayMaterial.uniforms.uLightDir.value.copy(USER_LIGHT_DIR)
+    lightingShell.dayMaterial.uniforms.uDayStrength.value = USER_LIGHT_INTENSITY
+    ;(lightingShell.dayMaterial.uniforms as any).uGaussianFalloff.value = USER_GAUSSIAN_FALLOFF
   }
   if (atmosphere) {
     atmosphere.setLightDir(_sunWorldDir)
@@ -2565,23 +2710,8 @@ function animate() {
     nightLights.update(now, cameraDistance, _sunWorldDir)
   }
 
-  // Postprocessing uniforms.
-  if (vignettePass?.material?.uniforms?.uTime) {
-    vignettePass.material.uniforms.uTime.value = now
-  }
-
-  // Subtle bloom zoom response (near = richer, far = cleaner).
-  if (bloomPass) {
-    const zoom = getCameraZoom01(cameraDistance)
-    bloomPass.strength = THREE.MathUtils.lerp(0.11, 0.18, zoom)
-  }
-
   controls.update()
-  if (composer) {
-    composer.render(deltaSeconds)
-  } else {
-    renderer.render(scene, camera)
-  }
+  renderer.render(scene, camera)
 }
 
 let animationLoopStarted = false
@@ -2597,8 +2727,11 @@ function ensureAnimationLoopStarted() {
  */
 async function init() {
   const geojsonPromise = loadGeoJSON(COUNTRIES_GEOJSON_PATH)
-  const airportsResponsePromise = fetch(resolveAssetPath('data/airports_points.json'))
-  const enrichedFlightsResponsePromise = fetch(resolveAssetPath('data/flights_enriched.json'))
+  const defaultAirportsFile = options.useFullAirportsDataset !== false ? 'airports.json' : 'airports_points.json'
+  const airportsFile = (options.airportsDataFile ?? defaultAirportsFile).replace(/^\/+/, '')
+  const routesFile = (options.routesDataFile ?? 'flights_enriched.json').replace(/^\/+/, '')
+  const airportsResponsePromise = fetch(resolveAssetPath(`data/${airportsFile}`))
+  const enrichedFlightsResponsePromise = fetch(resolveAssetPath(`data/${routesFile}`))
 
   depthMaskMesh = createDepthMaskSphere(GLOBE_RADIUS)
   globeGroup.add(depthMaskMesh)
@@ -2643,10 +2776,16 @@ async function init() {
   await waitForDelay(INTRO_FLIGHT_BOOTSTRAP_DELAY_MS)
   await waitForBrowserIdle(160)
 
-  const baseAirports = await parseJsonResponse<any[]>(
+  const rawAirportsJson = await parseJsonResponse<any>(
     airportsResponsePromise,
     'Failed to load airport points'
   )
+  // airports.json wraps records under { records: [...] }; airports_points.json is a plain array.
+  const baseAirports: any[] = Array.isArray(rawAirportsJson)
+    ? rawAirportsJson
+    : Array.isArray(rawAirportsJson?.records)
+      ? rawAirportsJson.records
+      : []
   const denseAirports = SHOW_NIGHT_LIGHTS
     ? inflateAirportsDataset(baseAirports, countriesGeoJSON, {
         targetCount: SYNTHETIC_AIRPORT_TARGET,
@@ -2654,12 +2793,22 @@ async function init() {
       })
     : []
   const airportPointData = Array.isArray(baseAirports) ? baseAirports : []
-  const baseCount = Array.isArray(baseAirports) ? baseAirports.length : 0
+  const baseCount = airportPointData.length
+  const rawRenderLimit = Number(options.airportRenderLimit)
+  const airportRenderLimit = Number.isFinite(rawRenderLimit) && rawRenderLimit > 0
+    ? Math.floor(rawRenderLimit)
+    : null
+  // Render slice: respects the limit; full data always goes to the aggregation below.
+  const airportRenderData = airportRenderLimit !== null
+    ? airportPointData.slice(0, airportRenderLimit)
+    : airportPointData
   console.info(
-    `[airports] base=${baseCount} land_spaced=${denseAirports.length} spacingDeg=${AIRPORT_MIN_SPACING_DEG}`
+    `[airports] file=${airportsFile} total=${baseCount} rendering=${airportRenderData.length}${airportRenderLimit !== null ? ` (limit=${airportRenderLimit})` : ''}`
   )
+  // Build per-country airport count from full dataset — separate metric from route counts.
+  const airportCountByIso3 = buildAirportCountByIso3(airportPointData, countriesGeoJSON)
   if (SHOW_AIRPORT_POINTS) {
-    languagePoints = createLanguagePoints(airportPointData, GLOBE_RADIUS)
+    languagePoints = createLanguagePoints(airportRenderData, GLOBE_RADIUS)
     globeGroup.add(languagePoints.points)
   } else {
     languagePoints = null
@@ -2700,7 +2849,8 @@ async function init() {
     {
       flights: enrichedFlights,
       airportLookup: enrichedAirports,
-      countryStats: enrichedCountryStats
+      countryStats: enrichedCountryStats,
+      airportCountByIso3
     },
     GLOBE_RADIUS,
     countriesGeoJSON,
@@ -2712,11 +2862,23 @@ async function init() {
     }
   )
   console.info(
-    `[flights] source=flights_enriched.json source_flights=${enrichedFlights.length} route_target=${FLIGHT_ROUTE_TARGET ?? 'all'} planes_per_route=${FLIGHT_PLANES_PER_ROUTE} plane_density_scale=${FLIGHT_PLANE_DENSITY_SCALE.toFixed(2)} country_stats=${enrichedCountryStats ? Object.keys(enrichedCountryStats).length : 0}`
+    `[flights] file=${routesFile} source_flights=${enrichedFlights.length} route_target=${FLIGHT_ROUTE_TARGET ?? 'all'} planes_per_route=${FLIGHT_PLANES_PER_ROUTE} plane_density_scale=${FLIGHT_PLANE_DENSITY_SCALE.toFixed(2)} country_stats=${enrichedCountryStats ? Object.keys(enrichedCountryStats).length : 0} airport_countries=${airportCountByIso3.size}`
   )
   globeGroup.add(flightRoutes.group)
   applyFlightVisualization(initialFlightVisualizationMode)
   applyHeatmap(initialHeatmapEnabled)
+
+  if (animatedCards && !hasUserInteracted && !isCountrySelected) {
+    animatedCards.start(() => {
+      if (!flightRoutes) return null
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const id = Math.floor(Math.random() * 16000)
+        const info = flightRoutes.getRouteInfo(id)
+        if (info && (info.fromCode || info.toCode)) return info
+      }
+      return null
+    })
+  }
 
   applyVisualPreset()
 
@@ -2758,9 +2920,32 @@ async function init() {
     camera.updateProjectionMatrix()
     renderer.setSize(innerWidth, innerHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    updatePostprocessSize()
     applyResponsiveZoomMode()
   })
+
+  if (scrollResetsView) {
+    let scrollResetTimer: ReturnType<typeof setTimeout> | null = null
+
+    window.addEventListener('wheel', (event) => {
+      // Only act when there is something to close.
+      if (!isCountrySelected && selectedFlightRouteId === null) return
+      // Never fire when the pointer is inside the card UI.
+      if (event.target instanceof Element && event.target.closest('#country-panel')) return
+
+      // Debounce: cancel the previous pending reset so rapid scrolling only triggers one reset.
+      if (scrollResetTimer !== null) {
+        clearTimeout(scrollResetTimer)
+      }
+      scrollResetTimer = setTimeout(() => {
+        scrollResetTimer = null
+        clearSelectionUIState()
+        globeAnim = null
+        velYaw = 0
+        velPitch = 0
+        zoomTo(maxZoomDistance, 900)
+      }, 250)
+    }, { passive: true })
+  }
 
   window.addEventListener('pointermove', onPointerHover)
 }

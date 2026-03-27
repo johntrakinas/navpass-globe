@@ -82,6 +82,8 @@ type FlightRoutesSource =
       flights: EnrichedFlightRecord[]
       airportLookup?: Record<string, EnrichedAirportMeta> | null
       countryStats?: Record<string, EnrichedCountryStats> | null
+      /** Per-country airport counts, keyed by ISO3. Built externally from the airports dataset. */
+      airportCountByIso3?: Map<string, number> | null
     }
 
 type Route = {
@@ -141,6 +143,8 @@ type CountryFlightStats = {
   dayIncoming?: number
   dayOutgoing?: number
   over?: number
+  /** Number of airports physically located in this country (from the airports dataset). */
+  airports?: number
 }
 
 export type FlightRouteMaterials = {
@@ -982,6 +986,30 @@ function getCountryNameAliases(name: string) {
   if (key === 'myanmar') out.add('burma')
   if (key === 'burma') out.add('myanmar')
 
+  // UN/ISO formal names ↔ common names
+  if (key === 'bolivia, plurinational state of') out.add('bolivia')
+  if (key === 'bolivia') out.add('bolivia, plurinational state of')
+  if (key === 'congo, the democratic republic of the') { out.add('democratic republic of the congo'); out.add('dem rep congo') }
+  if (key === 'democratic republic of the congo' || key === 'dem rep congo') out.add('congo, the democratic republic of the')
+  if (key === 'iran, islamic republic of') out.add('iran')
+  if (key === 'iran') out.add('iran, islamic republic of')
+  if (key === 'korea, democratic people\'s republic of') { out.add('north korea'); out.add('dem rep korea') }
+  if (key === 'north korea' || key === 'dem rep korea') out.add('korea, democratic people\'s republic of')
+  if (key === 'korea, republic of') { out.add('south korea'); out.add('republic of korea') }
+  if (key === 'south korea' || key === 'republic of korea') out.add('korea, republic of')
+  if (key === 'lao people\'s democratic republic') out.add('laos')
+  if (key === 'laos') out.add('lao people\'s democratic republic')
+  if (key === 'macedonia, republic of') { out.add('north macedonia'); out.add('macedonia') }
+  if (key === 'north macedonia' || key === 'macedonia') out.add('macedonia, republic of')
+  if (key === 'moldova, republic of') out.add('moldova')
+  if (key === 'moldova') out.add('moldova, republic of')
+  if (key === 'syrian arab republic') out.add('syria')
+  if (key === 'syria') out.add('syrian arab republic')
+  if (key === 'tanzania, united republic of') out.add('tanzania')
+  if (key === 'tanzania') out.add('tanzania, united republic of')
+  if (key === 'venezuela, bolivarian republic of') out.add('venezuela')
+  if (key === 'venezuela') out.add('venezuela, bolivarian republic of')
+
   return [...out]
 }
 
@@ -1551,11 +1579,23 @@ function buildCountryStatsByIso3(
   if (!countryStats) return out
 
   const isoByName = buildCountryIsoLookup(countriesGeoJSON)
+  const unmapped: string[] = []
   for (const [countryName, stats] of Object.entries(countryStats)) {
     const aliases = getCountryNameAliases(countryName)
-    const iso3 = aliases.map(alias => isoByName.get(alias)).find((value): value is string => typeof value === 'string' && value.length > 0)
-    if (!iso3) continue
+    const iso3 = aliases
+      .map(alias => isoByName.get(alias))
+      .find((value): value is string => typeof value === 'string' && value.length > 0)
+    if (!iso3) {
+      unmapped.push(countryName)
+      continue
+    }
     out.set(iso3, stats || {})
+  }
+
+  const total = Object.keys(countryStats).length
+  console.info(`[flights] country_stats: mapped=${out.size}/${total} unmapped=${unmapped.length}`)
+  if (unmapped.length > 0) {
+    console.warn('[flights] country_stats: could not resolve to ISO3 —', unmapped)
   }
 
   return out
@@ -1639,6 +1679,8 @@ export function createFlightRoutes(
     isEnrichedSource ? source.countryStats : null,
     countriesGeoJSON
   )
+  const airportCountByIso3: Map<string, number> | null =
+    isEnrichedSource ? (source.airportCountByIso3 ?? null) : null
 
   function getISO3FromFeature(feature: any) {
     const props = feature?.properties || {}
@@ -3022,7 +3064,7 @@ export function createFlightRoutes(
           attrs.animB[po + 2] = r.traffic
 
           const ps = idx * 2
-          attrs.focusRoute[ps + 0] = 1
+          attrs.focusRoute[ps + 0] = !focusIso3 || r.countryIso3List.includes(focusIso3) ? 1 : 0
           attrs.focusRoute[ps + 1] = r.id
           attrs.altitude[idx] = r.altitude01
           attrs.hub[idx] = r.hub
@@ -3163,16 +3205,33 @@ export function createFlightRoutes(
 
   const routesByCountry = new Map<string, number[]>()
 
+  type RouteCountStats = { arr: number; dep: number; dom: number; over: number }
+  const routeCountsByIso3 = new Map<string, RouteCountStats>()
+
   function rebuildRoutesByCountryIndex() {
     routesByCountry.clear()
+    routeCountsByIso3.clear()
     for (let i = 0; i < routeData.length; i++) {
       const r = routeData[i]
+      const count = Math.max(1, Math.round(r.trafficCount ?? 1))
       for (let j = 0; j < r.countryIso3List.length; j++) {
         const iso3 = r.countryIso3List[j]
         if (!iso3) continue
+
+        // routesByCountry index
         const list = routesByCountry.get(iso3) ?? []
         list.push(i)
         routesByCountry.set(iso3, list)
+
+        // per-country arr/dep/dom/over counts derived from actual route endpoints
+        let s = routeCountsByIso3.get(iso3)
+        if (!s) { s = { arr: 0, dep: 0, dom: 0, over: 0 }; routeCountsByIso3.set(iso3, s) }
+        const isOrig = r.isoA3 === iso3
+        const isDest = r.isoB3 === iso3
+        if (isOrig && isDest) s.dom += count
+        else if (isOrig) s.dep += count
+        else if (isDest) s.arr += count
+        else s.over += count
       }
     }
   }
@@ -3187,6 +3246,26 @@ export function createFlightRoutes(
   }
 
   rebuildRoutesByCountryIndex()
+
+  // Debug: log computed route stats for a known country to verify aggregation.
+  // Remove or gate behind a flag if you want to suppress in production.
+  ;(() => {
+    const DEBUG_ISO3 = 'USA'
+    const s = routeCountsByIso3.get(DEBUG_ISO3)
+    const total = routeData.length
+    const dep  = routeData.filter(r => r.isoA3 === DEBUG_ISO3 && r.isoB3 !== DEBUG_ISO3).length
+    const arr  = routeData.filter(r => r.isoB3 === DEBUG_ISO3 && r.isoA3 !== DEBUG_ISO3).length
+    const dom  = routeData.filter(r => r.isoA3 === DEBUG_ISO3 && r.isoB3 === DEBUG_ISO3).length
+    const over = routeData.filter(r => r.isoA3 !== DEBUG_ISO3 && r.isoB3 !== DEBUG_ISO3 && r.countryIso3List.includes(DEBUG_ISO3)).length
+    console.info(
+      `[flights:debug] ${DEBUG_ISO3} raw route scan (total dataset: ${total})` +
+      ` — dep=${dep} arr=${arr} dom=${dom} over=${over}`
+    )
+    console.info(
+      `[flights:debug] ${DEBUG_ISO3} routeCountsByIso3 (trafficCount-weighted)` +
+      ` — dep=${s?.dep ?? 0} arr=${s?.arr ?? 0} dom=${s?.dom ?? 0} over=${s?.over ?? 0}`
+    )
+  })()
 
   function setEndpointPositions(kind: 'hover' | 'selected', routeId: number) {
     const r = routeData[routeId]
@@ -3331,47 +3410,7 @@ export function createFlightRoutes(
     }
   }
 
-  function computeRouteFlightsAtTime(r: Route, timeSeconds: number) {
-    // This is a synthetic but stable metric derived from the simulated network:
-    // more routes + higher traffic => higher baseline, plus smooth time modulation.
-    const w1 = 0.6 + 0.4 * Math.sin(timeSeconds * 0.019 + r.seed * 11.7)
-    const w2 = 0.65 + 0.35 * Math.sin(timeSeconds * 0.007 + r.phase * Math.PI * 2 + r.seed * 3.9)
-    const w3 = 0.75 + 0.25 * Math.sin(timeSeconds * 0.003 + r.id * 0.8)
-    const activity = THREE.MathUtils.clamp((w1 * 0.46 + w2 * 0.38 + w3 * 0.16), 0.18, 1.15)
-    const trafficBoost = THREE.MathUtils.clamp(0.85 + (r.traffic - 0.62) * 0.25, 0.82, 1.05)
-    return r.trafficCount * activity * trafficBoost
-  }
 
-  function computeCountryFlightsAtTime(routeIds: number[], iso3: string, timeSeconds: number) {
-    let incoming = 0
-    let outgoing = 0
-
-    for (let i = 0; i < routeIds.length; i++) {
-      const r = routeData[routeIds[i]]
-      if (!r) continue
-
-      const flightsNow = computeRouteFlightsAtTime(r, timeSeconds)
-      const isOrigin = r.isoA3 === iso3
-      const isDestination = r.isoB3 === iso3
-
-      if (isOrigin && isDestination) {
-        incoming += flightsNow * 0.5
-        outgoing += flightsNow * 0.5
-        continue
-      }
-      if (isDestination) {
-        incoming += flightsNow
-      }
-      if (isOrigin) {
-        outgoing += flightsNow
-      }
-    }
-
-    return {
-      incoming: Math.max(0, Math.round(incoming)),
-      outgoing: Math.max(0, Math.round(outgoing))
-    }
-  }
 
   function distributeDomesticFlights(incoming: number, outgoing: number, domestic: number) {
     const safeIncoming = Math.max(0, Math.round(incoming))
@@ -3386,33 +3425,45 @@ export function createFlightRoutes(
     }
   }
 
-  function getCountryFlightStats(iso3: string, timeSeconds: number): CountryFlightStats {
+  function getCountryFlightStats(iso3: string, _timeSeconds: number): CountryFlightStats {
     const key = (iso3 || '').trim()
+    const airports = airportCountByIso3?.get(key)
+
+    // Route-derived counts are the ONLY source for arr/dep/dom/over.
+    // The pre-aggregated fields in the enriched JSON (enrichedStats.arr/dep/dom/over)
+    // are known to be incorrect and are deliberately not used here.
+    const computed = routeCountsByIso3.get(key)
+    const arr      = computed?.arr  ?? 0
+    const dep      = computed?.dep  ?? 0
+    const domestic = computed?.dom  ?? 0
+    const over     = computed?.over ?? 0
+    const flow     = distributeDomesticFlights(arr, dep, domestic)
+
     const enrichedStats = countryStatsByIso3.get(key)
     if (enrichedStats) {
-      const domestic = Math.max(0, Math.round(Number(enrichedStats.dom ?? 0)))
-      const over = Math.max(0, Math.round(Number(enrichedStats.over ?? 0)))
-      const dayDomestic = Math.max(0, Math.round(Number(enrichedStats.day_dom ?? 0)))
-      const flowNow = distributeDomesticFlights(enrichedStats.arr ?? 0, enrichedStats.dep ?? 0, domestic)
-      const flowDay = distributeDomesticFlights(
-        enrichedStats.day_arr ?? 0,
-        enrichedStats.day_dep ?? 0,
-        dayDomestic
-      )
+      // `in_air` is a real-time snapshot from the enriched source — keep it for the live count.
+      // Fall back to route-derived totals when absent.
       const now = Math.max(
         0,
         Math.round(
           Number.isFinite(Number(enrichedStats.in_air))
             ? Number(enrichedStats.in_air)
-            : flowNow.incoming + flowNow.outgoing + over
+            : flow.incoming + flow.outgoing + over
         )
+      )
+      // Day-level totals are also kept from the enriched source (not covered by raw routes).
+      const dayDomestic = Math.max(0, Math.round(Number(enrichedStats.day_dom ?? 0)))
+      const flowDay = distributeDomesticFlights(
+        enrichedStats.day_arr ?? 0,
+        enrichedStats.day_dep ?? 0,
+        dayDomestic
       )
       return {
         now,
         tenMinAgo: now,
         routes: now,
-        incoming: flowNow.incoming,
-        outgoing: flowNow.outgoing,
+        incoming: flow.incoming,
+        outgoing: flow.outgoing,
         dayTotal: Math.max(
           0,
           Math.round(
@@ -3423,20 +3474,21 @@ export function createFlightRoutes(
         ),
         dayIncoming: flowDay.incoming,
         dayOutgoing: flowDay.outgoing,
-        over
+        over,
+        airports
       }
     }
 
+    // Non-enriched path: route-derived counts only, no time-varying animation on the stats.
     const routeIds = key ? routesByCountry.get(key) ?? [] : []
-    const nowBreakdown = computeCountryFlightsAtTime(routeIds, key, timeSeconds)
-    const tenMinAgoBreakdown = computeCountryFlightsAtTime(routeIds, key, timeSeconds - 600)
-
     return {
-      now: nowBreakdown.incoming + nowBreakdown.outgoing,
-      tenMinAgo: tenMinAgoBreakdown.incoming + tenMinAgoBreakdown.outgoing,
+      now: flow.incoming + flow.outgoing + over,
+      tenMinAgo: flow.incoming + flow.outgoing + over,
       routes: routeIds.length,
-      incoming: nowBreakdown.incoming,
-      outgoing: nowBreakdown.outgoing
+      incoming: flow.incoming,
+      outgoing: flow.outgoing,
+      over,
+      airports
     }
   }
 
@@ -3659,6 +3711,9 @@ export function createFlightRoutes(
 
   if (isEnrichedSource) {
     startEnrichedRouteDataBuild(() => {
+      // Routes are now fully populated — rebuild the country index so routeCountsByIso3
+      // reflects the actual enriched dataset (it was empty at initial construction time).
+      rebuildRoutesByCountryIndex()
       rebuildHeatTextureFromRoutes()
       routeScoresBuildState = 'idle'
       routeBuildState = 'ready'
