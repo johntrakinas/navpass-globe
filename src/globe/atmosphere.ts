@@ -27,6 +27,9 @@ uniform vec3 uCameraPos;
 // Multiplicative tint applied to the final layer color.
 // vec3(1,1,1) = no change; set to any hue to recolor the glow at runtime.
 uniform vec3 uGlowColor;
+// 1.0 for the FrontSide inner-glow layer, 0.0 for BackSide halo layers.
+// Enables gradient edge-softening on the inner layer without affecting the rim.
+uniform float uFrontSide;
 
 varying vec3 vNormal;
 varying vec3 vWorldPosition;
@@ -48,7 +51,13 @@ void main() {
   // Apply runtime glow tint — multiplicative so white is a no-op.
   color *= uGlowColor;
 
-  float alpha = rim * uIntensity * uDistanceFade * uAngleFade;
+  // Border fade: smooth the outer boundary of the inner glow layer so it
+  // dissolves into the rim instead of cutting off. Applied only on the
+  // FrontSide layer (uFrontSide = 1) because BackSide layers always have
+  // fresnel ≈ 1 and would be zeroed otherwise.
+  float edgeFade = 1.0 - smoothstep(0.76, 0.98, fresnel) * uFrontSide;
+
+  float alpha = rim * uIntensity * uDistanceFade * uAngleFade * edgeFade;
   alpha *= 0.86 + 0.22 * halo;
 
   gl_FragColor = vec4(color, alpha);
@@ -81,7 +90,8 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
         uDistanceFade: { value: 1.0 },
         uAngleFade: { value: 1.0 },
         uCameraPos: { value: new THREE.Vector3() },
-        uGlowColor: { value: new THREE.Color(1, 1, 1) }
+        uGlowColor: { value: new THREE.Color(1, 1, 1) },
+        uFrontSide: { value: options.side === THREE.FrontSide ? 1.0 : 0.0 }
       },
       transparent: true,
       depthWrite: false,
@@ -113,8 +123,8 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
   }
 
   const innerLayer = createAtmosphereLayer({
-    radiusScale: 1.028,
-    intensity: 0.108,
+    radiusScale: 1.052,
+    intensity: 0.118,
     power: 2.25,
     coreColor: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.14),
     rimColor: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.white, 0.42),
@@ -127,8 +137,8 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
   })
 
   const outerLayer = createAtmosphereLayer({
-    radiusScale: 1.052,
-    intensity: 0.078,
+    radiusScale: 1.090,
+    intensity: 0.090,
     power: 1.95,
     coreColor: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.08),
     rimColor: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.white, 0.56),
@@ -140,10 +150,13 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
     angleFar: 0.68
   })
 
+  // FrontSide layer: creates the wide inner gradient visible on the globe face.
+  // Lower power (1.80 vs 3.10) spreads the gradient to ~80% of the visible face.
+  // edgeFade in the shader (uFrontSide=1) then dissolves it smoothly at the rim.
   const subsurfaceLayer = createAtmosphereLayer({
-    radiusScale: 1.008,
-    intensity: 0.024,
-    power: 3.10,
+    radiusScale: 1.016,
+    intensity: 0.058,
+    power: 1.80,
     coreColor: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.04),
     rimColor: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.white, 0.22),
     side: THREE.FrontSide,

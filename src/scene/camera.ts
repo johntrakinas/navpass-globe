@@ -42,11 +42,11 @@ function ensureStyles() {
       --globe-breadcrumb-top: ${DEFAULT_BREADCRUMB_OFFSET_TOP}px;
       --globe-breadcrumb-left-compact: 20px;
       --globe-breadcrumb-top-compact: 40px;
-      /* Theming tokens — override via configureGlobeUi or ?accentColor / ?cardBorderColor / ?cardBorderWidth */
+      /* Theming tokens — override via configureGlobeUi or URL params */
       --np-accent: #ecb200;
-      --np-accent-glow: rgba(236, 178, 0, 0.68);
       --np-border-color: rgba(255, 255, 255, 0.08);
       --np-border-width: 1px;
+      --np-card-bg: #0d1c30;
     }
     #country-panel,
     #country-panel *,
@@ -64,7 +64,7 @@ function ensureStyles() {
       padding: 1px;
       margin: 0;
       border: var(--np-border-width) solid var(--np-border-color);
-      background: #0d1c30;
+      background: var(--np-card-bg);
       color: #ffffff;
       box-shadow: 0 24px 52px -18px rgba(0, 0, 0, 0.58);
       pointer-events: auto;
@@ -76,9 +76,7 @@ function ensureStyles() {
     #country-panel.is-visible { opacity: 1; transform: translateY(0); }
     #country-panel.is-visible:hover {
       border-color: var(--np-accent);
-      box-shadow:
-        0 28px 56px -16px rgba(0, 0, 0, 0.6),
-        0 0 56px -12px var(--np-accent-glow);
+      box-shadow: 0 28px 56px -16px rgba(0, 0, 0, 0.6);
     }
     #focus-dim {
       position: fixed;
@@ -641,29 +639,25 @@ function renderBreadcrumbs() {
     .join('')
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
-
 function applyCardThemeVars(options: {
   cardBorderColor?: string
   cardBorderWidth?: number
+  cardBackground?: string
   accentColor?: string
 }) {
   const root = document.getElementById(UI_ROOT_ID)
   if (!root) return
   if (options.accentColor) {
     root.style.setProperty('--np-accent', options.accentColor)
-    root.style.setProperty('--np-accent-glow', hexToRgba(options.accentColor, 0.68))
   }
   if (options.cardBorderColor) {
     root.style.setProperty('--np-border-color', options.cardBorderColor)
   }
   if (options.cardBorderWidth !== undefined && Number.isFinite(options.cardBorderWidth)) {
     root.style.setProperty('--np-border-width', `${Math.max(0, options.cardBorderWidth)}px`)
+  }
+  if (options.cardBackground) {
+    root.style.setProperty('--np-card-bg', options.cardBackground)
   }
 }
 
@@ -674,6 +668,7 @@ export function configureGlobeUi(options: {
   breadcrumbOffsetTop?: number
   cardBorderColor?: string
   cardBorderWidth?: number
+  cardBackground?: string
   accentColor?: string
 } = {}) {
   showBreadcrumbs = options.showBreadcrumbs !== false

@@ -1,4 +1,7 @@
 import * as THREE from 'three'
+import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { latLongToVector3 } from './latLongtoVector3'
 import { scaleThickness } from './thicknessScale'
 import { computeCountryStrokeScale } from './countryStrokeScale'
@@ -12,6 +15,9 @@ export type CountryHighlightPaletteTheme = {
 
 let current: THREE.Object3D | null = null
 let currentMats: THREE.ShaderMaterial[] = []
+let selectBackingMat: LineMaterial | null = null
+let selectBackingEnabled = true
+const SELECT_BACKING_BASE_WIDTH = 10.0
 let pulsePhase = Math.random() * Math.PI * 2
 const SELECT_RADIUS_MULT = 1.004
 const SELECT_SCALE = 1.02
@@ -74,6 +80,38 @@ void main() {
   gl_FragColor = vec4(color, uOpacity);
 }
 `
+
+function createSelectBackingMaterial() {
+  const mat = new LineMaterial({
+    color: 0x201000,
+    transparent: true,
+    opacity: 0.55,
+    linewidth: SELECT_BACKING_BASE_WIDTH,
+    worldUnits: false,
+    depthTest: true,
+    depthWrite: false,
+    blending: THREE.NormalBlending
+  })
+  mat.resolution.set(Math.max(window.innerWidth, 1), Math.max(window.innerHeight, 1))
+  return mat
+}
+
+function featureToRingPositions(feature: any, radius: number) {
+  const ringPositions: number[][] = []
+  const geom = feature.geometry
+  const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates]
+  for (const poly of polys) {
+    for (const ring of poly) {
+      const positions: number[] = []
+      for (const [lng, lat] of ring) {
+        const v = latLongToVector3(lat, lng, radius * SELECT_RADIUS_MULT)
+        positions.push(v.x, v.y, v.z)
+      }
+      if (positions.length >= 6) ringPositions.push(positions)
+    }
+  }
+  return ringPositions
+}
 
 function applySelectedPalette(mat: THREE.ShaderMaterial) {
   ;(mat.uniforms.uColorA.value as THREE.Color).copy(selectedPalette.a)
@@ -146,6 +184,22 @@ export function highlightCountryFromFeature(
   const geom = feature.geometry
   const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates]
 
+  // Thick LineMaterial backing layer (real pixel-width, gives visual weight)
+  if (selectBackingEnabled) {
+    selectBackingMat = createSelectBackingMaterial()
+    const backingGroup = new THREE.Group()
+    backingGroup.scale.setScalar(1.0)
+    for (const positions of featureToRingPositions(feature, radius)) {
+      const geo = new LineGeometry()
+      geo.setPositions(positions)
+      const line = new Line2(geo, selectBackingMat)
+      line.renderOrder = 7
+      line.frustumCulled = false
+      backingGroup.add(line)
+    }
+    group.add(backingGroup)
+  }
+
   // Three-pass render: a soft backing shadow plus glow + core.
   const shadowOuterMat = createHighlightMaterial(0.26, scaleThickness(0.0036), {
     blending: THREE.NormalBlending,
@@ -211,7 +265,7 @@ export function clearHighlight(parent: THREE.Object3D) {
   if (!current) return
   parent.remove(current)
   current.traverse(obj => {
-    if (obj instanceof THREE.Line) {
+    if (obj instanceof THREE.Line || obj instanceof Line2) {
       obj.geometry.dispose()
     }
     if (obj instanceof THREE.Mesh) {
@@ -221,6 +275,8 @@ export function clearHighlight(parent: THREE.Object3D) {
   for (const mat of currentMats) {
     mat.dispose()
   }
+  selectBackingMat?.dispose()
+  selectBackingMat = null
   currentMats = []
   current = null
   activeFeatureStrokeScale = 1
@@ -259,4 +315,8 @@ export function setSelectedBorderLineWidth(lineWidthHint: number) {
   if (currentMats.length >= 4) {
     applySelectedStrokeThickness(currentMats[0], currentMats[1], currentMats[2], currentMats[3])
   }
+}
+
+export function setSelectBackingEnabled(enabled: boolean) {
+  selectBackingEnabled = enabled
 }

@@ -17,7 +17,8 @@ import {
   clearHighlight,
   updateCountryHighlight,
   configureCountryHighlightPalette,
-  setSelectedBorderLineWidth
+  setSelectedBorderLineWidth,
+  setSelectBackingEnabled
 } from './globe/countryHighlight'
 import { vector3ToLatLon } from './globe/math'
 import { findCountryFeature } from './globe/countryLookUp'
@@ -82,7 +83,7 @@ export type GlobeAtmosphereTheme = {
    * Optional multiplicative tint applied to all atmosphere layers at once.
    * White (`#ffffff`) is a no-op and leaves layer colors unchanged.
    * Set to any hue (e.g. `#FF9F40` for amber) to recolor the entire glow.
-   * Can be updated at runtime via `GlobeInstance.setTheme()`.
+   * Can be updated at runtime via `GlobeInstance.setGlowColor()`.
    */
   glowColor?: THREE.ColorRepresentation
 }
@@ -356,6 +357,18 @@ export type GlobeOptions = {
    */
   airportRenderLimit?: number
   /**
+   * Restrict which airport `kind` values are included in both rendering and per-country
+   * aggregation. Any entry whose `kind` is not in this list is silently dropped.
+   * Entries with no `kind` field (e.g. the legacy airports_points.json format) are always kept.
+   *
+   * Valid values: 'large_airport' | 'medium_airport' | 'small_airport' |
+   *               'heliport' | 'closed' | 'balloonport'
+   *
+   * Default: ['large_airport', 'medium_airport', 'small_airport']
+   * (excludes heliports, closed airports, and balloonports)
+   */
+  airportKinds?: string[]
+  /**
    * Override the airports data filename loaded from the `data/` directory.
    * Takes precedence over `useFullAirportsDataset`. The file must be an array of objects
    * with `latitude` and `longitude` fields (optionally `iso3` for faster country lookup).
@@ -409,6 +422,17 @@ export type GlobeOptions = {
    */
   cardBorderWidth?: number
   /**
+   * Background CSS value for the country card panel.
+   * Accepts any valid CSS color: hex (`#0d1c30`), `rgb()`, `rgba()`, or `transparent`.
+   * Defaults to `#0d1c30`.
+   */
+  cardBackground?: string
+  /**
+   * Whether to show the thick shadow backing on the selected country border.
+   * Defaults to `true`.
+   */
+  showSelectBacking?: boolean
+  /**
    * Hex color string applied to all UI accent elements:
    * the live-status dot on the country card, the active breadcrumb label,
    * and the card hover glow border.
@@ -420,6 +444,12 @@ export type GlobeOptions = {
 
 export type GlobeInstance = {
   ready: Promise<void>
+  /**
+   * Update the atmosphere glow color at runtime.
+   * Equivalent to initializing with `theme.atmosphere.glowColor`.
+   * White (`#ffffff`) resets to the neutral default (no tint).
+   */
+  setGlowColor: (color: THREE.ColorRepresentation) => void
 }
 
 const BASE_BREADCRUMBS = [
@@ -455,6 +485,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     breadcrumbOffsetTop: options.breadcrumbOffsetTop,
     cardBorderColor: options.cardBorderColor,
     cardBorderWidth: options.cardBorderWidth,
+    cardBackground: options.cardBackground,
     accentColor: options.accentColor
   })
   setGlobeBreadcrumbs(getBaseBreadcrumbs())
@@ -1168,6 +1199,7 @@ function applyVisualPreset() {
 
   setHoverBorderLineWidth(cfg.borderLineWidth)
   setSelectedBorderLineWidth(cfg.borderLineWidth)
+  setSelectBackingEnabled(options.showSelectBacking !== false)
 
   if (countriesLines) {
     countriesLines.setStyle({
@@ -2792,7 +2824,10 @@ async function init() {
         minSpacingDeg: AIRPORT_MIN_SPACING_DEG
       })
     : []
-  const airportPointData = Array.isArray(baseAirports) ? baseAirports : []
+  const allowedKinds = options.airportKinds ?? ['large_airport', 'medium_airport', 'small_airport']
+  const airportPointData = (Array.isArray(baseAirports) ? baseAirports : []).filter(
+    (a: any) => !a.kind || allowedKinds.includes(a.kind)
+  )
   const baseCount = airportPointData.length
   const rawRenderLimit = Number(options.airportRenderLimit)
   const airportRenderLimit = Number.isFinite(rawRenderLimit) && rawRenderLimit > 0
@@ -2927,10 +2962,17 @@ async function init() {
     let scrollResetTimer: ReturnType<typeof setTimeout> | null = null
 
     window.addEventListener('wheel', (event) => {
-      // Only act when there is something to close.
-      if (!isCountrySelected && selectedFlightRouteId === null) return
-      // Never fire when the pointer is inside the card UI.
+      // Never act while the pointer is inside the card UI.
       if (event.target instanceof Element && event.target.closest('#country-panel')) return
+
+      // Always dismiss hover tooltip and highlight on scroll — prevents stale overlays.
+      tooltip.hide()
+      clearHoverHighlight(globeGroup)
+      fadeOutHover(globeGroup)
+      lastHoverKey = ''
+
+      // Full selection reset only when a country or flight route is open.
+      if (!isCountrySelected && selectedFlightRouteId === null) return
 
       // Debounce: cancel the previous pending reset so rapid scrolling only triggers one reset.
       if (scrollResetTimer !== null) {
@@ -2950,6 +2992,13 @@ async function init() {
   window.addEventListener('pointermove', onPointerHover)
 }
 
+  function setGlowColor(color: THREE.ColorRepresentation) {
+    theme.atmosphere.glowColor = color
+    if (atmosphere) {
+      atmosphere.setGlowColor(new THREE.Color(color))
+    }
+  }
+
   const ready = init()
-  return { ready }
+  return { ready, setGlowColor }
 }

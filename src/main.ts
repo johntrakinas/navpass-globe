@@ -57,6 +57,13 @@
  *   airport count aggregation — only the rendered dots are limited.
  *   Default: no limit (all airports are rendered).
  *
+ * airportKinds=<kind>[,<kind>…]
+ *   Comma-separated list of airport `kind` values to include. Applied before both
+ *   rendering and per-country aggregation.
+ *   Valid values: large_airport, medium_airport, small_airport, heliport, closed, balloonport
+ *   Default: large_airport,medium_airport,small_airport
+ *   Example: airportKinds=large_airport,medium_airport
+ *
  * ─────────────────────────────────────────────────────────────────────────────
  * FLIGHT DENSITY
  * ─────────────────────────────────────────────────────────────────────────────
@@ -566,6 +573,8 @@ const options: GlobeOptions = {
   useFullAirportsDataset: parseBooleanParam(params, 'useFullAirportsDataset'),
   // airportRenderLimit caps rendered dots; aggregation always uses the full dataset
   airportRenderLimit: parseNumberParam(params, 'airportRenderLimit'),
+  // airportKinds: comma-separated kind filter; default excludes heliports, closed, balloonports
+  airportKinds: params.get('airportKinds')?.split(',').map((s) => s.trim()).filter(Boolean) ?? "medium_airport,large_airport".split(','),
 
   // ── Flight density ────────────────────────────────────────────────────────
   routeCount: parseNumberParam(params, 'routeCount'),
@@ -595,6 +604,8 @@ const options: GlobeOptions = {
   showSearchBarMobile: parseBooleanParam(params, 'showSearchBarMobile'),
 
   // ── Card / UI theming ─────────────────────────────────────────────────────
+  // showSelectBacking: 1 (default) — yellow shadow backing on selected country border
+  showSelectBacking: parseBooleanParam(params, 'showSelectBacking'),
   // accentColor: live dot, active breadcrumb, card hover glow. Default: #ECB200 (gold)
   accentColor: parseHexColorParam(params, 'accentColor'),
   // cardBorderColor: outer border of the country card. Accepts hex or rgba(…)
