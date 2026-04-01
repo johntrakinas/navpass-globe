@@ -604,10 +604,18 @@ const options: GlobeOptions = {
   showSearchBarMobile: parseBooleanParam(params, 'showSearchBarMobile'),
 
   // ── Card / UI theming ─────────────────────────────────────────────────────
+  // highlightRenderMode: 'line2' (default) | 'line' — renderer for hover/select border line
+  highlightRenderMode: (params.get('highlightRenderMode') === 'line' ? 'line' : undefined) as 'line' | undefined,
   // showSelectBacking: 1 (default) — yellow shadow backing on selected country border
   showSelectBacking: parseBooleanParam(params, 'showSelectBacking'),
+  // showCountryGlow: 0 (default) — soft glow/halo around selected country border. 1 enables
+  showCountryGlow: parseBooleanParam(params, 'showCountryGlow'),
   // accentColor: live dot, active breadcrumb, card hover glow. Default: #ECB200 (gold)
   accentColor: parseHexColorParam(params, 'accentColor'),
+  // cardBackground: CSS background of the card panel. Accepts hex, rgba(), or 'transparent'
+  cardBackground: parseCssColorParam(params, 'cardBackground'),
+  // cardBackgroundColor: solid color applied to all card sections (overrides cardBackground)
+  cardBackgroundColor: parseCssColorParam(params, 'cardBackgroundColor'),
   // cardBorderColor: outer border of the country card. Accepts hex or rgba(…)
   cardBorderColor: parseCssColorParam(params, 'cardBorderColor'),
   // cardBorderWidth: outer border width in px. 0 removes it. Default: 1

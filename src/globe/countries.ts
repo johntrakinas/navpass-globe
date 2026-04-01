@@ -174,7 +174,7 @@ export function createCountries(
       material.color.set(options.color)
     }
     if (typeof options.lineWidth === 'number') {
-      widthHint = THREE.MathUtils.clamp(options.lineWidth, 0.35, 4)
+      widthHint = THREE.MathUtils.clamp(options.lineWidth, 0.35, 8)
       redraw(widthHint)
     }
   }

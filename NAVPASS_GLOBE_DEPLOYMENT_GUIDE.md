@@ -161,7 +161,7 @@ All parameters are optional. Boolean values accept `0`/`1` or `false`/`true`.
 | `cardBackground` | CSS color | `#0d1c30` | Background of the country card panel. Accepts any CSS color: `#hex`, `rgb()`, `rgba()`, `transparent`. |
 | `cardBorderColor` | hex \| rgba | `rgba(255,255,255,0.08)` | Outer border color of the country card. |
 | `cardBorderWidth` | px | `1` | Width of the country card border. `0` removes it entirely. |
-| `showSelectBacking` | 0\|1 | `1` | Show the thick shadow backing on the selected country border line. Set to `0` for a minimal look. |
+| `showSelectBacking` | 0\|1 | `0` | Show the thick shadow backing on the selected country border line. Set to `1` to enable. |
 
 ---
 

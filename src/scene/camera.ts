@@ -46,7 +46,7 @@ function ensureStyles() {
       --np-accent: #ecb200;
       --np-border-color: rgba(255, 255, 255, 0.08);
       --np-border-width: 1px;
-      --np-card-bg: #0d1c30;
+      --np-card-bg: #001E3D;
     }
     #country-panel,
     #country-panel *,
@@ -160,7 +160,7 @@ function ensureStyles() {
     .panel-tooltip-footer-note { font: 13px/1.2 "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; letter-spacing: 0.8px; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
     .panel-tooltip-more { min-height: 44px; min-width: 110px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.08); color: #fff; font: 600 14px "Verdana Pro",Verdana,"Trebuchet MS",sans-serif; padding: 0 18px; display: grid; place-items: center; text-transform: uppercase; letter-spacing: 0.9px; }
     .panel-tooltip--country {
-      background: linear-gradient(180deg, #102038 0%, #142640 100%);
+      background: var(--np-card-bg);
       color: rgba(255, 255, 255, 0.96);
       font-family: "Verdana Pro",Verdana,"Trebuchet MS",sans-serif;
     }
@@ -170,9 +170,7 @@ function ensureStyles() {
     .panel-tooltip-header--country {
       min-height: 142px;
       display: block;
-      background:
-        radial-gradient(circle at 84% 24%, rgba(70, 137, 226, 0.14), transparent 30%),
-        linear-gradient(180deg, rgba(18, 35, 60, 0.98), rgba(16, 32, 56, 0.98));
+      background: var(--np-card-bg);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       background-position: center;
       background-repeat: no-repeat;
@@ -240,7 +238,6 @@ function ensureStyles() {
       font-weight: 700;
       letter-spacing: 1px;
       text-transform: uppercase;
-      backdrop-filter: blur(10px);
     }
     .panel-tooltip-country-flag {
       flex: 0 0 auto;
@@ -248,18 +245,15 @@ function ensureStyles() {
       height: 46px;
       border-radius: 999px;
       border: 0;
-      background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
-        var(--country-flag-bg, rgba(255, 255, 255, 0.04));
+      background-color: rgba(255, 255, 255, 0.04);
+      background-image: var(--country-flag-bg, none);
       background-position: center;
       background-repeat: no-repeat;
       background-size: cover;
       box-shadow: 0 18px 30px -22px rgba(0, 0, 0, 0.68);
     }
     .panel-tooltip-country-flag--empty {
-      background:
-        radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.16), transparent 45%),
-        rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.05);
     }
     .panel-tooltip-title--country {
       margin-top: 0;
@@ -294,7 +288,7 @@ function ensureStyles() {
       padding: 0;
       border-top: 1px solid rgba(255, 255, 255, 0.1);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      background: #12253f;
+      background: var(--np-card-bg);
     }
     .panel-tooltip--country .panel-tooltip-stat {
       min-height: 92px;
@@ -342,7 +336,7 @@ function ensureStyles() {
       padding: 16px 16px 18px;
       border: 0;
       border-radius: 0;
-      background: linear-gradient(180deg, rgba(32, 50, 78, 0.88), rgba(34, 55, 86, 0.96));
+      background: var(--np-card-bg);
     }
     .panel-tooltip--country .panel-tooltip-total-label {
       color: rgba(185, 193, 208, 0.76);
@@ -355,7 +349,7 @@ function ensureStyles() {
       color: #ffffff;
       font-family: inherit;
       font-size: clamp(34px, 4vw, 44px);
-      font-weight: 700;
+      font-weight: 400;
       line-height: 1;
     }
     .panel-tooltip--country .panel-tooltip-total {
@@ -404,7 +398,7 @@ function ensureStyles() {
         border-left: 0;
         border-right: 0;
         border-bottom: 0;
-        background: #102038;
+        background: var(--np-card-bg);
         box-shadow: none;
       }
       #country-panel.is-visible:hover {
@@ -412,7 +406,7 @@ function ensureStyles() {
         box-shadow: none;
       }
       .panel-tooltip--country {
-        background: linear-gradient(180deg, #102038 0%, #0f1e33 100%);
+        background: var(--np-card-bg);
       }
       .panel-tooltip-header { min-height: 136px; }
       .panel-tooltip-headcopy { padding: 50px 16px 16px; }
@@ -424,9 +418,7 @@ function ensureStyles() {
       .panel-tooltip-footer { padding: 12px 16px; }
       .panel-tooltip-header--country {
         min-height: 0;
-        background:
-          radial-gradient(circle at 84% 18%, rgba(70, 137, 226, 0.12), transparent 26%),
-          linear-gradient(180deg, rgba(17, 36, 60, 0.98), rgba(16, 32, 56, 0.96));
+        background: var(--np-card-bg);
       }
       .panel-tooltip-headcopy--country { min-height: 0; padding: 18px 14px 12px; }
       .panel-tooltip-country-topline { align-items: center; gap: 12px; }
@@ -469,7 +461,7 @@ function ensureStyles() {
         padding: 0;
         border-top-color: rgba(255, 255, 255, 0.1);
         border-bottom-color: rgba(255, 255, 255, 0.1);
-        background: #12253f;
+        background: var(--np-card-bg);
       }
       .panel-tooltip--country .panel-tooltip-stat { min-height: 84px; padding: 14px 14px 12px; border-radius: 0; }
       .panel-tooltip--country .panel-tooltip-stat:first-child { border-bottom: 0; }
@@ -496,7 +488,7 @@ function ensureStyles() {
       .panel-tooltip--country .panel-tooltip-footer {
         margin: 0;
         padding: 12px 14px 14px;
-        background: linear-gradient(180deg, rgba(32, 50, 78, 0.88), rgba(34, 55, 86, 0.96));
+        background: var(--np-card-bg);
       }
       .panel-tooltip--country .panel-tooltip-total-label {
         font-size: 10px;
@@ -643,6 +635,7 @@ function applyCardThemeVars(options: {
   cardBorderColor?: string
   cardBorderWidth?: number
   cardBackground?: string
+  cardBackgroundColor?: string
   accentColor?: string
 }) {
   const root = document.getElementById(UI_ROOT_ID)
@@ -656,8 +649,9 @@ function applyCardThemeVars(options: {
   if (options.cardBorderWidth !== undefined && Number.isFinite(options.cardBorderWidth)) {
     root.style.setProperty('--np-border-width', `${Math.max(0, options.cardBorderWidth)}px`)
   }
-  if (options.cardBackground) {
-    root.style.setProperty('--np-card-bg', options.cardBackground)
+  const bg = options.cardBackgroundColor ?? options.cardBackground
+  if (bg) {
+    root.style.setProperty('--np-card-bg', bg)
   }
 }
 
@@ -669,6 +663,7 @@ export function configureGlobeUi(options: {
   cardBorderColor?: string
   cardBorderWidth?: number
   cardBackground?: string
+  cardBackgroundColor?: string
   accentColor?: string
 } = {}) {
   showBreadcrumbs = options.showBreadcrumbs !== false
@@ -815,7 +810,7 @@ export function showCountryPanel(
   const closeButton = isHoverMode || !showCountryCardCloseButton
     ? ''
     : '<button type="button" class="panel-tooltip-close" aria-label="Close">×</button>'
-  const liveLabel = isHoverMode ? 'HOVER PREVIEW' : `AIRSPACE ON: ${formatPanelUpdateDate()}`
+  const liveLabel = isHoverMode ? 'HOVER PREVIEW' : ''
   const countryCardStyle = flagUrl ? ` style="--country-flag-bg:url('${flagUrl}')"` : ''
   const flagBubbleClass = flagUrl
     ? 'panel-tooltip-country-flag'
@@ -829,10 +824,10 @@ export function showCountryPanel(
           <div class="panel-tooltip-country-topline">
             <div class="panel-tooltip-country-heading">
               <div class="panel-tooltip-title panel-tooltip-title--country">${escapeHtml(name)}</div>
-              <div class="panel-tooltip-live">
+              ${liveLabel ? `<div class="panel-tooltip-live">
                 <span class="panel-tooltip-live-dot"></span>
                 <span>${escapeHtml(liveLabel)}</span>
-              </div>
+              </div>` : ''}
             </div>
             <div class="${flagBubbleClass}" aria-hidden="true"></div>
           </div>
@@ -846,7 +841,7 @@ export function showCountryPanel(
             <div class="panel-tooltip-stat-label">Incoming</div>
           </div>
           <div class="panel-tooltip-stat-value">${escapeHtml(incomingFlightsLabel)}</div>
-          <div class="panel-tooltip-stat-sub">Routes Active</div>
+          <div class="panel-tooltip-stat-sub">Flights Active</div>
         </div>
         <div class="panel-tooltip-stat">
           <div class="panel-tooltip-stat-head">
@@ -854,7 +849,7 @@ export function showCountryPanel(
             <div class="panel-tooltip-stat-label">Outgoing</div>
           </div>
           <div class="panel-tooltip-stat-value">${escapeHtml(outgoingFlightsLabel)}</div>
-          <div class="panel-tooltip-stat-sub">Routes Active</div>
+          <div class="panel-tooltip-stat-sub">Flights Active</div>
         </div>
       </div>
 
@@ -906,19 +901,19 @@ export function showRouteHoverPanel(data: RouteHoverPanelData) {
 
       <div class="panel-tooltip-dual">
         <div class="panel-tooltip-stat">
-          <div class="panel-tooltip-stat-label">ROUTE DISTANCE</div>
+          <div class="panel-tooltip-stat-label">FLIGHT DISTANCE</div>
           <div class="panel-tooltip-stat-value">${escapeHtml(distanceText)}</div>
           <div class="panel-tooltip-stat-sub">Great-circle estimate</div>
         </div>
         <div class="panel-tooltip-stat">
           <div class="panel-tooltip-stat-label">TRAFFIC LEVEL</div>
           <div class="panel-tooltip-stat-value">${escapeHtml(trafficText)}</div>
-          <div class="panel-tooltip-stat-sub">Active planes on route</div>
+          <div class="panel-tooltip-stat-sub">Active planes on flight</div>
         </div>
       </div>
 
       <div class="panel-tooltip-primary">
-        <div class="panel-tooltip-primary-label">Route</div>
+        <div class="panel-tooltip-primary-label">Flight</div>
         <div class="panel-tooltip-primary-value">${from} → ${to}</div>
         <div class="panel-tooltip-primary-sub">Synthetic flight path</div>
       </div>

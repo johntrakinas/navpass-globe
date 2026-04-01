@@ -18,7 +18,10 @@ import {
   updateCountryHighlight,
   configureCountryHighlightPalette,
   setSelectedBorderLineWidth,
-  setSelectBackingEnabled
+  setSelectBackingEnabled,
+  setCountryGlowEnabled,
+  syncCountryHighlightResolution,
+  setHighlightRenderMode as setHoverHighlightRenderMode
 } from './globe/countryHighlight'
 import { vector3ToLatLon } from './globe/math'
 import { findCountryFeature } from './globe/countryLookUp'
@@ -40,12 +43,13 @@ import { createStarfieldShader } from './background/starfieldShaders'
 import { createTooltip } from './ui/tooltip'
 import { createAnimatedCards } from './ui/animatedCards'
 import {
-  setHoverHighlight,
-  clearHoverHighlight,
-  updateHoverHighlight,
-  fadeOutHover,
-  configureHoverHighlightColors,
-  setHoverBorderLineWidth
+  setSelectedHighlight,
+  clearSelectedHighlight,
+  updateSelectedHighlight,
+  fadeOutSelected,
+  configureSelectedHighlightColors,
+  setSelectedBorderLineWidth as setSelectHighlightLineWidth,
+  setHighlightRenderMode
 } from './globe/hoverHighlight'
 import { scaleThickness } from './globe/thicknessScale'
 import { inflateAirportsDataset } from './globe/syntheticAirports'
@@ -428,10 +432,30 @@ export type GlobeOptions = {
    */
   cardBackground?: string
   /**
+   * Solid background color applied uniformly to all country card sections
+   * (outer container, header, stats, footer). Replaces any gradient-based backgrounds.
+   * Accepts any valid CSS color: hex, `rgb()`, or `rgba()`.
+   * Defaults to `#001E3D`.
+   * Takes precedence over `cardBackground` when both are provided.
+   */
+  cardBackgroundColor?: string
+  /**
    * Whether to show the thick shadow backing on the selected country border.
-   * Defaults to `true`.
+   * Defaults to `false`.
    */
   showSelectBacking?: boolean
+  /**
+   * Whether to show the soft glow/halo around the selected country border.
+   * The core border line is always visible regardless of this setting.
+   * Defaults to `false`.
+   */
+  showCountryGlow?: boolean
+  /**
+   * Renderer used for the selected-country highlight line.
+   * - `'line2'` (default) — Line2 + LineMaterial: real screen-space thickness, smooth joins.
+   * - `'line'` — THREE.LineLoop + LineBasicMaterial: 1px WebGL line, classic look.
+   */
+  highlightRenderMode?: 'line2' | 'line'
   /**
    * Hex color string applied to all UI accent elements:
    * the live-status dot on the country card, the active breadcrumb label,
@@ -486,6 +510,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     cardBorderColor: options.cardBorderColor,
     cardBorderWidth: options.cardBorderWidth,
     cardBackground: options.cardBackground,
+    cardBackgroundColor: options.cardBackgroundColor,
     accentColor: options.accentColor
   })
   setGlobeBreadcrumbs(getBaseBreadcrumbs())
@@ -498,7 +523,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   let theme = resolveGlobeTheme(options.theme)
 
   function applyThemeRuntimeTokens() {
-    configureHoverHighlightColors({
+    configureSelectedHighlightColors({
       colorA: theme.highlights.hoverA,
       colorB: theme.highlights.hoverB,
       coreColor: theme.highlights.hoverCore,
@@ -1197,9 +1222,12 @@ function applyVisualPreset() {
     setUniformColor(u, 'uCoastTint', theme.landWater.coastTint)
   }
 
-  setHoverBorderLineWidth(cfg.borderLineWidth)
-  setSelectedBorderLineWidth(cfg.borderLineWidth)
-  setSelectBackingEnabled(options.showSelectBacking !== false)
+  setSelectedBorderLineWidth(4.0)
+  setSelectHighlightLineWidth(4.0)
+  setHighlightRenderMode(options.highlightRenderMode ?? 'line2')
+  setHoverHighlightRenderMode(options.highlightRenderMode ?? 'line2')
+  setSelectBackingEnabled(options.showSelectBacking === true)
+  setCountryGlowEnabled(options.showCountryGlow === true)
 
   if (countriesLines) {
     countriesLines.setStyle({
@@ -2037,8 +2065,8 @@ function clearSelectionUIState() {
   isCountrySelected = false
   selectedCountryIso3 = null
   flightRoutes?.setFocusCountry(null)
-  clearHoverHighlight(globeGroup)
-  fadeOutHover(globeGroup)
+  clearSelectedHighlight(globeGroup)
+  fadeOutSelected(globeGroup)
   setGlobeBreadcrumbs(getBaseBreadcrumbs())
 }
 
@@ -2427,7 +2455,7 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   clearHoverRouteCouplingCountry()
   clearHighlight(globeGroup)
   tooltip.hide()
-  setHoverHighlight(feature, globeGroup, GLOBE_RADIUS)
+  setSelectedHighlight(feature, globeGroup, GLOBE_RADIUS)
   rememberRecentCountry(feature)
   isCountrySelected = true
   selectedCountryIso3 = iso3 || null
@@ -2594,7 +2622,7 @@ function animate() {
   }
 
   const cameraDistance = camera.position.length()
-  updateHoverHighlight(globeGroup, now, cameraDistance)
+  updateSelectedHighlight(globeGroup, now, cameraDistance)
   updateCountryHighlight(now)
 
   if (globeAnim) {
@@ -2956,6 +2984,7 @@ async function init() {
     renderer.setSize(innerWidth, innerHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     applyResponsiveZoomMode()
+    syncCountryHighlightResolution()
   })
 
   if (scrollResetsView) {
@@ -2967,8 +2996,8 @@ async function init() {
 
       // Always dismiss hover tooltip and highlight on scroll — prevents stale overlays.
       tooltip.hide()
-      clearHoverHighlight(globeGroup)
-      fadeOutHover(globeGroup)
+      clearSelectedHighlight(globeGroup)
+      fadeOutSelected(globeGroup)
       lastHoverKey = ''
 
       // Full selection reset only when a country or flight route is open.
