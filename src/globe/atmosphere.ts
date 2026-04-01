@@ -151,12 +151,12 @@ export function createAtmosphere(radius: number, camera: THREE.Camera) {
   })
 
   // FrontSide layer: creates the wide inner gradient visible on the globe face.
-  // Lower power (1.80 vs 3.10) spreads the gradient to ~80% of the visible face.
-  // edgeFade in the shader (uFrontSide=1) then dissolves it smoothly at the rim.
+  // power: 0.70 flattens the Fresnel curve so the bloom covers ~80% of the face.
+  // edgeFade in the shader (uFrontSide=1) dissolves it smoothly at the rim.
   const subsurfaceLayer = createAtmosphereLayer({
     radiusScale: 1.016,
-    intensity: 0.058,
-    power: 1.80,
+    intensity: 0.095,
+    power: 0.70,
     coreColor: GOOGLE_COLORS.deepBlue.clone().multiplyScalar(0.04),
     rimColor: GOOGLE_COLORS.lightBlue.clone().lerp(GOOGLE_COLORS.white, 0.22),
     side: THREE.FrontSide,

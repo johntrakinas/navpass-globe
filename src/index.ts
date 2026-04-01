@@ -1121,7 +1121,7 @@ const USER_LIGHT_DIR: THREE.Vector3 =
 const _rawRadius = Number(options.lightRadius)
 const USER_LIGHT_RADIUS = Number.isFinite(_rawRadius)
   ? THREE.MathUtils.clamp(_rawRadius, 0.01, 1.0)
-  : 0.10  // default: tight soft circle
+  : 0.30  // default: soft circle fading out well before the globe borders
 const USER_GAUSSIAN_FALLOFF = 0.693 / (USER_LIGHT_RADIUS * USER_LIGHT_RADIUS)
 
 const initialHeatmapEnabled = options.initialHeatmapEnabled ?? false
