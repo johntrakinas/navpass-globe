@@ -725,14 +725,6 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;')
 }
 
-function formatPanelUpdateDate() {
-  return new Intl.DateTimeFormat('en-US', {
-    month: '2-digit',
-    day: '2-digit',
-    year: 'numeric'
-  }).format(new Date())
-}
-
 function formatInt(value: number | null | undefined) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
   return Math.max(0, Math.round(value)).toLocaleString('en-US')

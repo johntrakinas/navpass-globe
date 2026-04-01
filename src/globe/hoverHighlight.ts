@@ -3,7 +3,6 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js'
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { latLongToVector3 } from './latLongtoVector3'
-import { GOOGLE_COLORS } from '../theme/googleColors'
 import { computeCountryStrokeScale } from './countryStrokeScale'
 
 export type HoverHighlightColorTheme = {
