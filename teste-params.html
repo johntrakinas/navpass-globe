@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Globe — data-* full param validation</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 12px;
+      background: #080c12;
+      color: #8aa0b8;
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      display: flex;
+      flex-direction: column;
+      background: #0c1018;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+
+    #sidebar-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    #sidebar-header h1 {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.28);
+    }
+    #sidebar-header p {
+      margin-top: 4px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.2);
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.5;
+    }
+
+    #editor-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    .group {
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 14px;
+      background: rgba(255,255,255,0.02);
+      cursor: pointer;
+      user-select: none;
+    }
+    .group-header:hover { background: rgba(255,255,255,0.04); }
+    .group-title {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.32);
+    }
+    .group-chevron { color: rgba(255,255,255,0.2); font-size: 10px; transition: transform 150ms; }
+    .group.open .group-chevron { transform: rotate(90deg); }
+
+    .group-body { display: none; }
+    .group.open .group-body { display: block; }
+
+    .param-row {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      align-items: start;
+      gap: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .param-row:last-child { border-bottom: 0; }
+
+    .param-name {
+      padding: 7px 14px;
+      color: #5d90b8;
+      font-size: 11px;
+      border-right: 1px solid rgba(255,255,255,0.04);
+      word-break: break-all;
+      line-height: 1.4;
+    }
+    .param-name .prefix { color: rgba(255,255,255,0.18); }
+
+    .param-value {
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+      gap: 6px;
+    }
+
+    .param-value input[type="text"],
+    .param-value input[type="number"] {
+      flex: 1;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      color: #e8c040;
+      font-size: 11px;
+      font-family: inherit;
+      padding: 2px 2px 3px;
+      outline: none;
+      min-width: 0;
+    }
+    .param-value input:focus { border-bottom-color: rgba(236,178,0,0.5); }
+
+    .param-value input[type="checkbox"] {
+      width: 28px; height: 16px; appearance: none;
+      background: rgba(255,255,255,0.08); border-radius: 999px;
+      position: relative; cursor: pointer; transition: background 200ms; flex-shrink: 0;
+    }
+    .param-value input[type="checkbox"]:checked { background: #ecb200; }
+    .param-value input[type="checkbox"]::after {
+      content: ''; position: absolute; width: 12px; height: 12px;
+      background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: left 200ms;
+    }
+    .param-value input[type="checkbox"]:checked::after { left: 14px; }
+
+    .param-hint { font-size: 9px; color: rgba(255,255,255,0.2); white-space: nowrap; }
+
+    /* ── Footer ── */
+    #sidebar-footer {
+      flex-shrink: 0;
+      padding: 12px 14px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      border: 0; border-radius: 5px; cursor: pointer;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+      padding: 8px 14px; font-family: inherit; text-transform: uppercase;
+    }
+    .btn-apply { background: #ecb200; color: #000; flex: 1; }
+    .btn-apply:hover { background: #f5c300; }
+    .btn-reset { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.5); }
+    .btn-reset:hover { background: rgba(255,255,255,0.12); }
+
+    /* ── Globe ── */
+    #frame-wrap { position: relative; overflow: hidden; }
+    #globe-frame { width: 100%; height: 100%; border: 0; display: block; }
+
+    #badge {
+      position: absolute; top: 10px; left: 10px;
+      font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+      padding: 3px 9px; border-radius: 999px;
+      background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.35); pointer-events: none;
+    }
+    #badge.ready  { color: #4adb88; border-color: rgba(74,219,136,0.35); }
+    #badge.error  { color: #f06060; border-color: rgba(240,96,96,0.35); }
+    #badge.booted { color: #ecb200; border-color: rgba(236,178,0,0.35); }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h1>data-* param validator</h1>
+    <p style="font-family:system-ui">Edite os valores e clique em Apply. O iframe é recriado com os <code>data-*</code> attributes exatos.</p>
+  </div>
+
+  <div id="editor-wrap">
+
+    <!-- ── GENERAL ── -->
+    <div class="group open">
+      <div class="group-header"><span class="group-title">General</span><span class="group-chevron">›</span></div>
+      <div class="group-body">
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>intro-animation</div>
+          <div class="param-value"><input type="checkbox" data-key="introAnimation" checked><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>heatmap</div>
+          <div class="param-value"><input type="checkbox" data-key="heatmap"><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>flight-mode</div>
+          <div class="param-value"><input type="text" data-key="flightMode" value="reengineered"><span class="param-hint">legacy|reengineered</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CAMERA ── -->
+    <div class="group open">
+      <div class="group-header"><span class="group-title">Camera</span><span class="group-chevron">›</span></div>
+      <div class="group-body">
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>min-zoom-distance</div>
+          <div class="param-value"><input type="number" data-key="minZoomDistance" value="14"><span class="param-hint">12–28</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>max-zoom-distance</div>
+          <div class="param-value"><input type="number" data-key="maxZoomDistance" value="28"><span class="param-hint">min+2–60</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>country-click-zoom-level</div>
+          <div class="param-value"><input type="number" data-key="countryClickZoomLevel" value=""><span class="param-hint">auto</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>country-click-zoom-duration</div>
+          <div class="param-value"><input type="number" data-key="countryClickZoomDuration" value="1120"><span class="param-hint">ms</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>disable-scroll-zoom</div>
+          <div class="param-value"><input type="checkbox" data-key="disableScrollZoom"><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>scroll-resets-view</div>
+          <div class="param-value"><input type="checkbox" data-key="scrollResetsView" checked><span class="param-hint">0|1</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── FLIGHTS ── -->
+    <div class="group open">
+      <div class="group-header"><span class="group-title">Flights</span><span class="group-chevron">›</span></div>
+      <div class="group-body">
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>route-count</div>
+          <div class="param-value"><input type="number" data-key="routeCount" value="180"><span class="param-hint">arcs</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>planes-per-route</div>
+          <div class="param-value"><input type="number" data-key="planesPerRoute" value=""><span class="param-hint">auto</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>plane-density-scale</div>
+          <div class="param-value"><input type="number" data-key="planeDensityScale" value="1.0" step="0.1"><span class="param-hint">0.1–2</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── UI ── -->
+    <div class="group open">
+      <div class="group-header"><span class="group-title">UI</span><span class="group-chevron">›</span></div>
+      <div class="group-body">
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>show-zoom-controls</div>
+          <div class="param-value"><input type="checkbox" data-key="showZoomControls"><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>show-breadcrumbs</div>
+          <div class="param-value"><input type="checkbox" data-key="showBreadcrumbs" checked><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>breadcrumb-offset-left</div>
+          <div class="param-value"><input type="number" data-key="breadcrumbOffsetLeft" value="50"><span class="param-hint">px</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>breadcrumb-offset-top</div>
+          <div class="param-value"><input type="number" data-key="breadcrumbOffsetTop" value="92"><span class="param-hint">px</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>show-country-card-close-button</div>
+          <div class="param-value"><input type="checkbox" data-key="showCountryCardCloseButton" checked><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>animated-cards</div>
+          <div class="param-value"><input type="checkbox" data-key="animatedCards" checked><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>disable-map-interaction</div>
+          <div class="param-value"><input type="checkbox" data-key="disableMapInteraction"><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>show-search-bar-mobile</div>
+          <div class="param-value"><input type="checkbox" data-key="showSearchBarMobile"><span class="param-hint">0|1</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CARD / THEMING ── -->
+    <div class="group open">
+      <div class="group-header"><span class="group-title">Card &amp; Theming</span><span class="group-chevron">›</span></div>
+      <div class="group-body">
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>accent-color</div>
+          <div class="param-value"><input type="text" data-key="accentColor" value="ECB200"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>card-background-color</div>
+          <div class="param-value"><input type="text" data-key="cardBackgroundColor" value=""><span class="param-hint">css color</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>card-border-color</div>
+          <div class="param-value"><input type="text" data-key="cardBorderColor" value="rgba(255,255,255,0.08)"><span class="param-hint">css color</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>card-border-width</div>
+          <div class="param-value"><input type="number" data-key="cardBorderWidth" value="1"><span class="param-hint">px</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>show-select-backing</div>
+          <div class="param-value"><input type="checkbox" data-key="showSelectBacking"><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>show-country-glow</div>
+          <div class="param-value"><input type="checkbox" data-key="showCountryGlow"><span class="param-hint">0|1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>highlight-render-mode</div>
+          <div class="param-value"><input type="text" data-key="highlightRenderMode" value="line2"><span class="param-hint">line|line2</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── GLOBE COLORS ── -->
+    <div class="group open">
+      <div class="group-header"><span class="group-title">Globe Colors</span><span class="group-chevron">›</span></div>
+      <div class="group-body">
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>bg-color</div>
+          <div class="param-value"><input type="text" data-key="bgColor" value="091320"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>country-line-color</div>
+          <div class="param-value"><input type="text" data-key="countryLineColor" value="4796FF"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>grid-main-color</div>
+          <div class="param-value"><input type="text" data-key="gridMainColor" value="B8C0CE"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>grid-effect-color</div>
+          <div class="param-value"><input type="text" data-key="gridEffectColor" value="B8C0CE"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>glow-color</div>
+          <div class="param-value"><input type="text" data-key="glowColor" value="ffffff"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>hover-color</div>
+          <div class="param-value"><input type="text" data-key="hoverColor" value="FBBC05"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>selected-color</div>
+          <div class="param-value"><input type="text" data-key="selectedColor" value="ffffff"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>selected-accent-color</div>
+          <div class="param-value"><input type="text" data-key="selectedAccentColor" value="FBBC05"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>airport-dot-color</div>
+          <div class="param-value"><input type="text" data-key="airportDotColor" value="FBBC05"><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>hover-palette-mix</div>
+          <div class="param-value"><input type="number" data-key="hoverPaletteMix" value="0.0" step="0.1" min="0" max="1"><span class="param-hint">0–1</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PLANES ── -->
+    <div class="group">
+      <div class="group-header"><span class="group-title">Plane Colors</span><span class="group-chevron">›</span></div>
+      <div class="group-body">
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>plane-core-color</div>
+          <div class="param-value"><input type="text" data-key="planeCoreColor" value=""><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>plane-glow-color</div>
+          <div class="param-value"><input type="text" data-key="planeGlowColor" value=""><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>plane-tint-color</div>
+          <div class="param-value"><input type="text" data-key="planeTintColor" value=""><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>plane-accent-color</div>
+          <div class="param-value"><input type="text" data-key="planeAccentColor" value=""><span class="param-hint">hex</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── LIGHTING ── -->
+    <div class="group">
+      <div class="group-header"><span class="group-title">Lighting</span><span class="group-chevron">›</span></div>
+      <div class="group-body">
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>light-intensity</div>
+          <div class="param-value"><input type="number" data-key="lightIntensity" value="0" step="0.1" min="0" max="2"><span class="param-hint">0–2</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>light-color</div>
+          <div class="param-value"><input type="text" data-key="lightColor" value=""><span class="param-hint">hex</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>light-radius</div>
+          <div class="param-value"><input type="number" data-key="lightRadius" value="0.30" step="0.05" min="0.01" max="1"><span class="param-hint">0.01–1</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>light-x</div>
+          <div class="param-value"><input type="number" data-key="lightX" value="" step="0.1"><span class="param-hint">world dir</span></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>light-y</div>
+          <div class="param-value"><input type="number" data-key="lightY" value="" step="0.1"></div>
+        </div>
+        <div class="param-row">
+          <div class="param-name"><span class="prefix">data-</span>light-z</div>
+          <div class="param-value"><input type="number" data-key="lightZ" value="" step="0.1"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /editor-wrap -->
+
+  <div id="sidebar-footer">
+    <button class="btn-reset" id="btn-reset">Reset</button>
+    <button class="btn-apply" id="btn-apply">▶ Apply</button>
+  </div>
+</div>
+
+<!-- ── Globe ── -->
+<div id="frame-wrap">
+  <iframe id="globe-frame" title="NAVPASS Globe" allow="fullscreen"
+    style="width:100%;height:100%;border:0;display:block;"></iframe>
+  <div id="badge">aguardando…</div>
+</div>
+
+<script>
+  const GLOBE_SRC = 'http://localhost:5173/'
+
+  const badge = document.getElementById('badge')
+
+  // ── Group toggles ────────────────────────────────────────────────────────
+  document.querySelectorAll('.group-header').forEach(h => {
+    h.addEventListener('click', () => h.closest('.group').classList.toggle('open'))
+  })
+
+  // ── Read all inputs → dataset map ────────────────────────────────────────
+  function camelToKebab(str) {
+    return str.replace(/([A-Z])/g, m => '-' + m.toLowerCase())
+  }
+
+  function collectAttrs() {
+    const attrs = {}
+    document.querySelectorAll('[data-key]').forEach(el => {
+      const key = el.dataset.key
+      let val
+      if (el.type === 'checkbox') {
+        val = el.checked ? '1' : '0'
+      } else {
+        val = el.value.trim()
+      }
+      if (val !== '') attrs[key] = val
+    })
+    return attrs
+  }
+
+  // ── Build and load iframe with data-* attrs ───────────────────────────────
+  function applyAttrs() {
+    const wrap  = document.getElementById('frame-wrap')
+    const old   = document.getElementById('globe-frame')
+    const attrs = collectAttrs()
+
+    badge.className = ''
+    badge.textContent = 'carregando…'
+
+    const iframe = document.createElement('iframe')
+    iframe.id    = 'globe-frame'
+    iframe.title = 'NAVPASS Globe'
+    iframe.allow = 'fullscreen'
+    iframe.style.cssText = 'width:100%;height:100%;border:0;display:block;'
+
+    // Set each config param as a data-* attribute (camelCase → kebab-case via dataset)
+    for (const [key, val] of Object.entries(attrs)) {
+      iframe.dataset[key] = val
+    }
+
+    iframe.src = GLOBE_SRC
+    wrap.replaceChild(iframe, old)
+
+    // Re-bind postMessage listener (old iframe is gone)
+    currentFrame = iframe
+  }
+
+  let currentFrame = document.getElementById('globe-frame')
+
+  // ── Listen for globe events ───────────────────────────────────────────────
+  window.addEventListener('message', (e) => {
+    if (e.data?.source !== 'navpass-globe') return
+    const ev = e.data.event
+    badge.className = ''
+    if (ev === 'boot') {
+      badge.className = 'booted'
+      badge.textContent = 'boot ✓'
+    } else if (ev === 'ready') {
+      badge.className = 'ready'
+      badge.textContent = 'ready ✓'
+    } else if (ev === 'error') {
+      badge.className = 'error'
+      badge.textContent = 'error: ' + (e.data.message || '?')
+    }
+  })
+
+  // ── Buttons ───────────────────────────────────────────────────────────────
+  document.getElementById('btn-apply').addEventListener('click', applyAttrs)
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    document.querySelectorAll('[data-key]').forEach(el => {
+      const orig = el.getAttribute('value')
+      if (el.type === 'checkbox') {
+        el.checked = el.hasAttribute('checked')
+      } else {
+        el.value = orig ?? ''
+      }
+    })
+  })
+
+  // ── Auto-load on open ────────────────────────────────────────────────────
+  applyAttrs()
+</script>
+</body>
+</html>

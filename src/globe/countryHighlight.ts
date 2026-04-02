@@ -42,7 +42,19 @@ let highlightRenderMode: 'line2' | 'line' = 'line2'
 let current: THREE.Object3D | null = null
 let currentMats: CoreMat[] = []
 let currentCoreMat: CoreMat | null = null
+let currentNeonMat: THREE.LineBasicMaterial | null = null
+let currentGlowMats: THREE.LineBasicMaterial[] = []
 let selectBackingMat: LineMaterial | null = null
+
+// Glow layers for `line` mode — simulates thickness via concentric additive rings
+const LINE_GLOW_LAYERS = [
+  { scale: 1.002, opacityMul: 0.90 },
+  { scale: 1.005, opacityMul: 0.70 },
+  { scale: 1.010, opacityMul: 0.45 },
+  { scale: 1.018, opacityMul: 0.22 },
+  { scale: 1.030, opacityMul: 0.10 },
+  { scale: 1.048, opacityMul: 0.04 },
+]
 let selectBackingEnabled = false
 let pulsePhase = Math.random() * Math.PI * 2
 let selectedBorderLineWidthHint = 1.8
@@ -227,8 +239,18 @@ export function highlightCountryFromFeature(
 
   if (highlightRenderMode === 'line2') {
     const mat = createCoreMat()
+    const neonMat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+      blending: THREE.AdditiveBlending
+    })
     currentCoreMat = mat
-    currentMats = [mat]
+    currentNeonMat = neonMat
+    currentMats = [mat, neonMat]
     for (const poly of polys) {
       for (const ring of poly) {
         const raw: THREE.Vector3[] = []
@@ -236,15 +258,29 @@ export function highlightCountryFromFeature(
           raw.push(latLongToVector3(lat, lng, radius * SELECT_RADIUS_MULT))
         }
         if (raw.length < 2) continue
-        const line = buildLine2(subdivideRing(raw), mat)
+        const subdivided = subdivideRing(raw)
+        const line = buildLine2(subdivided, mat)
         line.renderOrder = 11
         group.add(line)
+        const neonLine = buildLineLegacy(subdivided, neonMat)
+        neonLine.renderOrder = 12
+        group.add(neonLine)
       }
     }
   } else {
     const mat = createLegacyCoreMat()
+    const glowMats = LINE_GLOW_LAYERS.map(() => new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+      blending: THREE.AdditiveBlending
+    }))
     currentCoreMat = mat
-    currentMats = [mat]
+    currentGlowMats = glowMats
+    currentMats = [mat, ...glowMats]
     for (const poly of polys) {
       for (const ring of poly) {
         const raw: THREE.Vector3[] = []
@@ -252,9 +288,16 @@ export function highlightCountryFromFeature(
           raw.push(latLongToVector3(lat, lng, radius * SELECT_RADIUS_MULT))
         }
         if (raw.length < 2) continue
-        const line = buildLineLegacy(subdivideRing(raw), mat)
-        line.renderOrder = 11
-        group.add(line)
+        const subdivided = subdivideRing(raw)
+        const coreLine = buildLineLegacy(subdivided, mat)
+        coreLine.renderOrder = 12
+        group.add(coreLine)
+        LINE_GLOW_LAYERS.forEach((layer, i) => {
+          const gl = buildLineLegacy(subdivided, glowMats[i])
+          gl.scale.setScalar(layer.scale)
+          gl.renderOrder = 11 - i
+          group.add(gl)
+        })
       }
     }
   }
@@ -275,6 +318,8 @@ export function clearHighlight(parent: THREE.Object3D) {
   selectBackingMat = null
   currentMats      = []
   currentCoreMat   = null
+  currentNeonMat   = null
+  currentGlowMats  = []
   current          = null
   activeFeatureStrokeScale = 1
 }
@@ -285,8 +330,23 @@ export function updateCountryHighlight(timeSeconds: number) {
   const breathUp = 0.5 + 0.5 * Math.sin(timeSeconds * 1.85 + pulsePhase * 0.55)
   const alpha    = 0.82 + 0.18 * Math.sin(timeSeconds * 1.6 + pulsePhase)
 
-  currentCoreMat.color.copy(computeAnimatedColor(timeSeconds))
+  const animColor = computeAnimatedColor(timeSeconds)
+  currentCoreMat.color.copy(animColor)
   currentCoreMat.opacity = alpha
+
+  if (currentNeonMat) {
+    currentNeonMat.color.copy(animColor).multiplyScalar(1.4)
+    currentNeonMat.opacity = alpha * 0.72
+  }
+
+  if (currentGlowMats.length) {
+    LINE_GLOW_LAYERS.forEach((layer, i) => {
+      const gm = currentGlowMats[i]
+      if (!gm) return
+      gm.color.copy(animColor)
+      gm.opacity = alpha * layer.opacityMul
+    })
+  }
 
   if (current) {
     current.scale.setScalar(SELECT_SCALE + SELECT_BREATH_AMP * breathUp)

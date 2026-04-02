@@ -1,18 +1,493 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Globe — Config Test</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      background: #0a0e14;
+      color: #c8d0dc;
+      height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+    }
+
+    /* ── Top bar ── */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: #0f1520;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding: 0 20px;
+      height: 48px;
+    }
+    #topbar h1 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.35);
+      margin-right: 24px;
+      white-space: nowrap;
+    }
+
+    .tab-btn {
+      border: 0;
+      background: none;
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      padding: 0 14px;
+      height: 48px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 150ms, border-color 150ms;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: rgba(255,255,255,0.7); }
+    .tab-btn.active { color: #ecb200; border-bottom-color: #ecb200; }
+
+    /* ── Main area ── */
+    #main {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      overflow: hidden;
+    }
+
+    /* ── Panel ── */
+    #panel {
+      display: flex;
+      flex-direction: column;
+      background: #0f1520;
+      border-right: 1px solid rgba(255,255,255,0.07);
+      overflow-y: auto;
+    }
+
+    .tab-content { display: none; flex-direction: column; flex: 1; }
+    .tab-content.active { display: flex; }
+
+    .section {
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 14px 16px;
+    }
+    .section-title {
+      font-size: 10px; font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; color: rgba(255,255,255,0.28);
+      margin-bottom: 10px;
+    }
+    .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+    .field:last-child { margin-bottom: 0; }
+    .field label { font-size: 11px; color: rgba(255,255,255,0.48); }
+    .field input, .field select, .field textarea {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 5px;
+      color: #e0e8f0;
+      font-size: 12px;
+      font-family: inherit;
+      padding: 5px 8px;
+      outline: none; width: 100%;
+    }
+    .field textarea { resize: vertical; min-height: 90px; font-family: "SF Mono","Fira Code",monospace; font-size: 11px; }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: rgba(236,178,0,0.5); }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .toggle-row:last-child { margin-bottom: 0; }
+    .toggle-row label { font-size: 11px; color: rgba(255,255,255,0.48); }
+    input[type="checkbox"] {
+      width: 32px; height: 18px; appearance: none;
+      background: rgba(255,255,255,0.1); border-radius: 999px;
+      position: relative; cursor: pointer; transition: background 200ms; flex-shrink: 0;
+    }
+    input[type="checkbox"]:checked { background: #ecb200; }
+    input[type="checkbox"]::after {
+      content: ''; position: absolute; width: 14px; height: 14px;
+      background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: left 200ms;
+    }
+    input[type="checkbox"]:checked::after { left: 16px; }
+
+    .actions { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+    button.primary { background: #ecb200; color: #000; border: 0; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; padding: 9px 14px; text-transform: uppercase; }
+    button.primary:hover { background: #f5c300; }
+    button.secondary { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); border: 0; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; padding: 9px 14px; text-transform: uppercase; }
+    button.secondary:hover { background: rgba(255,255,255,0.13); }
+
+    /* ── Log ── */
+    #log-wrap { padding: 12px 16px; flex: 1; overflow-y: auto; min-height: 120px; border-top: 1px solid rgba(255,255,255,0.06); }
+    #log { display: flex; flex-direction: column; gap: 3px; }
+    .log-entry { font-size: 10px; font-family: "SF Mono","Fira Code",monospace; padding: 3px 7px; border-radius: 4px; border-left: 2px solid transparent; background: rgba(255,255,255,0.03); white-space: pre-wrap; word-break: break-all; }
+    .log-entry.out  { border-color: #ecb200; color: #f0d070; }
+    .log-entry.in   { border-color: #4adb88; color: #7af0a8; }
+    .log-entry.info { border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.35); }
+
+    /* ── Globe ── */
+    #frame-wrap { position: relative; overflow: hidden; }
+    #globe-frame { width: 100%; height: 100%; border: 0; display: block; }
+    #status-badge {
+      position: absolute; top: 12px; left: 12px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px;
+      background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.4); pointer-events: none; transition: color 300ms, border-color 300ms;
+    }
+    #status-badge.ready  { color: #4adb88; border-color: rgba(74,219,136,0.4); }
+    #status-badge.error  { color: #f06060; border-color: rgba(240,96,96,0.4); }
+    #status-badge.booted { color: #ecb200; border-color: rgba(236,178,0,0.4); }
+
+    /* ── Code preview ── */
+    .code-block {
+      font-family: "SF Mono","Fira Code",monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      padding: 12px;
+      color: #a8d0f0;
+      white-space: pre;
+      overflow-x: auto;
+      margin-top: 8px;
+    }
+    .code-block .attr { color: #90d0a0; }
+    .code-block .val  { color: #f0d070; }
+    .code-block .tag  { color: #80b0e0; }
+    .code-block .cmt  { color: rgba(255,255,255,0.25); }
+  </style>
 </head>
 <body>
-    <iframe
-  src="https://fluffy-moonbeam-eaf248.netlify.app/?minZoomDistance=17&maxZoomDistance=32&bgColor=0x091320&gridEffectColor=0xB8C0CE&gridMainColor=0xB8C0CE&countryLineColor=0x122640"
-  title="NAVPASS Globe"
-  loading="lazy"
-  style="width:100%;height:100vh;border:0;display:block;"
-  allow="fullscreen"
-></iframe>
 
+<!-- ── Top bar ── -->
+<div id="topbar">
+  <h1>Globe Config Test</h1>
+  <button class="tab-btn active" data-tab="postmessage">postMessage</button>
+  <button class="tab-btn" data-tab="dataattr">data-* attributes</button>
+  <button class="tab-btn" data-tab="urlparams">URL params (legacy)</button>
+</div>
+
+<!-- ── Main ── -->
+<div id="main">
+  <div id="panel">
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: postMessage
+    ════════════════════════════════════════════════════════ -->
+    <div class="tab-content active" id="tab-postmessage">
+      <div class="section">
+        <div class="section-title">iframe src</div>
+        <div class="field">
+          <input type="text" id="pm-src" value="http://localhost:5173/">
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">Camera</div>
+        <div class="field-row">
+          <div class="field"><label>minZoomDistance</label><input type="number" id="pm-minZoomDistance" value="35"></div>
+          <div class="field"><label>maxZoomDistance</label><input type="number" id="pm-maxZoomDistance" value="35"></div>
+        </div>
+        <div class="toggle-row"><label>disableScrollZoom</label><input type="checkbox" id="pm-disableScrollZoom" checked></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Colors</div>
+        <div class="field"><label>bgColor</label><input type="text" id="pm-bgColor" value="001429"></div>
+        <div class="field"><label>accentColor</label><input type="text" id="pm-accentColor" value="DCAB19"></div>
+        <div class="field"><label>glowColor</label><input type="text" id="pm-glowColor" value="000000"></div>
+        <div class="field"><label>airportDotColor</label><input type="text" id="pm-airportDotColor" value="e5b30d"></div>
+        <div class="field"><label>countryLineColor</label><input type="text" id="pm-countryLineColor" value="rgba(255,255,255,0.1)"></div>
+        <div class="field-row">
+          <div class="field"><label>gridMainColor</label><input type="text" id="pm-gridMainColor" value="rgba(255,255,255,0.1)"></div>
+          <div class="field"><label>gridEffectColor</label><input type="text" id="pm-gridEffectColor" value="rgba(255,255,255,0.1)"></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">Card</div>
+        <div class="field"><label>cardBorderColor</label><input type="text" id="pm-cardBorderColor" value="rgba(255,255,255,0.1)"></div>
+        <div class="field-row">
+          <div class="field"><label>cardBorderWidth</label><input type="number" id="pm-cardBorderWidth" value="1"></div>
+          <div class="field"><label>cardBackgroundColor</label><input type="text" id="pm-cardBackgroundColor" value=""></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">UI</div>
+        <div class="toggle-row"><label>showBreadcrumbs</label><input type="checkbox" id="pm-showBreadcrumbs"></div>
+        <div class="toggle-row"><label>showZoomControls</label><input type="checkbox" id="pm-showZoomControls"></div>
+        <div class="toggle-row"><label>disableMapInteraction</label><input type="checkbox" id="pm-disableMapInteraction"></div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="pm-send">Send config via postMessage</button>
+        <button class="secondary" id="pm-reload">Reload iframe</button>
+      </div>
+      <div id="log-wrap">
+        <div class="section-title">Message log</div>
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: data-* attributes
+    ════════════════════════════════════════════════════════ -->
+    <div class="tab-content" id="tab-dataattr">
+      <div class="section">
+        <div class="section-title">Como usar</div>
+        <p style="font-size:11px;line-height:1.6;color:rgba(255,255,255,0.45);margin-bottom:10px;">
+          Adiciona <code style="color:#ecb200">data-*</code> diretamente no
+          elemento <code style="color:#ecb200">&lt;iframe&gt;</code>. Zero JavaScript,
+          zero URL params. Mesmo nome dos URL params, em kebab-case.
+        </p>
+        <div class="code-block"><span class="tag">&lt;iframe</span>
+  <span class="attr">src</span>=<span class="val">"https://navpass-globe.netlify.app/"</span>
+  <span class="attr">data-bg-color</span>=<span class="val">"001429"</span>
+  <span class="attr">data-min-zoom-distance</span>=<span class="val">"35"</span>
+  <span class="attr">data-max-zoom-distance</span>=<span class="val">"35"</span>
+  <span class="attr">data-disable-scroll-zoom</span>=<span class="val">"1"</span>
+  <span class="attr">data-accent-color</span>=<span class="val">"DCAB19"</span>
+  <span class="attr">data-glow-color</span>=<span class="val">"000000"</span>
+  <span class="attr">data-show-breadcrumbs</span>=<span class="val">"0"</span>
+  <span class="attr">title</span>=<span class="val">"NAVPASS Globe"</span>
+  <span class="attr">loading</span>=<span class="val">"lazy"</span>
+<span class="tag">&gt;&lt;/iframe&gt;</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Testar ao vivo</div>
+        <div class="field"><label>src</label><input type="text" id="da-src" value="http://localhost:5173/"></div>
+        <div class="field"><label>Atributos (um por linha: nome=valor)</label>
+          <textarea id="da-attrs">bg-color=001429
+min-zoom-distance=35
+max-zoom-distance=35
+disable-scroll-zoom=1
+accent-color=DCAB19
+glow-color=000000
+airport-dot-color=e5b30d
+country-line-color=rgba(255,255,255,0.1)
+grid-main-color=rgba(255,255,255,0.1)
+grid-effect-color=rgba(255,255,255,0.1)
+card-border-color=rgba(255,255,255,0.1)
+card-border-width=1
+show-breadcrumbs=0</textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="da-load">Carregar iframe com data-* attrs</button>
+      </div>
+      <div style="padding:14px 16px;font-size:10px;color:rgba(255,255,255,0.28);line-height:1.6;">
+        ⚠ Funciona apenas quando o globe está no mesmo domínio (same-origin).
+        Cross-origin: usar postMessage ou URL params.
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TAB: URL params (legacy)
+    ════════════════════════════════════════════════════════ -->
+    <div class="tab-content" id="tab-urlparams">
+      <div class="section">
+        <div class="section-title">URL base</div>
+        <div class="field"><input type="text" id="up-base" value="http://localhost:5173/"></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Params (um por linha: chave=valor)</div>
+        <div class="field">
+          <textarea id="up-params">minZoomDistance=35
+maxZoomDistance=35
+disableScrollZoom=1
+bgColor=001429
+accentColor=DCAB19
+glowColor=000000
+airportDotColor=e5b30d
+countryLineColor=rgba(255,255,255,0.1)
+gridMainColor=rgba(255,255,255,0.1)
+gridEffectColor=rgba(255,255,255,0.1)
+cardBorderColor=rgba(255,255,255,0.1)
+cardBorderWidth=1
+showBreadcrumbs=0</textarea>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">URL gerada</div>
+        <div class="field"><input type="text" id="up-url" readonly style="color:#ecb200;font-family:monospace;font-size:10px;"></div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="up-load">Carregar iframe com URL params</button>
+        <button class="secondary" id="up-copy">Copiar URL</button>
+      </div>
+    </div>
+
+  </div><!-- /panel -->
+
+  <!-- ── Globe ── -->
+  <div id="frame-wrap">
+    <iframe id="globe-frame" title="NAVPASS Globe" allow="fullscreen"></iframe>
+    <div id="status-badge">aguardando…</div>
+  </div>
+</div>
+
+<script>
+  const frame  = document.getElementById('globe-frame')
+  const badge  = document.getElementById('status-badge')
+  const logEl  = document.getElementById('log')
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'))
+      btn.classList.add('active')
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active')
+    })
+  })
+
+  // ── Log ──────────────────────────────────────────────────────────────────
+  function addLog(text, type = 'info') {
+    const el = document.createElement('div')
+    el.className = `log-entry ${type}`
+    el.textContent = new Date().toLocaleTimeString('en', { hour12: false }) + '  ' + text
+    logEl.prepend(el)
+    if (logEl.children.length > 80) logEl.lastElementChild.remove()
+  }
+
+  // ── Listen for globe messages ─────────────────────────────────────────────
+  window.addEventListener('message', (e) => {
+    if (e.data?.source !== 'navpass-globe') return
+    const ev = e.data.event
+    addLog(`← globe:${ev}${e.data.message ? ' — ' + e.data.message : ''}`, 'in')
+    badge.className = ''
+    if (ev === 'boot') {
+      badge.className = 'booted'
+      badge.textContent = 'boot recebido'
+      // Auto-send config if postMessage tab is active
+      if (document.querySelector('.tab-btn.active')?.dataset.tab === 'postmessage') {
+        sendPmConfig()
+      }
+    } else if (ev === 'ready') {
+      badge.className = 'ready'
+      badge.textContent = 'ready ✓'
+    } else if (ev === 'error') {
+      badge.className = 'error'
+      badge.textContent = 'error ✗'
+    }
+  })
+
+  // ────────────────────────────────────────────────────────────────────────
+  // TAB: postMessage
+  // ────────────────────────────────────────────────────────────────────────
+  function v(id)  { return document.getElementById(id).value.trim() }
+  function chk(id){ return document.getElementById(id).checked }
+
+  function buildPmConfig() {
+    const c = { type: 'navpass:config' }
+    const nums = ['minZoomDistance','maxZoomDistance','cardBorderWidth']
+    nums.forEach(k => { const val = v('pm-' + k); if (val !== '') c[k] = Number(val) })
+    const strs = ['bgColor','accentColor','glowColor','airportDotColor','countryLineColor',
+                  'gridMainColor','gridEffectColor','cardBorderColor','cardBackgroundColor']
+    strs.forEach(k => { const val = v('pm-' + k); if (val !== '') c[k] = val })
+    c.disableScrollZoom   = chk('pm-disableScrollZoom')   ? 1 : 0
+    c.showBreadcrumbs     = chk('pm-showBreadcrumbs')     ? 1 : 0
+    c.showZoomControls    = chk('pm-showZoomControls')    ? 1 : 0
+    c.disableMapInteraction = chk('pm-disableMapInteraction') ? 1 : 0
+    return c
+  }
+
+  function sendPmConfig() {
+    const cfg = buildPmConfig()
+    frame.contentWindow?.postMessage(cfg, '*')
+    addLog('→ postMessage: ' + JSON.stringify(cfg, null, 2), 'out')
+  }
+
+  function loadPmFrame() {
+    badge.className = ''
+    badge.textContent = 'carregando…'
+    frame.src = v('pm-src') || 'http://localhost:5173/'
+    addLog('iframe src → ' + frame.src, 'info')
+  }
+
+  document.getElementById('pm-send').addEventListener('click', sendPmConfig)
+  document.getElementById('pm-reload').addEventListener('click', loadPmFrame)
+
+  // ────────────────────────────────────────────────────────────────────────
+  // TAB: data-* attributes
+  // ────────────────────────────────────────────────────────────────────────
+  document.getElementById('da-load').addEventListener('click', () => {
+    const src   = document.getElementById('da-src').value.trim() || 'http://localhost:5173/'
+    const lines = document.getElementById('da-attrs').value.split('\n').map(l => l.trim()).filter(Boolean)
+
+    badge.className = ''
+    badge.textContent = 'carregando…'
+
+    // Remove old iframe, create fresh one with data-* attrs
+    const wrap = document.getElementById('frame-wrap')
+    const old  = document.getElementById('globe-frame')
+    const newFrame = document.createElement('iframe')
+    newFrame.id    = 'globe-frame'
+    newFrame.title = 'NAVPASS Globe'
+    newFrame.allow = 'fullscreen'
+    newFrame.style.cssText = 'width:100%;height:100%;border:0;display:block;'
+
+    lines.forEach(line => {
+      const eq = line.indexOf('=')
+      if (eq === -1) return
+      const key = line.slice(0, eq).trim()
+      const val = line.slice(eq + 1).trim()
+      newFrame.dataset[kebabToCamel(key)] = val
+    })
+
+    newFrame.src = src
+    wrap.replaceChild(newFrame, old)
+
+    // Re-bind frame reference
+    Object.defineProperty(window, 'frame', { value: newFrame, configurable: true })
+
+    addLog('iframe reloaded with data-* attrs:', 'info')
+    lines.forEach(l => addLog('  data-' + l, 'info'))
+  })
+
+  function kebabToCamel(str) {
+    return str.replace(/-([a-z])/g, (_, c) => c.toUpperCase())
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // TAB: URL params
+  // ────────────────────────────────────────────────────────────────────────
+  function buildUrl() {
+    const base   = document.getElementById('up-base').value.trim() || 'http://localhost:5173/'
+    const lines  = document.getElementById('up-params').value.split('\n').map(l => l.trim()).filter(Boolean)
+    const params = new URLSearchParams()
+    lines.forEach(line => {
+      const eq = line.indexOf('=')
+      if (eq === -1) return
+      params.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim())
+    })
+    const qs = params.toString()
+    return base + (qs ? '?' + qs : '')
+  }
+
+  function refreshUpUrl() {
+    document.getElementById('up-url').value = buildUrl()
+  }
+
+  document.getElementById('up-base').addEventListener('input', refreshUpUrl)
+  document.getElementById('up-params').addEventListener('input', refreshUpUrl)
+
+  document.getElementById('up-load').addEventListener('click', () => {
+    const url = buildUrl()
+    badge.className = ''
+    badge.textContent = 'carregando…'
+    frame.src = url
+    addLog('iframe src → ' + url, 'info')
+  })
+
+  document.getElementById('up-copy').addEventListener('click', () => {
+    navigator.clipboard.writeText(buildUrl()).then(() => addLog('URL copiada ✓', 'info'))
+  })
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  refreshUpUrl()
+  loadPmFrame() // default: load via postMessage tab
+</script>
 </body>
 </html>

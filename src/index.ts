@@ -1224,8 +1224,8 @@ function applyVisualPreset() {
 
   setSelectedBorderLineWidth(4.0)
   setSelectHighlightLineWidth(4.0)
-  setHighlightRenderMode(options.highlightRenderMode ?? 'line2')
-  setHoverHighlightRenderMode(options.highlightRenderMode ?? 'line2')
+  setHighlightRenderMode(options.highlightRenderMode ?? 'line')
+  setHoverHighlightRenderMode(options.highlightRenderMode ?? 'line')
   setSelectBackingEnabled(options.showSelectBacking === true)
   setCountryGlowEnabled(options.showCountryGlow === true)
 
@@ -2164,6 +2164,15 @@ function deriveAirportCodeFromName(name: string) {
   return source.length >= 3 ? source : source.padEnd(3, 'X')
 }
 
+function getCardBg(): string {
+  const root = document.getElementById('globe-ui')
+  if (root) {
+    const v = getComputedStyle(root).getPropertyValue('--np-card-bg').trim()
+    if (v) return v
+  }
+  return '#001E3D'
+}
+
 function resolveAirportTooltipCode(code: unknown, fallbackName: string) {
   const normalized = String(code || '').trim().toUpperCase()
   if (/^[A-Z0-9]{3,4}$/.test(normalized)) return normalized
@@ -2192,7 +2201,7 @@ function showFlightTooltip(routeId: number, x: number, y: number) {
         box-sizing:border-box;
         width:min(208px, calc(100vw - 16px));
         padding:10px 11px 9px;
-        background:#0d1c30;
+        background:${getCardBg()};
         border:1px solid rgba(204,183,97,0.72);
         color:#f7f8fb;
         font-family:${FLIGHT_TOOLTIP_FONT_FAMILY};
@@ -2248,7 +2257,7 @@ function showCountryTooltip(feature: any, x: number, y: number) {
         box-sizing:border-box;
         width:min(208px, calc(100vw - 16px));
         padding:10px 12px 10px;
-        background:#0d1c30;
+        background:${getCardBg()};
         border:1px solid rgba(204,183,97,0.72);
         color:#f7f8fb;
         font-family:${FLIGHT_TOOLTIP_FONT_FAMILY};

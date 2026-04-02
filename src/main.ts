@@ -550,100 +550,187 @@ function notifyParent(event: 'boot' | 'ready' | 'error', payload?: Record<string
   )
 }
 
-const params = new URLSearchParams(window.location.search)
 const mountTarget = document.getElementById('app') ?? document.body
 const defaultAssetBaseUrl = import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL
-const themeFromParams = mergeThemes(parseThemeJsonParam(params.get('theme')), parseThemeFlatParams(params))
-const colorThemeParams = parseColorThemeParams(params)
 
-const options: GlobeOptions = {
-  mountTarget,
+// ─────────────────────────────────────────────────────────────────────────────
+// iframe data-* attribute support
+//
+// When the globe is embedded in an <iframe>, the parent can configure it by
+// setting data-* attributes directly on the element — no URL params, no JS:
+//
+//   <iframe src="…/globe/"
+//     data-bg-color="001429"
+//     data-min-zoom-distance="35"
+//     data-disable-scroll-zoom="1"
+//   ></iframe>
+//
+// Attribute names map 1-to-1 with URL params: kebab-case in HTML
+// (data-bg-color) becomes camelCase in JS (bgColor) via dataset.
+//
+// Priority: URL params > data attributes > defaults.
+// Note: window.frameElement is null for cross-origin iframes (browser security).
+// ─────────────────────────────────────────────────────────────────────────────
 
-  // ── General ───────────────────────────────────────────────────────────────
-  assetBaseUrl: normalizeAssetBaseUrl(params.get('assetBaseUrl') ?? defaultAssetBaseUrl),
-  initialHeatmapEnabled: parseBooleanParam(params, 'heatmap'),
-  initialFlightVisualizationMode: parseFlightModeParam(params.get('flightMode')),
-  initialIntroAnimationEnabled: parseBooleanParam(params, 'introAnimation'),
-
-  // ── Data files ────────────────────────────────────────────────────────────
-  routesDataFile: params.get('routesDataFile') ?? undefined,
-  airportsDataFile: params.get('airportsDataFile') ?? undefined,
-  // useFullAirportsDataset: 1 (default) → airports.json (55 000+ entries)
-  //                         0           → airports_points.json (legacy, ~530 entries)
-  useFullAirportsDataset: parseBooleanParam(params, 'useFullAirportsDataset'),
-  // airportRenderLimit caps rendered dots; aggregation always uses the full dataset
-  airportRenderLimit: parseNumberParam(params, 'airportRenderLimit'),
-  // airportKinds: comma-separated kind filter; default excludes heliports, closed, balloonports
-  airportKinds: params.get('airportKinds')?.split(',').map((s) => s.trim()).filter(Boolean) ?? "medium_airport,large_airport".split(','),
-
-  // ── Flight density ────────────────────────────────────────────────────────
-  routeCount: parseNumberParam(params, 'routeCount'),
-  planesPerRoute: parseNumberParam(params, 'planesPerRoute'),
-  planeDensityScale: parseNumberParam(params, 'planeDensityScale'),
-
-  // ── Camera & zoom ─────────────────────────────────────────────────────────
-  minZoomDistance: parseNumberParam(params, 'minZoomDistance'),
-  maxZoomDistance: parseNumberParam(params, 'maxZoomDistance'),
-  countryClickZoomLevel: parseNumberParam(params, 'countryClickZoomLevel'),
-  countryClickZoomDuration: parseNumberParam(params, 'countryClickZoomDuration'),
-  disableScrollZoom: parseBooleanParam(params, 'disableScrollZoom') ?? parseBooleanParam(params, 'disableScroll'),
-  // scrollResetsView: 1 (default) — scroll while card is open → close card + reset zoom
-  scrollResetsView: parseBooleanParam(params, 'scrollResetsView'),
-
-  // ── UI controls ───────────────────────────────────────────────────────────
-  // showZoomControls: 0 (default) — + / − buttons are removed from DOM when disabled
-  showZoomControls: parseBooleanParam(params, 'showZoomControls') ?? false,
-  showBreadcrumbs: parseBooleanParam(params, 'showBreadcrumbs') ?? true,
-  breadcrumbOffsetLeft: parseNumberParam(params, 'breadcrumbOffsetLeft'),
-  breadcrumbOffsetTop: parseNumberParam(params, 'breadcrumbOffsetTop'),
-  showCountryCardCloseButton: parseBooleanParam(params, 'showCountryCardCloseButton') ?? true,
-  animatedCards: parseBooleanParam(params, 'animatedCards'),
-  disableMapInteraction: parseBooleanParam(params, 'disableMapInteraction'),
-  searchBarX: parseNumberParam(params, 'searchBarX'),
-  searchBarY: parseNumberParam(params, 'searchBarY'),
-  showSearchBarMobile: parseBooleanParam(params, 'showSearchBarMobile'),
-
-  // ── Card / UI theming ─────────────────────────────────────────────────────
-  // highlightRenderMode: 'line2' (default) | 'line' — renderer for hover/select border line
-  highlightRenderMode: (params.get('highlightRenderMode') === 'line' ? 'line' : undefined) as 'line' | undefined,
-  // showSelectBacking: 1 (default) — yellow shadow backing on selected country border
-  showSelectBacking: parseBooleanParam(params, 'showSelectBacking'),
-  // showCountryGlow: 0 (default) — soft glow/halo around selected country border. 1 enables
-  showCountryGlow: parseBooleanParam(params, 'showCountryGlow'),
-  // accentColor: live dot, active breadcrumb, card hover glow. Default: #ECB200 (gold)
-  accentColor: parseHexColorParam(params, 'accentColor'),
-  // cardBackground: CSS background of the card panel. Accepts hex, rgba(), or 'transparent'
-  cardBackground: parseCssColorParam(params, 'cardBackground'),
-  // cardBackgroundColor: solid color applied to all card sections (overrides cardBackground)
-  cardBackgroundColor: parseCssColorParam(params, 'cardBackgroundColor'),
-  // cardBorderColor: outer border of the country card. Accepts hex or rgba(…)
-  cardBorderColor: parseCssColorParam(params, 'cardBorderColor'),
-  // cardBorderWidth: outer border width in px. 0 removes it. Default: 1
-  cardBorderWidth: parseNumberParam(params, 'cardBorderWidth'),
-
-  // ── Directional lighting ──────────────────────────────────────────────────
-  // lightIntensity: 0 (default, off). Range 0.3–1.0 for subtle glow
-  lightIntensity: parseNumberParam(params, 'lightIntensity'),
-  lightColor: parseHexColorParam(params, 'lightColor'),
-  // lightRadius: half-intensity blob size (0.01 = dot, 0.35 = default, 0.8 = full wash)
-  lightRadius: parseNumberParam(params, 'lightRadius'),
-  lightX: parseNumberParam(params, 'lightX'),
-  lightY: parseNumberParam(params, 'lightY'),
-  lightZ: parseNumberParam(params, 'lightZ'),
-
-  // ── Globe theme ───────────────────────────────────────────────────────────
-  // Priority: theme.* dot-params > shortcut color params (bgColor, etc.) > theme= JSON
-  theme: mergeThemes(themeFromParams, colorThemeParams)
+function readIframeDatasetParams(): URLSearchParams {
+  const p = new URLSearchParams()
+  try {
+    const el = window.frameElement as HTMLElement | null
+    if (!el?.dataset) return p
+    for (const [k, v] of Object.entries(el.dataset)) {
+      if (v != null) p.set(k, v)
+    }
+  } catch {
+    // cross-origin: frameElement access throws — silently ignore
+  }
+  return p
 }
+
+/**
+ * Merge two URLSearchParams: values in `override` win for any key they define.
+ */
+function mergeParams(base: URLSearchParams, override: URLSearchParams): URLSearchParams {
+  const merged = new URLSearchParams(base)
+  for (const [k, v] of override.entries()) merged.set(k, v)
+  return merged
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Options builder — shared by URL-params path and postMessage path
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildOptions(params: URLSearchParams): GlobeOptions {
+  const themeFromJson = mergeThemes(parseThemeJsonParam(params.get('theme')), parseThemeFlatParams(params))
+  const colorTheme    = parseColorThemeParams(params)
+  return {
+    mountTarget,
+    assetBaseUrl:                  normalizeAssetBaseUrl(params.get('assetBaseUrl') ?? defaultAssetBaseUrl),
+    initialHeatmapEnabled:         parseBooleanParam(params, 'heatmap'),
+    initialFlightVisualizationMode: parseFlightModeParam(params.get('flightMode')),
+    initialIntroAnimationEnabled:  parseBooleanParam(params, 'introAnimation'),
+    routesDataFile:                params.get('routesDataFile') ?? undefined,
+    airportsDataFile:              params.get('airportsDataFile') ?? undefined,
+    useFullAirportsDataset:        parseBooleanParam(params, 'useFullAirportsDataset'),
+    airportRenderLimit:            parseNumberParam(params, 'airportRenderLimit'),
+    airportKinds:                  params.get('airportKinds')?.split(',').map(s => s.trim()).filter(Boolean) ?? 'medium_airport,large_airport'.split(','),
+    routeCount:                    parseNumberParam(params, 'routeCount'),
+    planesPerRoute:                parseNumberParam(params, 'planesPerRoute'),
+    planeDensityScale:             parseNumberParam(params, 'planeDensityScale'),
+    minZoomDistance:               parseNumberParam(params, 'minZoomDistance'),
+    maxZoomDistance:               parseNumberParam(params, 'maxZoomDistance'),
+    countryClickZoomLevel:         parseNumberParam(params, 'countryClickZoomLevel'),
+    countryClickZoomDuration:      parseNumberParam(params, 'countryClickZoomDuration'),
+    disableScrollZoom:             parseBooleanParam(params, 'disableScrollZoom') ?? parseBooleanParam(params, 'disableScroll'),
+    scrollResetsView:              parseBooleanParam(params, 'scrollResetsView'),
+    showZoomControls:              parseBooleanParam(params, 'showZoomControls') ?? false,
+    showBreadcrumbs:               parseBooleanParam(params, 'showBreadcrumbs') ?? true,
+    breadcrumbOffsetLeft:          parseNumberParam(params, 'breadcrumbOffsetLeft'),
+    breadcrumbOffsetTop:           parseNumberParam(params, 'breadcrumbOffsetTop'),
+    showCountryCardCloseButton:    parseBooleanParam(params, 'showCountryCardCloseButton') ?? true,
+    animatedCards:                 parseBooleanParam(params, 'animatedCards'),
+    disableMapInteraction:         parseBooleanParam(params, 'disableMapInteraction'),
+    searchBarX:                    parseNumberParam(params, 'searchBarX'),
+    searchBarY:                    parseNumberParam(params, 'searchBarY'),
+    showSearchBarMobile:           parseBooleanParam(params, 'showSearchBarMobile'),
+    highlightRenderMode:           (params.get('highlightRenderMode') === 'line2' ? 'line2' : params.get('highlightRenderMode') === 'line' ? 'line' : undefined) as 'line2' | 'line' | undefined,
+    showSelectBacking:             parseBooleanParam(params, 'showSelectBacking'),
+    showCountryGlow:               parseBooleanParam(params, 'showCountryGlow'),
+    accentColor:                   parseHexColorParam(params, 'accentColor'),
+    cardBackground:                parseCssColorParam(params, 'cardBackground'),
+    cardBackgroundColor:           parseCssColorParam(params, 'cardBackgroundColor'),
+    cardBorderColor:               parseCssColorParam(params, 'cardBorderColor'),
+    cardBorderWidth:               parseNumberParam(params, 'cardBorderWidth'),
+    lightIntensity:                parseNumberParam(params, 'lightIntensity'),
+    lightColor:                    parseHexColorParam(params, 'lightColor'),
+    lightRadius:                   parseNumberParam(params, 'lightRadius'),
+    lightX:                        parseNumberParam(params, 'lightX'),
+    lightY:                        parseNumberParam(params, 'lightY'),
+    lightZ:                        parseNumberParam(params, 'lightZ'),
+    theme:                         mergeThemes(themeFromJson, colorTheme)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// postMessage config support
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Convert a plain config object to URLSearchParams so the existing parsers
+ * can handle it transparently. Object values (e.g. a nested `theme`) are
+ * JSON-stringified so `parseThemeJsonParam` picks them up.
+ */
+function configObjectToParams(config: Record<string, unknown>): URLSearchParams {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(config)) {
+    if (k === 'type' || v == null) continue
+    p.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v))
+  }
+  return p
+}
+
+/**
+ * Merge two option sets. Explicit (non-undefined) fields in `override` win.
+ * Theme objects are deep-merged so both URL params and postMessage can
+ * contribute partial theme overrides without clobbering each other.
+ */
+function mergeOptions(base: GlobeOptions, override: GlobeOptions): GlobeOptions {
+  const merged = { ...base }
+  for (const k of Object.keys(override) as (keyof GlobeOptions)[]) {
+    if (override[k] !== undefined) (merged as any)[k] = override[k]
+  }
+  merged.theme = mergeThemes(base.theme, override.theme)
+  return merged
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Startup
+// ─────────────────────────────────────────────────────────────────────────────
 
 notifyParent('boot')
 
-const app = globe(options)
+// data-* attributes (lowest priority) → URL params override → postMessage overrides
+const datasetParams = readIframeDatasetParams()
+const urlParams     = new URLSearchParams(window.location.search)
+const baseOptions   = buildOptions(mergeParams(datasetParams, urlParams))
+const isEmbedded    = window.parent !== window
 
-void app.ready
-  .then(() => notifyParent('ready'))
-  .catch((error) => {
-    const message = error instanceof Error ? error.message : String(error)
-    notifyParent('error', { message })
-    console.error('[navpass-globe] startup failed', error)
+/**
+ * When embedded in an iframe, wait up to 100 ms for the parent to send a
+ * { type: 'navpass:config', ...params } postMessage before initialising.
+ * This keeps the iframe src clean — no giant query string needed.
+ *
+ * When running standalone (direct URL), skip the wait and start immediately.
+ *
+ * Parent usage:
+ *   window.addEventListener('message', e => {
+ *     if (e.data?.event === 'boot' && e.data?.source === 'navpass-globe') {
+ *       iframeEl.contentWindow.postMessage({ type: 'navpass:config', bgColor: '001429', ... }, '*')
+ *     }
+ *   })
+ */
+new Promise<GlobeOptions>((resolve) => {
+  if (!isEmbedded) { resolve(baseOptions); return }
+
+  const t = setTimeout(() => resolve(baseOptions), 100)
+
+  window.addEventListener('message', function h(e) {
+    if (e.data?.type !== 'navpass:config') return
+    clearTimeout(t)
+    window.removeEventListener('message', h)
+    // Support both { type, ...flat } and { type, config: { ...flat } }
+    const payload = (typeof e.data.config === 'object' && e.data.config !== null)
+      ? e.data.config as Record<string, unknown>
+      : e.data as Record<string, unknown>
+    const msgOptions = buildOptions(configObjectToParams(payload))
+    resolve(mergeOptions(baseOptions, msgOptions))
   })
+}).then((options) => {
+  const app = globe(options)
+  void app.ready
+    .then(() => notifyParent('ready'))
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      notifyParent('error', { message })
+      console.error('[navpass-globe] startup failed', error)
+    })
+})

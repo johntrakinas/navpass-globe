@@ -133,7 +133,7 @@ function ensureStyles() {
     }
     .panel-tooltip,
     .panel-tooltip * { margin: 0; }
-    .panel-tooltip { display: flex; flex-direction: column; width: 100%; background: #0d1c30; color: #fff; }
+    .panel-tooltip { display: flex; flex-direction: column; width: 100%; background: var(--np-card-bg); color: #fff; }
     .panel-tooltip-header { position: relative; display: flex; min-height: 162px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); overflow: hidden; }
     .panel-tooltip-headcopy { flex: 1; min-width: 0; padding: 58px 20px 18px; }
     .panel-tooltip-title { font-family: "Optima","Palatino Linotype","Book Antiqua",Georgia,serif; font-size: clamp(32px, 4vw, 42px); line-height: 1.05; letter-spacing: -0.7px; text-wrap: balance; }

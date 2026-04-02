@@ -21,6 +21,17 @@ type CoreMat = LineMaterial | THREE.LineBasicMaterial
 let highlightRenderMode: 'line2' | 'line' = 'line2'
 let hoverGroup: THREE.Group | null = null
 let hoverCoreMat: CoreMat | null = null
+let hoverNeonMat: THREE.LineBasicMaterial | null = null
+let hoverGlowMats: THREE.LineBasicMaterial[] = []
+
+const HOVER_GLOW_LAYERS = [
+  { scale: 1.002, opacityMul: 0.90 },
+  { scale: 1.005, opacityMul: 0.70 },
+  { scale: 1.010, opacityMul: 0.45 },
+  { scale: 1.018, opacityMul: 0.22 },
+  { scale: 1.030, opacityMul: 0.10 },
+  { scale: 1.048, opacityMul: 0.04 },
+]
 
 let targetOpacity = 0
 let currentOpacity = 0
@@ -140,7 +151,11 @@ function disposeHover(parent: THREE.Object3D) {
     if ((obj as any).geometry?.dispose) (obj as any).geometry.dispose()
   })
   hoverCoreMat?.dispose()
+  hoverNeonMat?.dispose()
+  for (const m of hoverGlowMats) m.dispose()
   hoverCoreMat = null
+  hoverNeonMat = null
+  hoverGlowMats = []
   hoverGroup = null
 }
 
@@ -168,7 +183,17 @@ export function setSelectedHighlight(feature: any | null, parent: THREE.Object3D
 
   if (highlightRenderMode === 'line2') {
     const mat = createSelectMat()
+    const neonMat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(hoverColorB).multiplyScalar(1.4).getHex(),
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+      blending: THREE.AdditiveBlending
+    })
     hoverCoreMat = mat
+    hoverNeonMat = neonMat
     for (const poly of polys) {
       for (const ring of poly) {
         const raw: THREE.Vector3[] = []
@@ -176,14 +201,28 @@ export function setSelectedHighlight(feature: any | null, parent: THREE.Object3D
           raw.push(latLongToVector3(lat, lng, radius * HOVER_RADIUS_MULT))
         }
         if (raw.length < 2) continue
-        const line = buildLine2(subdivideRing(raw), mat)
+        const subdivided = subdivideRing(raw)
+        const line = buildLine2(subdivided, mat)
         line.renderOrder = 61
         hoverGroup.add(line)
+        const neonLine = buildLineLegacy(subdivided, neonMat)
+        neonLine.renderOrder = 62
+        hoverGroup.add(neonLine)
       }
     }
   } else {
     const mat = createLegacyMat()
+    const glowMats = HOVER_GLOW_LAYERS.map(() => new THREE.LineBasicMaterial({
+      color: hoverColorB.getHex(),
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+      blending: THREE.AdditiveBlending
+    }))
     hoverCoreMat = mat
+    hoverGlowMats = glowMats
     for (const poly of polys) {
       for (const ring of poly) {
         const raw: THREE.Vector3[] = []
@@ -191,9 +230,16 @@ export function setSelectedHighlight(feature: any | null, parent: THREE.Object3D
           raw.push(latLongToVector3(lat, lng, radius * HOVER_RADIUS_MULT))
         }
         if (raw.length < 2) continue
-        const line = buildLineLegacy(subdivideRing(raw), mat)
-        line.renderOrder = 61
-        hoverGroup.add(line)
+        const subdivided = subdivideRing(raw)
+        const coreLine = buildLineLegacy(subdivided, mat)
+        coreLine.renderOrder = 62
+        hoverGroup.add(coreLine)
+        HOVER_GLOW_LAYERS.forEach((layer, i) => {
+          const gl = buildLineLegacy(subdivided, glowMats[i])
+          gl.scale.setScalar(layer.scale)
+          gl.renderOrder = 61 - i
+          hoverGroup!.add(gl)
+        })
       }
     }
   }
@@ -238,7 +284,22 @@ export function updateSelectedHighlight(parent: THREE.Object3D, timeSeconds: num
   } else {
     hoverCoreMat.color.copy(hoverColorB)
   }
-  hoverCoreMat.opacity = currentOpacity * (0.82 + 0.18 * pulse) * hoverOpacityMul * HOVER_CORE_OPACITY_MUL
+  const coreOpacity = currentOpacity * (0.82 + 0.18 * pulse) * hoverOpacityMul * HOVER_CORE_OPACITY_MUL
+  hoverCoreMat.opacity = coreOpacity
+
+  if (hoverNeonMat) {
+    hoverNeonMat.color.copy(hoverColorB).multiplyScalar(1.4)
+    hoverNeonMat.opacity = coreOpacity * 0.72
+  }
+
+  if (hoverGlowMats.length) {
+    HOVER_GLOW_LAYERS.forEach((layer, i) => {
+      const gm = hoverGlowMats[i]
+      if (!gm) return
+      gm.color.copy(hoverColorB)
+      gm.opacity = coreOpacity * layer.opacityMul
+    })
+  }
 
   if (targetOpacity === 0 && currentOpacity < 0.01) {
     disposeHover(parent)
