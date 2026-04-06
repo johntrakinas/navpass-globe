@@ -331,10 +331,10 @@ function parseCssColorParam(params: URLSearchParams, key: string): string | unde
 }
 
 function parseColorThemeParams(params: URLSearchParams): Partial<GlobeTheme> | undefined {
-  const bgColor = parseHexColorParam(params, 'bgColor')
-  const gridEffectColor = parseHexColorParam(params, 'gridEffectColor')
-  const gridMainColor = parseHexColorParam(params, 'gridMainColor')
-  const countryLineColor = parseHexColorParam(params, 'countryLineColor')
+  const bgColor = parseHexColorParam(params, 'bgColor') ?? '#001429'
+  const gridEffectColor = parseCssColorParam(params, 'gridEffectColor') ?? 'rgba(255,255,255,0.1)'
+  const gridMainColor = parseCssColorParam(params, 'gridMainColor') ?? 'rgba(255,255,255,0.1)'
+  const countryLineColor = parseCssColorParam(params, 'countryLineColor') ?? 'rgba(255,255,255,0.1)'
   const hoverColor = parseHexColorParam(params, 'hoverColor')
   const hoverAccentColor = parseHexColorParam(params, 'hoverAccentColor')
   const hoverCoreColor = parseHexColorParam(params, 'hoverCoreColor')
@@ -348,29 +348,9 @@ function parseColorThemeParams(params: URLSearchParams): Partial<GlobeTheme> | u
   const airportDotColor =
     parseHexColorParam(params, 'airportDotColor') ??
     parseHexColorParam(params, 'airportPulseColor') ??
-    parseHexColorParam(params, 'airportColor')
-  const glowColor = parseHexColorParam(params, 'glowColor')
-
-  if (
-    !bgColor &&
-    !gridEffectColor &&
-    !gridMainColor &&
-    !countryLineColor &&
-    !hoverColor &&
-    !hoverAccentColor &&
-    !hoverCoreColor &&
-    hoverPaletteMix === undefined &&
-    !selectedColor &&
-    !selectedAccentColor &&
-    !planeCoreColor &&
-    !planeGlowColor &&
-    !planeTintColor &&
-    !planeAccentColor &&
-    !airportDotColor &&
-    !glowColor
-  ) {
-    return undefined
-  }
+    parseHexColorParam(params, 'airportColor') ??
+    '#E5B30D'
+  const glowColor = parseHexColorParam(params, 'glowColor') ?? '#000000'
 
   const theme: Partial<GlobeTheme> = {}
 
@@ -616,30 +596,30 @@ function buildOptions(params: URLSearchParams): GlobeOptions {
     routeCount:                    parseNumberParam(params, 'routeCount'),
     planesPerRoute:                parseNumberParam(params, 'planesPerRoute'),
     planeDensityScale:             parseNumberParam(params, 'planeDensityScale'),
-    minZoomDistance:               parseNumberParam(params, 'minZoomDistance'),
-    maxZoomDistance:               parseNumberParam(params, 'maxZoomDistance'),
+    minZoomDistance:               parseNumberParam(params, 'minZoomDistance') ?? 35,
+    maxZoomDistance:               parseNumberParam(params, 'maxZoomDistance') ?? 35,
     countryClickZoomLevel:         parseNumberParam(params, 'countryClickZoomLevel'),
     countryClickZoomDuration:      parseNumberParam(params, 'countryClickZoomDuration'),
-    disableScrollZoom:             parseBooleanParam(params, 'disableScrollZoom') ?? parseBooleanParam(params, 'disableScroll'),
+    disableScrollZoom:             parseBooleanParam(params, 'disableScrollZoom') ?? parseBooleanParam(params, 'disableScroll') ?? true,
     scrollResetsView:              parseBooleanParam(params, 'scrollResetsView'),
     showZoomControls:              parseBooleanParam(params, 'showZoomControls') ?? false,
-    showBreadcrumbs:               parseBooleanParam(params, 'showBreadcrumbs') ?? true,
-    breadcrumbOffsetLeft:          parseNumberParam(params, 'breadcrumbOffsetLeft'),
-    breadcrumbOffsetTop:           parseNumberParam(params, 'breadcrumbOffsetTop'),
+    showBreadcrumbs:               parseBooleanParam(params, 'showBreadcrumbs') ?? false,
+    breadcrumbOffsetLeft:          parseNumberParam(params, 'breadcrumbOffsetLeft') ?? -2000,
+    breadcrumbOffsetTop:           parseNumberParam(params, 'breadcrumbOffsetTop') ?? -2000,
     showCountryCardCloseButton:    parseBooleanParam(params, 'showCountryCardCloseButton') ?? true,
     animatedCards:                 parseBooleanParam(params, 'animatedCards'),
     disableMapInteraction:         parseBooleanParam(params, 'disableMapInteraction'),
     searchBarX:                    parseNumberParam(params, 'searchBarX'),
     searchBarY:                    parseNumberParam(params, 'searchBarY'),
-    showSearchBarMobile:           parseBooleanParam(params, 'showSearchBarMobile'),
-    highlightRenderMode:           (params.get('highlightRenderMode') === 'line2' ? 'line2' : params.get('highlightRenderMode') === 'line' ? 'line' : undefined) as 'line2' | 'line' | undefined,
+    showSearchBarMobile:           parseBooleanParam(params, 'showSearchBarMobile') ?? false,
+    highlightRenderMode:           (params.get('highlightRenderMode') === 'line2' ? 'line2' : 'line') as 'line2' | 'line',
     showSelectBacking:             parseBooleanParam(params, 'showSelectBacking'),
     showCountryGlow:               parseBooleanParam(params, 'showCountryGlow'),
-    accentColor:                   parseHexColorParam(params, 'accentColor'),
+    accentColor:                   parseHexColorParam(params, 'accentColor') ?? '#DCAB19',
     cardBackground:                parseCssColorParam(params, 'cardBackground'),
     cardBackgroundColor:           parseCssColorParam(params, 'cardBackgroundColor'),
-    cardBorderColor:               parseCssColorParam(params, 'cardBorderColor'),
-    cardBorderWidth:               parseNumberParam(params, 'cardBorderWidth'),
+    cardBorderColor:               parseCssColorParam(params, 'cardBorderColor') ?? 'rgba(255,255,255,0.1)',
+    cardBorderWidth:               parseNumberParam(params, 'cardBorderWidth') ?? 1,
     lightIntensity:                parseNumberParam(params, 'lightIntensity'),
     lightColor:                    parseHexColorParam(params, 'lightColor'),
     lightRadius:                   parseNumberParam(params, 'lightRadius'),
