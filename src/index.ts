@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import PRECOMPUTED_COUNTRY_STATS from './data/country_flight_stats.json'
 
 import { createDepthMaskSphere } from './globe/depthMask'
 import { createLanguagePoints } from './globe/languagePoints'
@@ -8,7 +9,7 @@ import { createAtmosphere } from './globe/atmosphere'
 import { createInnerSphere } from './globe/innerSphere'
 import { createLightingShell } from './globe/lighting'
 import { latLongToVector3 } from './globe/latLongtoVector3'
-import { createFlightRoutes, type FlightRoutesLayer, type FlightVisualizationMode } from './globe/flights'
+import { createFlightRoutes, type FlightRoutesLayer, type FlightVisualizationMode, type CountryFlightStats } from './globe/flights'
 import { getSunDirectionUTC } from './globe/solar'
 import { loadGeoJSON } from './loaders/loadGeoJSON'
 
@@ -2473,7 +2474,8 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   isCountrySelected = true
   selectedCountryIso3 = iso3 || null
   setGlobeBreadcrumbs(getCountryBreadcrumbs(getFeatureLabel(feature)))
-  const flightsStats = flightRoutes ? flightRoutes.getCountryFlightStats(iso3, performance.now() * 0.001) : null
+  const _precomputed = (PRECOMPUTED_COUNTRY_STATS as Record<string, CountryFlightStats>)[iso3] ?? null
+  const flightsStats = _precomputed ?? (flightRoutes ? flightRoutes.getCountryFlightStats(iso3, performance.now() * 0.001) : null)
   showCountryPanel(feature.properties, flightsStats, 'selected')
   showFocusDim()
   selectedFlightRouteId = null

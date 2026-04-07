@@ -133,7 +133,7 @@ type Route = {
   sourceMode: 'synthetic' | 'enriched'
 }
 
-type CountryFlightStats = {
+export type CountryFlightStats = {
   now: number
   tenMinAgo: number
   routes: number
@@ -3207,6 +3207,7 @@ export function createFlightRoutes(
 
   type RouteCountStats = { arr: number; dep: number; dom: number; over: number }
   const routeCountsByIso3 = new Map<string, RouteCountStats>()
+  const countryFlightStatsCache = new Map<string, CountryFlightStats>()
 
   function rebuildRoutesByCountryIndex() {
     routesByCountry.clear()
@@ -3246,6 +3247,7 @@ export function createFlightRoutes(
   }
 
   rebuildRoutesByCountryIndex()
+  rebuildCountryFlightStatsCache()
 
   // Debug: log computed route stats for a known country to verify aggregation.
   // Remove or gate behind a flag if you want to suppress in production.
@@ -3425,8 +3427,7 @@ export function createFlightRoutes(
     }
   }
 
-  function getCountryFlightStats(iso3: string, _timeSeconds: number): CountryFlightStats {
-    const key = (iso3 || '').trim()
+  function computeCountryFlightStats(key: string): CountryFlightStats {
     const airports = airportCountByIso3?.get(key)
 
     // Route-derived counts are the ONLY source for arr/dep/dom/over.
@@ -3441,8 +3442,6 @@ export function createFlightRoutes(
 
     const enrichedStats = countryStatsByIso3.get(key)
     if (enrichedStats) {
-      // `in_air` is a real-time snapshot from the enriched source — keep it for the live count.
-      // Fall back to route-derived totals when absent.
       const now = Math.max(
         0,
         Math.round(
@@ -3451,7 +3450,6 @@ export function createFlightRoutes(
             : flow.incoming + flow.outgoing + over
         )
       )
-      // Day-level totals are also kept from the enriched source (not covered by raw routes).
       const dayDomestic = Math.max(0, Math.round(Number(enrichedStats.day_dom ?? 0)))
       const flowDay = distributeDomesticFlights(
         enrichedStats.day_arr ?? 0,
@@ -3479,7 +3477,6 @@ export function createFlightRoutes(
       }
     }
 
-    // Non-enriched path: route-derived counts only, no time-varying animation on the stats.
     const routeIds = key ? routesByCountry.get(key) ?? [] : []
     return {
       now: flow.incoming + flow.outgoing + over,
@@ -3490,6 +3487,24 @@ export function createFlightRoutes(
       over,
       airports
     }
+  }
+
+  function rebuildCountryFlightStatsCache() {
+    countryFlightStatsCache.clear()
+    const allKeys = new Set<string>()
+    for (const k of routeCountsByIso3.keys()) allKeys.add(k)
+    for (const k of countryStatsByIso3.keys()) allKeys.add(k)
+    if (airportCountByIso3) {
+      for (const k of airportCountByIso3.keys()) allKeys.add(k)
+    }
+    for (const key of allKeys) {
+      countryFlightStatsCache.set(key, computeCountryFlightStats(key))
+    }
+  }
+
+  function getCountryFlightStats(iso3: string, _timeSeconds: number): CountryFlightStats {
+    const key = (iso3 || '').trim()
+    return countryFlightStatsCache.get(key) ?? computeCountryFlightStats(key)
   }
 
   function setHeatmapEnabled(enabled: boolean) {
@@ -3714,6 +3729,7 @@ export function createFlightRoutes(
       // Routes are now fully populated — rebuild the country index so routeCountsByIso3
       // reflects the actual enriched dataset (it was empty at initial construction time).
       rebuildRoutesByCountryIndex()
+      rebuildCountryFlightStatsCache()
       rebuildHeatTextureFromRoutes()
       routeScoresBuildState = 'idle'
       routeBuildState = 'ready'
