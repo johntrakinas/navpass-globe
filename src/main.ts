@@ -334,7 +334,7 @@ function parseColorThemeParams(params: URLSearchParams): Partial<GlobeTheme> | u
   const bgColor = parseHexColorParam(params, 'bgColor') ?? '#001429'
   const gridEffectColor = parseCssColorParam(params, 'gridEffectColor') ?? 'rgba(255,255,255,0.1)'
   const gridMainColor = parseCssColorParam(params, 'gridMainColor') ?? 'rgba(255,255,255,0.1)'
-  const countryLineColor = parseCssColorParam(params, 'countryLineColor') ?? 'rgba(255,255,255,0.1)'
+  const countryLineColor = parseCssColorParam(params, 'countryLineColor')
   const hoverColor = parseHexColorParam(params, 'hoverColor')
   const hoverAccentColor = parseHexColorParam(params, 'hoverAccentColor')
   const hoverCoreColor = parseHexColorParam(params, 'hoverCoreColor')
