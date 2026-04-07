@@ -522,6 +522,10 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   ;(globalThis as any).__NAVPASS_GLOBE_ASSET_BASE_URL = assetBaseUrl
   let theme = resolveGlobeTheme(options.theme)
 
+  // Apply bg color immediately so the mount target doesn't flash a different color
+  // before the Three.js canvas renders its first frame.
+  mountTarget.style.background = '#' + new THREE.Color(theme.scene.background as THREE.ColorRepresentation).getHexString()
+
   function applyThemeRuntimeTokens() {
     configureSelectedHighlightColors({
       colorA: theme.highlights.hoverA,
@@ -1443,7 +1447,7 @@ function applyResponsiveZoomMode() {
   controls.update()
 
   if (showZoomControls && leftRail) {
-    leftRail.style.display = locked ? 'none' : ''
+    leftRail.style.display = locked ? 'none' : 'grid'
     leftRail.setAttribute('aria-hidden', locked ? 'true' : 'false')
   }
 }
