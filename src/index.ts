@@ -3000,6 +3000,9 @@ async function init() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     applyResponsiveZoomMode()
     syncCountryHighlightResolution()
+    if (innerWidth < 768 && isCountrySelected) {
+      clearSelectionUIState()
+    }
   })
 
   if (scrollResetsView) {
