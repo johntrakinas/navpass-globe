@@ -764,7 +764,7 @@ function clearCountrySearchSuggestions() {
   countrySearch?.classList.remove('has-results')
 }
 
-const showSearchBarMobile = options.showSearchBarMobile !== false
+const showSearchBarMobile = options.showSearchBarMobile === true
 
 function applyCountrySearchVisibility() {
   if (!countrySearch) return
