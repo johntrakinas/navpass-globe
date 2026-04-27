@@ -464,6 +464,20 @@ export type GlobeOptions = {
    * Defaults to `#ECB200` (gold).
    */
   accentColor?: string
+  /**
+   * Post-click hero layout. When `'shifted'` (default), clicking a country slides
+   * the globe right and renders a compact name-only card at the bottom-left.
+   * When `'centered'`, the globe stays centered and the legacy full-stats card
+   * appears at the bottom-right.
+   */
+  heroLayout?: 'shifted' | 'centered'
+  /**
+   * How far the globe slides rightward when `heroLayout='shifted'`,
+   * expressed as a percentage of viewport width. `0` disables the shift,
+   * `100` would translate the globe by a full viewport width. Clamped to [0, 50].
+   * Defaults to `12` (matches the previous hardcoded shift at the default fov/aspect).
+   */
+  heroShiftPercent?: number
   theme?: GlobeTheme
 }
 
@@ -502,6 +516,11 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   const showBreadcrumbs = options.showBreadcrumbs !== false
   const showZoomControls = options.showZoomControls === true
   const showCountryCardCloseButton = options.showCountryCardCloseButton !== false
+  const heroLayout: 'shifted' | 'centered' = options.heroLayout === 'centered' ? 'centered' : 'shifted'
+  const requestedHeroShiftPercent = Number(options.heroShiftPercent)
+  const heroShiftPercent = Number.isFinite(requestedHeroShiftPercent)
+    ? Math.max(0, Math.min(50, requestedHeroShiftPercent))
+    : 12
   ensureCountryPanelScaffold()
   configureGlobeUi({
     showBreadcrumbs,
@@ -512,7 +531,8 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     cardBorderWidth: options.cardBorderWidth,
     cardBackground: options.cardBackground,
     cardBackgroundColor: options.cardBackgroundColor,
-    accentColor: options.accentColor
+    accentColor: options.accentColor,
+    heroLayout
   })
   setGlobeBreadcrumbs(getBaseBreadcrumbs())
   const assetBaseUrl = (options.assetBaseUrl ?? '').replace(/\/+$/, '')
@@ -1730,6 +1750,49 @@ let globeAnim: {
   to: THREE.Quaternion
 } | null = null
 
+/**
+ * Lateral globe-shift animation. Drives globeGroup.position.x to slide the
+ * globe right when heroLayout='shifted' and a country is selected, and back
+ * to 0 on deselection. Magnitude is computed at kickoff in world units.
+ */
+let globeShiftAnim: { t0: number; dur: number; from: number; to: number } | null = null
+const GLOBE_SHIFT_MOBILE_BREAKPOINT = 768
+
+function tweenGlobeShiftTo(target: number, durationMs: number) {
+  globeShiftAnim = {
+    t0: performance.now(),
+    dur: Math.max(60, durationMs),
+    from: globeGroup.position.x,
+    to: target
+  }
+}
+
+/** Convert a percentage of viewport width to world-space X at the current camera distance. */
+function viewportPercentToWorldX(percent: number) {
+  const camDistance = camera.position.length() || maxZoomDistance
+  const halfFovRad = THREE.MathUtils.degToRad(camera.fov / 2)
+  const halfWorldHeight = camDistance * Math.tan(halfFovRad)
+  const halfWorldWidth = halfWorldHeight * camera.aspect
+  return halfWorldWidth * 2 * (percent / 100)
+}
+
+function startCountryShift() {
+  if (heroLayout !== 'shifted' || heroShiftPercent === 0) {
+    if (globeGroup.position.x !== 0 || globeShiftAnim) tweenGlobeShiftTo(0, 360)
+    return
+  }
+  if (innerWidth < GLOBE_SHIFT_MOBILE_BREAKPOINT) {
+    if (globeGroup.position.x !== 0 || globeShiftAnim) tweenGlobeShiftTo(0, 240)
+    return
+  }
+  tweenGlobeShiftTo(viewportPercentToWorldX(heroShiftPercent), countryClickZoomDuration ?? 1120)
+}
+
+function resetCountryShift() {
+  if (globeGroup.position.x === 0 && !globeShiftAnim) return
+  tweenGlobeShiftTo(0, 700)
+}
+
 function easeInOutSine(t: number) {
   return -(Math.cos(Math.PI * t) - 1) / 2
 }
@@ -2073,6 +2136,7 @@ function clearSelectionUIState() {
   clearSelectedHighlight(globeGroup)
   fadeOutSelected(globeGroup)
   setGlobeBreadcrumbs(getBaseBreadcrumbs())
+  resetCountryShift()
 }
 
 function getISO3(props: any) {
@@ -2489,6 +2553,8 @@ function selectCountryFeature(feature: any, worldPoint?: THREE.Vector3) {
   const focusPoint = worldPoint ?? getFeatureFocusPoint(feature)
   focusGlobeToPoint(focusPoint.clone(), 1200)
 
+  startCountryShift()
+
   if (countryClickZoomLevel !== null) {
     zoomTo(countryClickZoomLevel, countryClickZoomDuration ?? 1120)
     return
@@ -2647,6 +2713,16 @@ function animate() {
     if (tt >= 1) {
       globeAnim = null
       syncYawPitchFromGlobe()
+    }
+  }
+
+  if (globeShiftAnim) {
+    const tt = (performance.now() - globeShiftAnim.t0) / globeShiftAnim.dur
+    const k = easeInOutSine(Math.min(1, Math.max(0, tt)))
+    globeGroup.position.x = THREE.MathUtils.lerp(globeShiftAnim.from, globeShiftAnim.to, k)
+    if (tt >= 1) {
+      globeGroup.position.x = globeShiftAnim.to
+      globeShiftAnim = null
     }
   }
 
@@ -3002,6 +3078,10 @@ async function init() {
     syncCountryHighlightResolution()
     if (innerWidth < 768 && isCountrySelected) {
       clearSelectionUIState()
+    }
+    if (innerWidth < GLOBE_SHIFT_MOBILE_BREAKPOINT && (globeGroup.position.x !== 0 || globeShiftAnim)) {
+      globeShiftAnim = null
+      globeGroup.position.x = 0
     }
   })
 

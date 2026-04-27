@@ -16,6 +16,7 @@ let showBreadcrumbs = true
 let showCountryCardCloseButton = true
 let breadcrumbOffsetLeft = DEFAULT_BREADCRUMB_OFFSET_LEFT
 let breadcrumbOffsetTop = DEFAULT_BREADCRUMB_OFFSET_TOP
+let heroLayout: 'shifted' | 'centered' = 'shifted'
 let currentBreadcrumbs: GlobeBreadcrumbItem[] = [
   { id: 'home', label: 'Home' },
   { id: 'map', label: 'Map' }
@@ -532,6 +533,62 @@ function ensureStyles() {
       .panel-tooltip--country .panel-tooltip-total-value { font-size: 16px; }
       .panel-tooltip--country .panel-tooltip-more { min-height: 32px; min-width: 72px; font-size: 10px; }
     }
+
+    /* ── heroLayout=shifted: bottom-left compact card ──────────────────── */
+    #globe-ui[data-hero-layout="shifted"] #country-panel {
+      left: 6% !important;
+      right: auto !important;
+      bottom: 200px !important;
+      width: auto;
+      min-width: 320px;
+      max-width: min(420px, calc(100vw - 52px));
+      padding: 0;
+    }
+    @media (max-width: 980px) {
+      #globe-ui[data-hero-layout="shifted"] #country-panel {
+        left: 18px !important;
+        bottom: 36px !important;
+        min-width: 260px;
+        max-width: min(324px, calc(100vw - 36px));
+      }
+    }
+
+    .panel-tooltip--compact {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 22px 28px;
+      min-width: 320px;
+      background: var(--np-card-bg);
+    }
+    .panel-tooltip--compact .panel-tooltip-close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      background: transparent;
+      border: 0;
+      color: rgba(255, 255, 255, 0.55);
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      transition: color 0.15s ease;
+    }
+    .panel-tooltip--compact .panel-tooltip-close:hover { color: #ffffff; }
+    .panel-tooltip-country-name {
+      font-family: 'Cormorant Garamond', 'Optima', Georgia, serif;
+      font-size: 28px;
+      font-weight: 500;
+      color: #ffffff;
+      letter-spacing: -0.005em;
+      padding-top: 4px;
+    }
+    @media (max-width: 720px) {
+      .panel-tooltip--compact { padding: 16px 20px; min-width: 0; }
+      .panel-tooltip-country-name { font-size: 22px; }
+    }
   `
   document.head.appendChild(style)
 }
@@ -597,6 +654,7 @@ export function ensureCountryPanelScaffold() {
   ensureStyles()
   getOrCreateUiRoot()
   applyUiLayoutVars()
+  applyHeroLayoutAttr()
   getOrCreateBreadcrumbs()
   getOrCreatePanel()
   getOrCreateFocusDim()
@@ -665,14 +723,28 @@ export function configureGlobeUi(options: {
   cardBackground?: string
   cardBackgroundColor?: string
   accentColor?: string
+  heroLayout?: 'shifted' | 'centered'
 } = {}) {
   showBreadcrumbs = options.showBreadcrumbs !== false
   showCountryCardCloseButton = options.showCountryCardCloseButton !== false
   breadcrumbOffsetLeft = sanitizeOffset(options.breadcrumbOffsetLeft, DEFAULT_BREADCRUMB_OFFSET_LEFT)
   breadcrumbOffsetTop = sanitizeOffset(options.breadcrumbOffsetTop, DEFAULT_BREADCRUMB_OFFSET_TOP)
+  if (options.heroLayout === 'centered' || options.heroLayout === 'shifted') {
+    heroLayout = options.heroLayout
+  }
   ensureCountryPanelScaffold()
+  applyHeroLayoutAttr()
   applyCardThemeVars(options)
   renderBreadcrumbs()
+}
+
+export function getHeroLayout(): 'shifted' | 'centered' {
+  return heroLayout
+}
+
+function applyHeroLayoutAttr() {
+  const uiRoot = getOrCreateUiRoot()
+  uiRoot.dataset.heroLayout = heroLayout
 }
 
 export function setGlobeBreadcrumbs(items: GlobeBreadcrumbItem[]) {
@@ -807,6 +879,23 @@ export function showCountryPanel(
   const flagBubbleClass = flagUrl
     ? 'panel-tooltip-country-flag'
     : 'panel-tooltip-country-flag panel-tooltip-country-flag--empty'
+
+  if (!isHoverMode && heroLayout === 'shifted') {
+    showPanel(`
+      <div class="panel-tooltip panel-tooltip--country panel-tooltip--compact">
+        ${closeButton}
+        <span class="panel-tooltip-country-name">${escapeHtml(name)}</span>
+      </div>
+    `)
+    const panel = getOrCreatePanel()
+    const closeButtonEl = panel.querySelector('.panel-tooltip-close') as HTMLButtonElement | null
+    if (closeButtonEl) {
+      closeButtonEl.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('navpass:close-country-panel'))
+      })
+    }
+    return
+  }
 
   showPanel(`
     <div class="panel-tooltip panel-tooltip--country"${countryCardStyle}>

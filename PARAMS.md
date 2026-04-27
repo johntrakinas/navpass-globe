@@ -65,6 +65,8 @@ https://…/globe/?bgColor=0A1628&accentColor=ECB200&routeCount=120&showSelectBa
 | `breadcrumbOffsetLeft` | `50` | px | `breadcrumbOffsetLeft=20` |
 | `breadcrumbOffsetTop` | `92` | px | `breadcrumbOffsetTop=60` |
 | `showCountryCardCloseButton` | `1` | `0\|1` | `showCountryCardCloseButton=0` — hide × button on card |
+| `heroLayout` | `shifted` | `shifted\|centered` | `heroLayout=centered` — keep globe centered with full-stats card bottom-right (legacy). Default slides globe right and shows a compact name-only card bottom-left. |
+| `heroShiftPercent` | `12` | `0–50` (% of viewport width) | `heroShiftPercent=18` — slide globe further right on country click. Only applies when `heroLayout=shifted`. `0` disables the shift while keeping the compact card. |
 | `animatedCards` | auto | `0\|1` | `animatedCards=0` — disable card slide-in animation |
 | `disableMapInteraction` | `0` | `0\|1` | `disableMapInteraction=1` — block clicks and drags (hover still works) |
 | `showSearchBarMobile` | breakpoint | `0\|1` | `showSearchBarMobile=1` — force show search on mobile |

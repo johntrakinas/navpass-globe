@@ -138,6 +138,20 @@
  *   When 0 the card can still be closed by clicking elsewhere or scrolling.
  *   Default: 1.
  *
+ * heroLayout=shifted|centered
+ *   Post-click hero composition. `shifted` (default) slides the globe to the
+ *   right and shows a compact country card (name + flag + close button) at
+ *   the bottom-left when a country is selected. `centered` keeps the legacy
+ *   behaviour: globe stays centered and the full-stats card appears at the
+ *   bottom-right.
+ *   Default: shifted.
+ *
+ * heroShiftPercent=<number>
+ *   How far the globe slides rightward in `heroLayout=shifted`, expressed as
+ *   a percentage of viewport width. `0` disables the shift entirely while
+ *   keeping the compact card. Clamped to [0, 50]. Default: 12 (matches the
+ *   prior hardcoded shift at the default fov/aspect).
+ *
  * animatedCards=0|1
  *   Enable animated entrance/exit transitions on info cards.
  *   Default: determined by the component.
@@ -282,6 +296,12 @@ function parseNumberParam(params: URLSearchParams, key: string): number | undefi
 function parseFlightModeParam(value: string | null): FlightVisualizationMode | undefined {
   const normalized = value?.trim().toLowerCase()
   if (normalized === 'legacy' || normalized === 'reengineered') return normalized
+  return undefined
+}
+
+function parseHeroLayoutParam(value: string | null): 'shifted' | 'centered' | undefined {
+  const normalized = value?.trim().toLowerCase()
+  if (normalized === 'shifted' || normalized === 'centered') return normalized
   return undefined
 }
 
@@ -607,6 +627,8 @@ function buildOptions(params: URLSearchParams): GlobeOptions {
     breadcrumbOffsetLeft:          parseNumberParam(params, 'breadcrumbOffsetLeft') ?? -2000,
     breadcrumbOffsetTop:           parseNumberParam(params, 'breadcrumbOffsetTop') ?? -2000,
     showCountryCardCloseButton:    parseBooleanParam(params, 'showCountryCardCloseButton') ?? true,
+    heroLayout:                    parseHeroLayoutParam(params.get('heroLayout')) ?? 'shifted',
+    heroShiftPercent:              parseNumberParam(params, 'heroShiftPercent'),
     animatedCards:                 parseBooleanParam(params, 'animatedCards'),
     disableMapInteraction:         parseBooleanParam(params, 'disableMapInteraction'),
     searchBarX:                    parseNumberParam(params, 'searchBarX'),
