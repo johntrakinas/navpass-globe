@@ -6,6 +6,8 @@ const STYLE_ID = 'navpass-country-panel-style'
 const FONT_LINK_ID = 'navpass-country-panel-fonts'
 const DEFAULT_BREADCRUMB_OFFSET_LEFT = 50
 const DEFAULT_BREADCRUMB_OFFSET_TOP = 92
+const DEFAULT_CARD_LEFT_OFFSET = '6%'
+const DEFAULT_CARD_LEFT_OFFSET_MOBILE = '18px'
 
 export type GlobeBreadcrumbItem = {
   id: string
@@ -45,9 +47,15 @@ function ensureStyles() {
       --globe-breadcrumb-top-compact: 40px;
       /* Theming tokens — override via configureGlobeUi or URL params */
       --np-accent: #ecb200;
-      --np-border-color: rgba(255, 255, 255, 0.08);
+      --np-border-color: var(--np-accent);
       --np-border-width: 1px;
       --np-card-bg: #001E3D;
+      --np-card-left: ${DEFAULT_CARD_LEFT_OFFSET};
+      --np-card-left-mobile: ${DEFAULT_CARD_LEFT_OFFSET_MOBILE};
+      --np-card-padding-x: 28px;
+      --np-card-padding-y: 22px;
+      --np-card-padding-x-mobile: 18px;
+      --np-card-padding-y-mobile: 16px;
     }
     #country-panel,
     #country-panel *,
@@ -536,17 +544,18 @@ function ensureStyles() {
 
     /* ── heroLayout=shifted: bottom-left compact card ──────────────────── */
     #globe-ui[data-hero-layout="shifted"] #country-panel {
-      left: 6% !important;
+      left: var(--np-card-left) !important;
       right: auto !important;
       bottom: 200px !important;
       width: auto;
       min-width: 320px;
       max-width: min(420px, calc(100vw - 52px));
       padding: 0;
+      margin: 0 !important;
     }
     @media (max-width: 980px) {
       #globe-ui[data-hero-layout="shifted"] #country-panel {
-        left: 18px !important;
+        left: var(--np-card-left-mobile) !important;
         bottom: 36px !important;
         min-width: 260px;
         max-width: min(324px, calc(100vw - 36px));
@@ -556,10 +565,11 @@ function ensureStyles() {
     .panel-tooltip--compact {
       position: relative;
       display: flex;
+      flex-direction: row;
       align-items: center;
       justify-content: space-between;
-      gap: 24px;
-      padding: 22px 28px;
+      gap: 16px;
+      padding: var(--np-card-padding-y) var(--np-card-padding-x);
       min-width: 320px;
       background: var(--np-card-bg);
     }
@@ -577,16 +587,37 @@ function ensureStyles() {
       transition: color 0.15s ease;
     }
     .panel-tooltip--compact .panel-tooltip-close:hover { color: #ffffff; }
+    .panel-tooltip--compact .panel-tooltip-country-flag {
+      width: 48px;
+      height: 32px;
+      flex: 0 0 48px;
+      border-radius: 2px;
+      background-size: cover;
+      box-shadow: 0 10px 22px -16px rgba(0, 0, 0, 0.6);
+    }
     .panel-tooltip-country-name {
       font-family: 'Cormorant Garamond', 'Optima', Georgia, serif;
       font-size: 28px;
       font-weight: 500;
       color: #ffffff;
       letter-spacing: -0.005em;
-      padding-top: 4px;
+      padding-top: 2px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     @media (max-width: 720px) {
-      .panel-tooltip--compact { padding: 16px 20px; min-width: 0; }
+      .panel-tooltip--compact {
+        padding: var(--np-card-padding-y-mobile) var(--np-card-padding-x-mobile);
+        min-width: 0;
+        gap: 12px;
+      }
+      .panel-tooltip--compact .panel-tooltip-country-flag {
+        width: 36px;
+        height: 24px;
+        flex-basis: 36px;
+      }
       .panel-tooltip-country-name { font-size: 22px; }
     }
   `
@@ -689,12 +720,30 @@ function renderBreadcrumbs() {
     .join('')
 }
 
+function normalizeCssLength(value: string | number | undefined): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? `${value}px` : undefined
+  }
+  const trimmed = String(value).trim()
+  if (!trimmed) return undefined
+  // Bare numeric strings (e.g. "24") become pixels. Anything with a unit / fn
+  // (e.g. "6%", "calc(...)", "24px") passes through as-is.
+  return /^-?\d+(\.\d+)?$/.test(trimmed) ? `${trimmed}px` : trimmed
+}
+
 function applyCardThemeVars(options: {
   cardBorderColor?: string
   cardBorderWidth?: number
   cardBackground?: string
   cardBackgroundColor?: string
   accentColor?: string
+  cardLeftOffset?: string | number
+  cardLeftOffsetMobile?: string | number
+  cardPaddingX?: string | number
+  cardPaddingY?: string | number
+  cardPaddingXMobile?: string | number
+  cardPaddingYMobile?: string | number
 }) {
   const root = document.getElementById(UI_ROOT_ID)
   if (!root) return
@@ -711,6 +760,42 @@ function applyCardThemeVars(options: {
   if (bg) {
     root.style.setProperty('--np-card-bg', bg)
   }
+  const left = normalizeCssLength(options.cardLeftOffset)
+  if (left) {
+    root.style.setProperty('--np-card-left', left)
+    // When only the desktop offset is provided, mirror it to mobile so the
+    // user gets a single coherent placement unless they opt into a separate
+    // mobile value via cardLeftOffsetMobile.
+    if (options.cardLeftOffsetMobile === undefined) {
+      root.style.setProperty('--np-card-left-mobile', left)
+    }
+  }
+  const leftMobile = normalizeCssLength(options.cardLeftOffsetMobile)
+  if (leftMobile) {
+    root.style.setProperty('--np-card-left-mobile', leftMobile)
+  }
+  const paddingX = normalizeCssLength(options.cardPaddingX)
+  if (paddingX) {
+    root.style.setProperty('--np-card-padding-x', paddingX)
+    if (options.cardPaddingXMobile === undefined) {
+      root.style.setProperty('--np-card-padding-x-mobile', paddingX)
+    }
+  }
+  const paddingY = normalizeCssLength(options.cardPaddingY)
+  if (paddingY) {
+    root.style.setProperty('--np-card-padding-y', paddingY)
+    if (options.cardPaddingYMobile === undefined) {
+      root.style.setProperty('--np-card-padding-y-mobile', paddingY)
+    }
+  }
+  const paddingXMobile = normalizeCssLength(options.cardPaddingXMobile)
+  if (paddingXMobile) {
+    root.style.setProperty('--np-card-padding-x-mobile', paddingXMobile)
+  }
+  const paddingYMobile = normalizeCssLength(options.cardPaddingYMobile)
+  if (paddingYMobile) {
+    root.style.setProperty('--np-card-padding-y-mobile', paddingYMobile)
+  }
 }
 
 export function configureGlobeUi(options: {
@@ -724,6 +809,12 @@ export function configureGlobeUi(options: {
   cardBackgroundColor?: string
   accentColor?: string
   heroLayout?: 'shifted' | 'centered'
+  cardLeftOffset?: string | number
+  cardLeftOffsetMobile?: string | number
+  cardPaddingX?: string | number
+  cardPaddingY?: string | number
+  cardPaddingXMobile?: string | number
+  cardPaddingYMobile?: string | number
 } = {}) {
   showBreadcrumbs = options.showBreadcrumbs !== false
   showCountryCardCloseButton = options.showCountryCardCloseButton !== false
@@ -881,10 +972,12 @@ export function showCountryPanel(
     : 'panel-tooltip-country-flag panel-tooltip-country-flag--empty'
 
   if (!isHoverMode && heroLayout === 'shifted') {
+    const compactCardStyle = flagUrl ? ` style="--country-flag-bg:url('${flagUrl}')"` : ''
     showPanel(`
-      <div class="panel-tooltip panel-tooltip--country panel-tooltip--compact">
+      <div class="panel-tooltip panel-tooltip--country panel-tooltip--compact"${compactCardStyle}>
         ${closeButton}
         <span class="panel-tooltip-country-name">${escapeHtml(name)}</span>
+        <div class="${flagBubbleClass}" aria-hidden="true"></div>
       </div>
     `)
     const panel = getOrCreatePanel()

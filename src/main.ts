@@ -106,12 +106,6 @@
  *   Prevent the user from zooming with the mouse wheel / trackpad.
  *   Default: 0 (scroll-zoom enabled).
  *
- * scrollResetsView=0|1
- *   When 1 (default), scrolling while a country card is open closes the card
- *   and resets the camera to maxZoomDistance after a short debounce (250 ms).
- *   Set to 0 to keep the card open while the user scrolls.
- *   Default: 1.
- *
  * ─────────────────────────────────────────────────────────────────────────────
  * UI CONTROLS
  * ─────────────────────────────────────────────────────────────────────────────
@@ -183,7 +177,25 @@
  * cardBorderColor=<hex|rgba>
  *   Color of the country card's outer border.
  *   Accepts #RRGGBB, #RGB, 0xRRGGBB, or any CSS color string.
- *   Default: rgba(255, 255, 255, 0.08).
+ *   Default: the accent color (yellow) — applied at rest, not only on hover.
+ *
+ * cardLeftOffset=<css-length>
+ *   Horizontal offset of the selected-country card from the left edge of the
+ *   viewport when heroLayout=shifted. Accepts a CSS length such as `6%`,
+ *   `24px`, or `calc(...)`. Bare numbers are treated as pixels. Default: `6%`.
+ *
+ * cardLeftOffsetMobile=<css-length>
+ *   Mobile-specific override for `cardLeftOffset` (applies under 980px).
+ *   Defaults to `cardLeftOffset` when set, otherwise `18px`.
+ *
+ * cardPaddingX=<css-length>   cardPaddingY=<css-length>
+ *   Inner horizontal / vertical padding of the compact country card.
+ *   Bare numbers are pixels; CSS lengths (`24px`, `1.5rem`, `clamp(...)`)
+ *   pass through. Default: 28 (X), 22 (Y).
+ *
+ * cardPaddingXMobile=<css-length>   cardPaddingYMobile=<css-length>
+ *   Mobile overrides for `cardPaddingX` / `cardPaddingY` (under 720px).
+ *   Default to the desktop values when set, otherwise 18 (X), 16 (Y).
  *
  * cardBorderWidth=<number>
  *   Width in pixels of the country card's outer border.
@@ -621,7 +633,6 @@ function buildOptions(params: URLSearchParams): GlobeOptions {
     countryClickZoomLevel:         parseNumberParam(params, 'countryClickZoomLevel'),
     countryClickZoomDuration:      parseNumberParam(params, 'countryClickZoomDuration'),
     disableScrollZoom:             parseBooleanParam(params, 'disableScrollZoom') ?? parseBooleanParam(params, 'disableScroll') ?? true,
-    scrollResetsView:              parseBooleanParam(params, 'scrollResetsView'),
     showZoomControls:              parseBooleanParam(params, 'showZoomControls') ?? false,
     showBreadcrumbs:               parseBooleanParam(params, 'showBreadcrumbs') ?? false,
     breadcrumbOffsetLeft:          parseNumberParam(params, 'breadcrumbOffsetLeft') ?? -2000,
@@ -640,8 +651,14 @@ function buildOptions(params: URLSearchParams): GlobeOptions {
     accentColor:                   parseHexColorParam(params, 'accentColor') ?? '#DCAB19',
     cardBackground:                parseCssColorParam(params, 'cardBackground'),
     cardBackgroundColor:           parseCssColorParam(params, 'cardBackgroundColor'),
-    cardBorderColor:               parseCssColorParam(params, 'cardBorderColor') ?? 'rgba(255,255,255,0.1)',
+    cardBorderColor:               parseCssColorParam(params, 'cardBorderColor'),
     cardBorderWidth:               parseNumberParam(params, 'cardBorderWidth') ?? 1,
+    cardLeftOffset:                params.get('cardLeftOffset') ?? undefined,
+    cardLeftOffsetMobile:          params.get('cardLeftOffsetMobile') ?? undefined,
+    cardPaddingX:                  params.get('cardPaddingX') ?? undefined,
+    cardPaddingY:                  params.get('cardPaddingY') ?? undefined,
+    cardPaddingXMobile:            params.get('cardPaddingXMobile') ?? undefined,
+    cardPaddingYMobile:            params.get('cardPaddingYMobile') ?? undefined,
     lightIntensity:                parseNumberParam(params, 'lightIntensity'),
     lightColor:                    parseHexColorParam(params, 'lightColor'),
     lightRadius:                   parseNumberParam(params, 'lightRadius'),

@@ -385,13 +385,6 @@ export type GlobeOptions = {
    */
   routesDataFile?: string
   /**
-   * When `true` (default), scrolling while a country card is open closes the card
-   * and resets the camera to the default zoom distance.
-   * Set to `false` (or `?scrollResetsView=0`) to disable this behaviour entirely.
-   * Zoom is unaffected — this only controls the card-close+reset side effect.
-   */
-  scrollResetsView?: boolean
-  /**
    * Directional light intensity applied to the globe surface via the lighting shell.
    * `0` (default) disables the lighting effect. Values in the range 0.3–1.0 give
    * a subtle-to-strong one-sided illumination (lit face vs dark face).
@@ -418,7 +411,8 @@ export type GlobeOptions = {
    * Hex color string for the country card's outer border.
    * Accepts `#RRGGBB`, `#RGB`, or `0xRRGGBB` notation.
    * Also accepts `rgba(...)` for semi-transparent borders.
-   * Defaults to `rgba(255, 255, 255, 0.08)`.
+   * Defaults to the accent color (yellow). The hover state already used the
+   * accent color; making it the default removes the dependency on hover.
    */
   cardBorderColor?: string
   /**
@@ -478,6 +472,31 @@ export type GlobeOptions = {
    * Defaults to `12` (matches the previous hardcoded shift at the default fov/aspect).
    */
   heroShiftPercent?: number
+  /**
+   * Horizontal offset of the country card from the left edge of the viewport
+   * when `heroLayout='shifted'`. Accepts a number (interpreted as pixels) or a
+   * CSS length string (e.g. `'6%'`, `'24px'`, `'calc(...)'`). Default: `'6%'`.
+   */
+  cardLeftOffset?: string | number
+  /**
+   * Mobile-specific override for `cardLeftOffset` (applies under 980px).
+   * Defaults to `cardLeftOffset` when set, otherwise `'18px'`.
+   */
+  cardLeftOffsetMobile?: string | number
+  /**
+   * Inner horizontal padding (left & right) of the compact country card.
+   * Number = pixels; string accepts any CSS length. Default: `28` (px).
+   */
+  cardPaddingX?: string | number
+  /**
+   * Inner vertical padding (top & bottom) of the compact country card.
+   * Number = pixels; string accepts any CSS length. Default: `22` (px).
+   */
+  cardPaddingY?: string | number
+  /** Mobile override for `cardPaddingX` (under 720px). Defaults to `cardPaddingX` when set, otherwise `18`. */
+  cardPaddingXMobile?: string | number
+  /** Mobile override for `cardPaddingY` (under 720px). Defaults to `cardPaddingY` when set, otherwise `16`. */
+  cardPaddingYMobile?: string | number
   theme?: GlobeTheme
 }
 
@@ -532,7 +551,13 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
     cardBackground: options.cardBackground,
     cardBackgroundColor: options.cardBackgroundColor,
     accentColor: options.accentColor,
-    heroLayout
+    heroLayout,
+    cardLeftOffset: options.cardLeftOffset,
+    cardLeftOffsetMobile: options.cardLeftOffsetMobile,
+    cardPaddingX: options.cardPaddingX,
+    cardPaddingY: options.cardPaddingY,
+    cardPaddingXMobile: options.cardPaddingXMobile,
+    cardPaddingYMobile: options.cardPaddingYMobile
   })
   setGlobeBreadcrumbs(getBaseBreadcrumbs())
   const assetBaseUrl = (options.assetBaseUrl ?? '').replace(/\/+$/, '')
@@ -574,7 +599,6 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   const SHOW_AIRPORT_POINTS = true
   const SHOW_NIGHT_LIGHTS = false
   const disableScrollZoom = options.disableScrollZoom === true
-  const scrollResetsView = options.scrollResetsView !== false
   const requestedRouteCount = Number(options.routeCount)
   const FLIGHT_ROUTE_TARGET = Number.isFinite(requestedRouteCount)
     ? THREE.MathUtils.clamp(Math.round(requestedRouteCount), 1, 30000)
@@ -3084,37 +3108,6 @@ async function init() {
       globeGroup.position.x = 0
     }
   })
-
-  if (scrollResetsView) {
-    let scrollResetTimer: ReturnType<typeof setTimeout> | null = null
-
-    window.addEventListener('wheel', (event) => {
-      // Never act while the pointer is inside the card UI.
-      if (event.target instanceof Element && event.target.closest('#country-panel')) return
-
-      // Always dismiss hover tooltip and highlight on scroll — prevents stale overlays.
-      tooltip.hide()
-      clearSelectedHighlight(globeGroup)
-      fadeOutSelected(globeGroup)
-      lastHoverKey = ''
-
-      // Full selection reset only when a country or flight route is open.
-      if (!isCountrySelected && selectedFlightRouteId === null) return
-
-      // Debounce: cancel the previous pending reset so rapid scrolling only triggers one reset.
-      if (scrollResetTimer !== null) {
-        clearTimeout(scrollResetTimer)
-      }
-      scrollResetTimer = setTimeout(() => {
-        scrollResetTimer = null
-        clearSelectionUIState()
-        globeAnim = null
-        velYaw = 0
-        velPitch = 0
-        zoomTo(maxZoomDistance, 900)
-      }, 250)
-    }, { passive: true })
-  }
 
   window.addEventListener('pointermove', onPointerHover)
 }
