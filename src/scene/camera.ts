@@ -588,11 +588,12 @@ function ensureStyles() {
     }
     .panel-tooltip--compact .panel-tooltip-close:hover { color: #ffffff; }
     .panel-tooltip--compact .panel-tooltip-country-flag {
-      width: 48px;
-      height: 32px;
-      flex: 0 0 48px;
-      border-radius: 2px;
+      width: 40px;
+      height: 40px;
+      flex: 0 0 40px;
+      border-radius: 50%;
       background-size: cover;
+      margin-right: 14px;
       box-shadow: 0 10px 22px -16px rgba(0, 0, 0, 0.6);
     }
     .panel-tooltip-country-name {
@@ -614,9 +615,10 @@ function ensureStyles() {
         gap: 12px;
       }
       .panel-tooltip--compact .panel-tooltip-country-flag {
-        width: 36px;
-        height: 24px;
-        flex-basis: 36px;
+        width: 32px;
+        height: 32px;
+        flex-basis: 32px;
+        margin-right: 10px;
       }
       .panel-tooltip-country-name { font-size: 22px; }
     }
