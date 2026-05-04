@@ -94,6 +94,9 @@ function ensureStyles() {
       border-color: var(--np-accent);
       box-shadow: 0 28px 56px -16px rgba(0, 0, 0, 0.6);
     }
+    @media (min-width: 1281px) {
+      #country-panel { display: none !important; }
+    }
     #focus-dim {
       position: fixed;
       inset: 0;
@@ -637,6 +640,7 @@ function ensureStyles() {
       width: 100%;
       font-family: "Verdana Pro", Verdana, "Trebuchet MS", sans-serif;
       font-size: 12px;
+      font-weight: 200;
       font-style: italic;
       color: rgba(255, 255, 255, 0.7);
       line-height: 1.45;

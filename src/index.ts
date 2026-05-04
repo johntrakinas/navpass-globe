@@ -1407,11 +1407,11 @@ const requestedMaxZoomDistance = Number(options.maxZoomDistance)
 const minZoomDistance = THREE.MathUtils.clamp(
   Number.isFinite(requestedMinZoomDistance) ? requestedMinZoomDistance : DEFAULT_MIN_ZOOM_DISTANCE,
   12,
-  28
+  60
 )
 const maxZoomDistance = THREE.MathUtils.clamp(
   Number.isFinite(requestedMaxZoomDistance) ? requestedMaxZoomDistance : DEFAULT_MAX_ZOOM_DISTANCE,
-  minZoomDistance + 2,
+  minZoomDistance,
   60
 )
 const requestedCountryClickZoomLevel = Number(options.countryClickZoomLevel)

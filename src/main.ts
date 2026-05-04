@@ -86,11 +86,12 @@
  *
  * minZoomDistance=<number>
  *   Minimum camera distance from the globe centre (closest zoom in).
- *   Clamped to [12, 28]. Default: 14.
+ *   Clamped to [12, 60]. Default: 35.
  *
  * maxZoomDistance=<number>
  *   Maximum camera distance from the globe centre (furthest zoom out).
- *   Clamped to [minZoomDistance + 2, 60]. Default: 28.
+ *   Clamped to [minZoomDistance, 60]. Default: 35.
+ *   When equal to minZoomDistance, zoom is locked at that distance.
  *   Country-click and animated transitions never exceed this value.
  *
  * countryClickZoomLevel=<number>
@@ -643,7 +644,7 @@ function buildOptions(params: URLSearchParams): GlobeOptions {
     breadcrumbOffsetLeft:          parseNumberParam(params, 'breadcrumbOffsetLeft') ?? -2000,
     breadcrumbOffsetTop:           parseNumberParam(params, 'breadcrumbOffsetTop') ?? -2000,
     showCountryCardCloseButton:    parseBooleanParam(params, 'showCountryCardCloseButton') ?? true,
-    showCardDisclaimer:            parseBooleanParam(params, 'showCardDisclaimer') ?? false,
+    showCardDisclaimer:            parseBooleanParam(params, 'showCardDisclaimer') ?? true,
     heroLayout:                    parseHeroLayoutParam(params.get('heroLayout')) ?? 'shifted',
     heroShiftPercent:              parseNumberParam(params, 'heroShiftPercent'),
     animatedCards:                 parseBooleanParam(params, 'animatedCards'),
