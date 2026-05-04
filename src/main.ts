@@ -181,8 +181,13 @@
  *
  * cardLeftOffset=<css-length>
  *   Horizontal offset of the selected-country card from the left edge of the
- *   viewport when heroLayout=shifted. Accepts a CSS length such as `6%`,
- *   `24px`, or `calc(...)`. Bare numbers are treated as pixels. Default: `6%`.
+ *   viewport when heroLayout=shifted. Accepts a CSS length such as `24px` or
+ *   `calc(...)`. Bare numbers are treated as pixels. Default: `60px` (pixel-
+ *   based so positioning stays stable across viewport widths).
+ *
+ * showCardDisclaimer=0|1
+ *   Render the illustrative-snapshot disclaimer text under the compact
+ *   country card. Default: 0 (hidden).
  *
  * cardLeftOffsetMobile=<css-length>
  *   Mobile-specific override for `cardLeftOffset` (applies under 980px).
@@ -638,6 +643,7 @@ function buildOptions(params: URLSearchParams): GlobeOptions {
     breadcrumbOffsetLeft:          parseNumberParam(params, 'breadcrumbOffsetLeft') ?? -2000,
     breadcrumbOffsetTop:           parseNumberParam(params, 'breadcrumbOffsetTop') ?? -2000,
     showCountryCardCloseButton:    parseBooleanParam(params, 'showCountryCardCloseButton') ?? true,
+    showCardDisclaimer:            parseBooleanParam(params, 'showCardDisclaimer') ?? false,
     heroLayout:                    parseHeroLayoutParam(params.get('heroLayout')) ?? 'shifted',
     heroShiftPercent:              parseNumberParam(params, 'heroShiftPercent'),
     animatedCards:                 parseBooleanParam(params, 'animatedCards'),

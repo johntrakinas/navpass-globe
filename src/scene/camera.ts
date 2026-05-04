@@ -6,8 +6,12 @@ const STYLE_ID = 'navpass-country-panel-style'
 const FONT_LINK_ID = 'navpass-country-panel-fonts'
 const DEFAULT_BREADCRUMB_OFFSET_LEFT = 50
 const DEFAULT_BREADCRUMB_OFFSET_TOP = 92
-const DEFAULT_CARD_LEFT_OFFSET = '6%'
+const DEFAULT_CARD_LEFT_OFFSET = '60px'
 const DEFAULT_CARD_LEFT_OFFSET_MOBILE = '18px'
+const DEFAULT_CARD_WIDTH = '320px'
+const DEFAULT_CARD_WIDTH_MOBILE = '280px'
+const DISCLAIMER_TEXT =
+  'Illustrative snapshot. The live Global Insight engine that powers AERO tracks real-time flight activity with multi-source validated trajectories. For visual clarity, this representation shows simplified great-circle routes between city pairs; a depicted line does not confirm a flight transited any specific country.'
 
 export type GlobeBreadcrumbItem = {
   id: string
@@ -16,6 +20,7 @@ export type GlobeBreadcrumbItem = {
 
 let showBreadcrumbs = true
 let showCountryCardCloseButton = true
+let showCardDisclaimer = false
 let breadcrumbOffsetLeft = DEFAULT_BREADCRUMB_OFFSET_LEFT
 let breadcrumbOffsetTop = DEFAULT_BREADCRUMB_OFFSET_TOP
 let heroLayout: 'shifted' | 'centered' = 'shifted'
@@ -56,6 +61,8 @@ function ensureStyles() {
       --np-card-padding-y: 22px;
       --np-card-padding-x-mobile: 18px;
       --np-card-padding-y-mobile: 16px;
+      --np-card-width: ${DEFAULT_CARD_WIDTH};
+      --np-card-width-mobile: ${DEFAULT_CARD_WIDTH_MOBILE};
     }
     #country-panel,
     #country-panel *,
@@ -79,7 +86,7 @@ function ensureStyles() {
       pointer-events: auto;
       opacity: 0;
       transform: translateY(10px);
-      transition: opacity 460ms ease, transform 560ms ease, border-color 280ms ease, box-shadow 280ms ease;
+      transition: opacity 200ms ease-out, transform 200ms ease-out, border-color 200ms ease-out, box-shadow 200ms ease-out;
       z-index: 4;
     }
     #country-panel.is-visible { opacity: 1; transform: translateY(0); }
@@ -547,18 +554,33 @@ function ensureStyles() {
       left: var(--np-card-left) !important;
       right: auto !important;
       bottom: 200px !important;
-      width: auto;
-      min-width: 320px;
-      max-width: min(420px, calc(100vw - 52px));
+      width: var(--np-card-width);
+      max-width: calc(100vw - 52px);
       padding: 0;
       margin: 0 !important;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      overflow: visible;
+    }
+    #globe-ui[data-hero-layout="shifted"] #country-panel.is-visible:hover {
+      border-color: transparent;
+      box-shadow: none;
+    }
+    #globe-ui[data-hero-layout="shifted"] .panel-tooltip--compact {
+      border: var(--np-border-width) solid var(--np-border-color);
+      transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
+    }
+    #globe-ui[data-hero-layout="shifted"] #country-panel.is-visible:hover .panel-tooltip--compact {
+      border-color: var(--np-accent);
+      box-shadow: 0 28px 56px -16px rgba(0, 0, 0, 0.6);
     }
     @media (max-width: 980px) {
       #globe-ui[data-hero-layout="shifted"] #country-panel {
         left: var(--np-card-left-mobile) !important;
         bottom: 36px !important;
-        min-width: 260px;
-        max-width: min(324px, calc(100vw - 36px));
+        width: var(--np-card-width-mobile);
+        max-width: calc(100vw - 36px);
       }
     }
 
@@ -566,11 +588,11 @@ function ensureStyles() {
       position: relative;
       display: flex;
       flex-direction: row;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
       gap: 16px;
       padding: var(--np-card-padding-y) var(--np-card-padding-x);
-      min-width: 320px;
+      width: 100%;
       background: var(--np-card-bg);
     }
     .panel-tooltip--compact .panel-tooltip-close {
@@ -603,15 +625,27 @@ function ensureStyles() {
       color: #ffffff;
       letter-spacing: -0.005em;
       padding-top: 2px;
+      flex: 1 1 auto;
       min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      line-height: 1.1;
     }
+    .country-card-disclaimer {
+      margin-top: 20px;
+      width: 100%;
+      font-family: "Verdana Pro", Verdana, "Trebuchet MS", sans-serif;
+      font-size: 12px;
+      font-style: italic;
+      color: rgba(255, 255, 255, 0.7);
+      line-height: 1.45;
+      pointer-events: none;
+    }
+    .country-card-disclaimer.is-hidden { display: none; }
     @media (max-width: 720px) {
       .panel-tooltip--compact {
         padding: var(--np-card-padding-y-mobile) var(--np-card-padding-x-mobile);
-        min-width: 0;
         gap: 12px;
       }
       .panel-tooltip--compact .panel-tooltip-country-flag {
@@ -803,6 +837,7 @@ function applyCardThemeVars(options: {
 export function configureGlobeUi(options: {
   showBreadcrumbs?: boolean
   showCountryCardCloseButton?: boolean
+  showCardDisclaimer?: boolean
   breadcrumbOffsetLeft?: number
   breadcrumbOffsetTop?: number
   cardBorderColor?: string
@@ -820,6 +855,7 @@ export function configureGlobeUi(options: {
 } = {}) {
   showBreadcrumbs = options.showBreadcrumbs !== false
   showCountryCardCloseButton = options.showCountryCardCloseButton !== false
+  showCardDisclaimer = options.showCardDisclaimer === true
   breadcrumbOffsetLeft = sanitizeOffset(options.breadcrumbOffsetLeft, DEFAULT_BREADCRUMB_OFFSET_LEFT)
   breadcrumbOffsetTop = sanitizeOffset(options.breadcrumbOffsetTop, DEFAULT_BREADCRUMB_OFFSET_TOP)
   if (options.heroLayout === 'centered' || options.heroLayout === 'shifted') {
@@ -975,12 +1011,14 @@ export function showCountryPanel(
 
   if (!isHoverMode && heroLayout === 'shifted') {
     const compactCardStyle = flagUrl ? ` style="--country-flag-bg:url('${flagUrl}')"` : ''
+    const disclaimerClass = showCardDisclaimer ? 'country-card-disclaimer' : 'country-card-disclaimer is-hidden'
     showPanel(`
       <div class="panel-tooltip panel-tooltip--country panel-tooltip--compact"${compactCardStyle}>
         ${closeButton}
         <span class="panel-tooltip-country-name">${escapeHtml(name)}</span>
         <div class="${flagBubbleClass}" aria-hidden="true"></div>
       </div>
+      <div class="${disclaimerClass}" role="note">${escapeHtml(DISCLAIMER_TEXT)}</div>
     `)
     const panel = getOrCreatePanel()
     const closeButtonEl = panel.querySelector('.panel-tooltip-close') as HTMLButtonElement | null

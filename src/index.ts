@@ -266,10 +266,10 @@ const DEFAULT_POINTS_THEME: GlobePointsTheme = {
 }
 
 const DEFAULT_FLIGHTS_THEME: GlobeFlightsTheme = {
-  lineBaseColor: mixColor('#FBBC05', '#ffffff', 0.28),
-  lineHeadColor: '#ffffff',
-  lineTailColor: mixColor('#FBBC05', '#ffffff', 0.16),
-  lineAccentColor: '#ffffff',
+  lineBaseColor: '#FBBC05',
+  lineHeadColor: '#FBBC05',
+  lineTailColor: '#FBBC05',
+  lineAccentColor: '#FBBC05',
   planeCoreColor: mixColor('#ffffff', '#FBBC05', 0.22),
   planeGlowColor: mixColor('#FBBC05', '#ffffff', 0.16),
   planeTintColor: '#FBBC05',
@@ -435,6 +435,11 @@ export type GlobeOptions = {
    */
   cardBackgroundColor?: string
   /**
+   * Whether to render the disclaimer text below the compact country card
+   * (heroLayout='shifted'). Defaults to `false`.
+   */
+  showCardDisclaimer?: boolean
+  /**
    * Whether to show the thick shadow backing on the selected country border.
    * Defaults to `false`.
    */
@@ -475,7 +480,8 @@ export type GlobeOptions = {
   /**
    * Horizontal offset of the country card from the left edge of the viewport
    * when `heroLayout='shifted'`. Accepts a number (interpreted as pixels) or a
-   * CSS length string (e.g. `'6%'`, `'24px'`, `'calc(...)'`). Default: `'6%'`.
+   * CSS length string (e.g. `'24px'`, `'calc(...)'`). Default: `'60px'` (pixel-
+   * based to keep positioning stable across viewport widths).
    */
   cardLeftOffset?: string | number
   /**
@@ -544,6 +550,7 @@ export default function globe(options: GlobeOptions = {}): GlobeInstance {
   configureGlobeUi({
     showBreadcrumbs,
     showCountryCardCloseButton,
+    showCardDisclaimer: options.showCardDisclaimer === true,
     breadcrumbOffsetLeft: options.breadcrumbOffsetLeft,
     breadcrumbOffsetTop: options.breadcrumbOffsetTop,
     cardBorderColor: options.cardBorderColor,
