@@ -266,10 +266,10 @@ const DEFAULT_POINTS_THEME: GlobePointsTheme = {
 }
 
 const DEFAULT_FLIGHTS_THEME: GlobeFlightsTheme = {
-  lineBaseColor: '#FBBC05',
-  lineHeadColor: '#FBBC05',
-  lineTailColor: '#FBBC05',
-  lineAccentColor: '#FBBC05',
+  lineBaseColor: '#ffffff',
+  lineHeadColor: '#ffffff',
+  lineTailColor: '#ffffff',
+  lineAccentColor: '#ffffff',
   planeCoreColor: mixColor('#ffffff', '#FBBC05', 0.22),
   planeGlowColor: mixColor('#FBBC05', '#ffffff', 0.16),
   planeTintColor: '#FBBC05',
