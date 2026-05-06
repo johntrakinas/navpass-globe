@@ -53,7 +53,7 @@ function ensureStyles() {
       /* Theming tokens — override via configureGlobeUi or URL params */
       --np-accent: #ecb200;
       --np-border-color: var(--np-accent);
-      --np-border-width: 1px;
+      --np-border-width: 0.5px;
       --np-card-bg: #001E3D;
       --np-card-left: ${DEFAULT_CARD_LEFT_OFFSET};
       --np-card-left-mobile: ${DEFAULT_CARD_LEFT_OFFSET_MOBILE};
@@ -640,7 +640,7 @@ function ensureStyles() {
       width: 100%;
       font-family: "Verdana Pro", Verdana, "Trebuchet MS", sans-serif;
       font-size: 12px;
-      font-weight: 200;
+      font-weight: 100;
       font-style: italic;
       color: rgba(255, 255, 255, 0.7);
       line-height: 1.45;

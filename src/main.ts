@@ -205,7 +205,7 @@
  *
  * cardBorderWidth=<number>
  *   Width in pixels of the country card's outer border.
- *   Use 0 to remove the border entirely. Default: 1.
+ *   Use 0 to remove the border entirely. Default: 0.5.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * GLOBE THEMING — QUICK SHORTCUTS
@@ -659,7 +659,7 @@ function buildOptions(params: URLSearchParams): GlobeOptions {
     cardBackground:                parseCssColorParam(params, 'cardBackground'),
     cardBackgroundColor:           parseCssColorParam(params, 'cardBackgroundColor'),
     cardBorderColor:               parseCssColorParam(params, 'cardBorderColor'),
-    cardBorderWidth:               parseNumberParam(params, 'cardBorderWidth') ?? 1,
+    cardBorderWidth:               parseNumberParam(params, 'cardBorderWidth') ?? 0.5,
     cardLeftOffset:                params.get('cardLeftOffset') ?? undefined,
     cardLeftOffsetMobile:          params.get('cardLeftOffsetMobile') ?? undefined,
     cardPaddingX:                  params.get('cardPaddingX') ?? undefined,
